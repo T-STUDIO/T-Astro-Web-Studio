@@ -402,20 +402,34 @@ class AlpacaDeviceInstance {
         }
     }
 
-    private pack(buf: ArrayBuffer, cid: number, sid: number, isArray: boolean): any {
-        const iBytes = new Uint8Array(buf);
+    private pack(buf: ArrayBuffer | null, cid: number, sid: number, isArray: boolean): any {
+        const iBytes = buf ? new Uint8Array(buf) : new Uint8Array(0);
         const dataLen = iBytes.length;
         const w = Number(this.lockedFrameProp ? this.getCached(this.lockedFrameProp, this.lockedWEl) : 0) || 640; 
         const h = Number(this.lockedFrameProp ? this.getCached(this.lockedFrameProp, this.lockedHEl) : 0) || 480;
-        const headerLen = isArray ? 44 : 16;
+        const headerLen = 44;
         const buffer = new ArrayBuffer(headerLen + dataLen);
         const view = new DataView(buffer);
-        view.setUint32(0, 1, true); view.setUint32(4, 0, true); view.setUint32(8, cid, true); view.setUint32(12, sid, true);
-        if (isArray) {
-            view.setUint32(16, 1, true); view.setUint32(20, 2, true); view.setUint32(24, 2, true); view.setUint32(28, 2, true);
-            view.setUint32(32, w, true); view.setUint32(36, h, true); view.setUint32(40, 0, true);
+        view.setUint32(0, 1, true); 
+        view.setUint32(4, buf ? 0 : 1024, true); 
+        view.setUint32(8, cid, true); 
+        view.setUint32(12, sid, true);
+        view.setUint32(16, 44, true);
+        view.setInt32(20, 1, true);
+        view.setInt32(24, 1, true);
+        view.setInt32(28, 2, true);
+        view.setInt32(32, w, true);
+        view.setInt32(36, h, true);
+        view.setInt32(40, 0, true);
+        
+        if (buf) {
+            const dst = new Uint8Array(buffer, headerLen);
+            // FITS(Big-Endian) to Alpaca(Little-Endian) byte swap for 16-bit
+            for (let i = 0; i < dataLen; i += 2) {
+                dst[i] = iBytes[i + 1];
+                dst[i + 1] = iBytes[i];
+            }
         }
-        new Uint8Array(buffer, headerLen).set(iBytes);
         return { isBinary: true, data: new Uint8Array(buffer) };
     }
 }

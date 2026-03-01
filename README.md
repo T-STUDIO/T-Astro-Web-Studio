@@ -1,9 +1,6 @@
 EAA app that supports the INDI protocol using WebSocket.
 AlpacaBridge function supported. (Incomplete)
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
 
 ## Run Locally
 

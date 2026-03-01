@@ -1,0 +1,7 @@
+{
+  "name": "T-Astro Web Studio　2026.0210完全動作版追加機能TS-Connect",
+  "description": "An advanced web application for astrophotography, featuring a planetarium, live stacking, WCS annotation, and telescope control via INDI/Alpaca drivers. Use AI to learn more about celestial objects.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

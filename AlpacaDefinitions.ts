@@ -323,35 +323,19 @@ class AlpacaDeviceInstance {
                     const dec = (dir === '0') ? dur : (dir === '1' ? -dur : 0);
                     xml = `<newNumberVector device='${dev}' name='TELESCOPE_PULSE_GUIDE'><oneNumber name='RA'>${ra}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`;
                 }
-                    else if (lowAction === 'slewtocoordinates') {
+                else if (lowAction === 'slewtocoordinates') {
                     const ra = Number(getP('RightAscension'));
                     const dec = Number(getP('Declination'));
-                    
-                    // --- 1. 座標タグの特定 ---
-                    let coordTag = this.getLocked('coord');
-                    // 辞書にない場合は、以前動いていた 'EQUATORIAL_EOD_COORD' をデフォルトにする
-                    const p = coordTag?.p || 'EQUATORIAL_EOD_COORD';
-                    const raEl = coordTag?.e?.ra || 'RA';
-                    const decEl = coordTag?.e?.dec || 'DEC';
-
-                    // --- 2. 動作モード(SLEW)タグの特定 ---
-                    let setTag = this.getLocked('on_coord_set');
+                    const coordTag = this.getLocked('coord');
+                    const p = coordTag?.p || this.lockedRaDecProp || 'EQUATORIAL_EOD_COORD';
+                    const raEl = coordTag?.e?.ra || this.lockedRaEl || 'RA';
+                    const decEl = coordTag?.e?.dec || this.lockedDecEl || 'DEC';
+                    const setTag = this.getLocked('on_coord_set');
                     const setProp = setTag?.p || 'ON_COORD_SET';
                     const slewEl = (typeof setTag?.e === 'object') ? setTag.e.slew : (setTag?.e || 'SLEW');
 
-                    // --- 3. XMLの生成と変数への代入 ---
-                    // 前回のコードではこの「xml = ...」の代入が漏れていたため、送信されませんでした
                     xml = `<newSwitchVector device='${dev}' name='${setProp}'><oneSwitch name='${slewEl}'>On</oneSwitch></newSwitchVector>` +
                           `<newNumberVector device='${dev}' name='${p}'><oneNumber name='${raEl}'>${ra}</oneNumber><oneNumber name='${decEl}'>${dec}</oneNumber></newNumberVector>`;
-
-                    // --- 4. 即時送信の実行 ---
-                    // 他の機能と同様に AlpacaBridge 経由で INDI へ投げます
-                    if (xml && (window as any).AlpacaBridge) {
-                        (window as any).AlpacaBridge.sendToINDI(xml);
-                    }
-                    
-                    // 下部の共通処理での重複送信を防ぐために return
-                    return { Value: null };
                 }
                 else if (lowAction === 'moveaxis') {
                     const axis = Number(getP('Axis')); const rate = Number(getP('Rate'));
@@ -410,7 +394,7 @@ class AlpacaDeviceInstance {
         }
     }
 
-     private pack(buf: ArrayBuffer | null, cid: number, sid: number, isArray: boolean): any {
+    private pack(buf: ArrayBuffer | null, cid: number, sid: number, isArray: boolean): any {
         const iBytes = buf ? new Uint8Array(buf) : new Uint8Array(0);
         const dataLen = iBytes.length;
         const w = Number(this.lockedFrameProp ? this.getCached(this.lockedFrameProp, this.lockedWEl) : 0) || 640; 

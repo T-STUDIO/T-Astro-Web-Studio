@@ -348,7 +348,10 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       if (!isCapturing && !isLiveViewActive && !isVideoMode && !isPreviewLoading && loadedImage && loadedImage !== 'raw-data-available' && loadedImageName !== defaultFrameName) imageUrl = loadedImage;
       else imageUrl = canvasRef.current?.toDataURL('image/jpeg', 0.85);
       if (!imageUrl) return;
-      if (imageUrl === canvasRef.current?.toDataURL('image/jpeg', 0.85)) { onStopStream?.(); setLoadedImage(imageUrl); setLoadedImageName(defaultFrameName); }
+      if (imageUrl === canvasRef.current?.toDataURL('image/jpeg', 0.85)) { 
+        //onStopStream?.(); 
+        setLoadedImage(imageUrl); 
+        setLoadedImageName(defaultFrameName); }
 
       setWcsStatus('Solving'); setSolvingProgress(t('imagingView.captureInfo.solving'));
       try {

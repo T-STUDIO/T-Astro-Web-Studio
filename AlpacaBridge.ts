@@ -4,7 +4,7 @@
  * FIX: Decoupled registry syncing from bridge startup to prevent INDI interference.
  */
 
-import { AlpacaDB } from './AlpacaDefinitions';
+import { AlpacaDB } from './AlpacaDefinitions.ts';
 import { INDIDevice } from './types';
 
 export class AlpacaBridge {

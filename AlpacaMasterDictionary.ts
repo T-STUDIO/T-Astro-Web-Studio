@@ -35,7 +35,7 @@ export const MASTER_DICTIONARY: Record<string, Record<string, any[]>> = {
         names: [{p: 'FILTER_NAME', e: ''}]
     },
     Rotator: {
-        position: [{p: 'ABS_ROTATOR_POSITION', e: 'ROTATOR_ANGLE'}, {p: 'ABS_ROTATOR_ANGLE', e: 'ANGLE'}, {p: 'ROTATOR_POSITION', e: 'POSITION'}, {p: 'ROTATOR_ANGLE', e: 'ANGLE'}]
+        position: [{p: 'ABS_ROTATOR_POSITION', e: 'ROTATOR_ANGLE'}]
     },
     Dome: {
         azimuth: [{p: 'DOME_AZIMUTH', e: 'AZIMUTH'}],

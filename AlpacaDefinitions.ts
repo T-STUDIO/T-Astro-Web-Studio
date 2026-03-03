@@ -181,7 +181,7 @@ class AlpacaDeviceInstance {
                             this.lockedTags.set(alpacaFunc, cand);
                             if (alpacaFunc === 'exposure') { this.lockedExpProp = cand.p; this.lockedExpEl = cand.e; }
                             if (alpacaFunc === 'coord') { this.lockedRaDecProp = cand.p; this.lockedRaEl = cand.e?.ra; this.lockedDecEl = cand.e?.dec; }
-                            if (alpacaFunc === 'frame') { this.lockedFrameProp = cand.p; this.lockedWEl = cand.w; this.lockedHEl = cand.h; }
+                            if (alpacaFunc === 'frame') { this.lockedFrameProp = cand.p; this.lockedWEl = cand.e.w; this.lockedHEl = cand.e.h; }
                             if (alpacaFunc === 'position' && this.type === 'Focuser') { this.lockedPosProp = cand.p; this.lockedPosEl = cand.e; }
                             if (alpacaFunc === 'position' && this.type === 'Rotator') { 
                                 this.lockedTags.set('move_abs', cand); 

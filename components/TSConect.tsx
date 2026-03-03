@@ -19,7 +19,7 @@ import { ListIcon } from './icons/ListIcon';
 import { TelescopeIcon } from './icons/TelescopeIcon';
 import * as AstroService from '../services/AstroService';
 import { decimalToSexagesimal, sexagesimalToDecimal } from '../utils/coords';
-import AlpacaBridge from '../AlpacaBridge';
+import AlpacaBridge from '../AlpacaBridge.ts';
 
 // モジュールレベルで状態を保持（画面切替時にリセットされないようにする）
 let globalAlpacaActive = false;

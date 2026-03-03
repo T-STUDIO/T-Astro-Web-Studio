@@ -28,6 +28,7 @@ import * as SampService from './services/sampService';
 import { LiveStackingEngine } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
 import { AutoCenterService } from './services/AutoCenterService';
+import { BroadcastService } from './viewer/BroadcastService';
 
 const App: React.FC = () => {
   const { t, language } = useTranslation();
@@ -144,10 +145,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     AstroService.setImageReceivedCallback((url, format, metadata) => {
+      　// 画像をビューアーへ中継
+    BroadcastService.getInstance().sendImage(url, metadata); 
         // スタッキング実行中の場合は、エンジンに画像を渡して合成された画像を受け取る
         if (isCapturing) {
             const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
             if (stackedUrl) {
+              BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
                 setLatestImage(stackedUrl);
                 setLatestImageFormat('jpeg');
                 setIsPreviewLoading(false);

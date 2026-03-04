@@ -2,6 +2,7 @@
   "name": "t-astro-web-studio-2026.0210完全動作版追加機能ts-connect",
   "private": true,
   "version": "0.0.0",
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",

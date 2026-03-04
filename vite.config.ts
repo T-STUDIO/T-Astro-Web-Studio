@@ -4,24 +4,15 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
-
     return {
-      base: isGitHubPages ? '/T-Astro-Web-Studio/' : '/',
+      base: './',
       server: {
         port: 3000,
         host: '0.0.0.0',
       },
       plugins: [react()],
-      build: {
-        rollupOptions: {
-          input: {
-            main: path.resolve(__dirname, 'index.html'),
-            viewer: path.resolve(__dirname, 'viewer/index.html'),
-          },
-        },
-      },
       define: {
+        'process.env': '({})',
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
       },

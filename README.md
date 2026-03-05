@@ -8,6 +8,12 @@ To run it with INDI, install an INDI server and WebSocket server in your local e
 
 It will work as long as the INDI server and WebSocket server are implemented in your local environment.
 
+The app's features are explained on our blog (Japanese only).
+
+We also offer a Raspberry Pi distribution that includes this app, an image viewer, and the local Astrometry.net API.
+
+https://tstudioastronomy.blog.fc2.com/blog-entry-625.html
+
 
 ## Run Locally
 
@@ -25,6 +31,8 @@ It will work as long as the INDI server and WebSocket server are implemented in 
    "npm run preview"
 
 It will also work with publicly available web apps if you have INDI and WebSocket set up in your local environment.
+
+https://tstudioastronomy.blog.fc2.com/blog-category-46.html
 
 However, please make sure to turn off browser security.
 

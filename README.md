@@ -7,11 +7,7 @@ INDI currently works in environments that implement WebSocket. The mount GOTO co
 To run it with INDI, install an INDI server and WebSocket server in your local environment.
 
 It will work as long as the INDI server and WebSocket server are implemented in your local environment.
-# Run and deploy your AI Studio app
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/dfebd7b3-52e7-425f-a036-36cc7124f4a3
 
 ## Run Locally
 

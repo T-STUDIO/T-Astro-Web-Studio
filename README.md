@@ -23,3 +23,13 @@ View your app in AI Studio: https://ai.studio/apps/dfebd7b3-52e7-425f-a036-36cc7
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+4. npm run build
+   Deploy and it will run fast.
+   "npm run preview"
+
+It will also work with publicly available web apps if you have INDI and WebSocket set up in your local environment.
+
+However, please make sure to turn off browser security.
+
+https://t-studio.github.io/T-Astro-Web-Studio/

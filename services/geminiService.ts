@@ -30,7 +30,7 @@ export const getObjectInfo = async (objectName: string, language: Language): Pro
 
   try {
     /* GUIDELINE: Always obtain API key exclusively from process.env.API_KEY and initialize inside the function. */
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
     const response = await ai.models.generateContent({
       model: model,
       contents: prompt,

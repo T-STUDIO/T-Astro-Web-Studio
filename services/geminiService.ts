@@ -1,4 +1,6 @@
 
+/// <reference types="vite/client" />
+
 import { GoogleGenAI } from "@google/genai";
 import { Language } from '../types';
 
@@ -9,7 +11,7 @@ export const getObjectInfo = async (objectName: string, language: Language): Pro
   const model = "gemini-3-flash-preview";
   
   const langInstruction = language === 'ja'
-    ? 'IMPORTANT: You MUST output strictly in Japanese.'
+    ? 'IMPORTANT: You MUST output strictly in Japanese (日本語). Ensure the response is natural and easy to read for Japanese speakers.'
     : 'Response Language: English';
 
   const prompt = `
@@ -30,7 +32,8 @@ export const getObjectInfo = async (objectName: string, language: Language): Pro
 
   try {
     /* GUIDELINE: Always obtain API key exclusively from process.env.API_KEY and initialize inside the function. */
-    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: model,
       contents: prompt,
@@ -68,5 +71,47 @@ export const getObjectInfo = async (objectName: string, language: Language): Pro
         return `Failed to fetch data from Gemini. Reason: ${error.message}`;
     }
     return "An unknown error occurred while fetching data from Gemini.";
+  }
+};
+
+export const summarizeExternalInfo = async (objectName: string, rawText: string, source: 'Wikipedia' | 'SIMBAD', language: Language): Promise<string> => {
+  const model = "gemini-3-flash-preview";
+  
+  const langInstruction = language === 'ja'
+    ? 'IMPORTANT: You MUST output strictly in Japanese (日本語). Ensure the summary is natural and easy to read for Japanese speakers.'
+    : 'Response Language: English';
+
+  const prompt = `
+    Role: You are an expert astronomer.
+    Task: Summarize the following raw information about the celestial object "${objectName}" from ${source}.
+    
+    ${langInstruction}
+    
+    Instructions:
+    - Provide a concise summary in 3-4 paragraphs.
+    - Focus on scientific facts, observational interest, and historical significance.
+    - Use professional yet accessible language.
+    - If the input text is messy or contains technical codes, filter them out to provide a clean narrative.
+
+    Raw Information:
+    ${rawText}
+  `;
+
+  try {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: prompt,
+      config: {
+        systemInstruction: "あなたはプロの天文家であり、一般の人にも分かりやすく天体の魅力を伝えるガイドです。提供された情報を元に、その天体の特徴や興味深い事実を日本語で要約してください。学術的な正確さを保ちつつ、親しみやすい表現を心がけてください。",
+        temperature: 0.7,
+      }
+    });
+    
+    return response.text || (language === 'ja' ? "要約を作成できませんでした。" : "Could not create summary.");
+  } catch (error: any) {
+    console.error("Gemini Summarization failed:", error);
+    return language === 'ja' ? "要約の作成中にエラーが発生しました。" : "Error occurred during summarization.";
   }
 };

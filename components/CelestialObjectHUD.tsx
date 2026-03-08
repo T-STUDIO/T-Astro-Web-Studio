@@ -76,21 +76,21 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     }
 
     return (
-        /* 修正：モバイルでの高さを出し、横幅をw-44(MountControllerと同一)に固定。位置をtop-12に上げる。 */
-        <div className="absolute top-12 md:top-4 left-2 md:left-4 z-30 flex flex-col gap-1.5 pointer-events-none w-44 md:w-48 max-h-[calc(100vh-100px)] overflow-y-auto scrollbar-none">
-            <div className="bg-slate-900/85 p-2 md:p-3 rounded-lg border border-red-900/30 backdrop-blur-md shadow-2xl w-full pointer-events-auto box-border">
+        /* 修正：横幅をw-52(MountControllerと同一)に固定し、PCでの表示を揃える。 */
+        <div className="absolute top-12 md:top-4 left-2 md:left-4 z-30 flex flex-col gap-1.5 pointer-events-none w-52 max-h-[calc(100vh-100px)] overflow-y-auto scrollbar-none">
+            <div className="bg-slate-900/90 p-2 md:p-3 rounded-lg border border-red-900/40 backdrop-blur-md shadow-2xl w-full pointer-events-auto box-border">
                 <div className="flex justify-between items-start border-b border-red-900/30 pb-1 mb-1">
-                    <h3 className="text-red-400 font-bold text-[11px] md:text-sm truncate flex-1 leading-tight" title={displayName}>
+                    <h3 className="text-red-400 font-bold text-[11px] md:text-sm truncate flex-1 leading-tight pr-1" title={displayName}>
                         {displayName}
                     </h3>
                     {onClose && (
-                        <button onClick={onClose} className="text-slate-500 hover:text-white ml-1">
+                        <button onClick={onClose} className="text-slate-500 hover:text-white shrink-0">
                             <CloseIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
                         </button>
                     )}
                 </div>
-                <div className="text-[9px] md:text-[10px] text-slate-300 font-mono space-y-0.5 md:space-y-1 leading-tight">
-                    <div className="grid grid-cols-[auto_1fr] gap-x-2">
+                <div className="text-[10px] md:text-[11px] text-slate-300 font-mono space-y-0.5 md:space-y-1 leading-tight">
+                    <div className="grid grid-cols-[45px_1fr] gap-x-1">
                         <span className="text-slate-500 text-right whitespace-nowrap">{t('controlPanel.targetInfo.type')}:</span>
                         <span className="text-slate-200 truncate">{displayType}</span>
 
@@ -104,7 +104,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
                         <span className="text-slate-200 truncate">{displayDec}</span>
                     </div>
 
-                    <div className="border-t border-slate-700 mt-1 pt-1 grid grid-cols-[auto_1fr] gap-x-2">
+                    <div className="border-t border-slate-700/50 mt-1 pt-1 grid grid-cols-[45px_1fr] gap-x-1">
                         <span className="text-slate-500 text-right whitespace-nowrap">Az:</span>
                         <span className="text-slate-200">{data.az}°</span>
 
@@ -115,7 +115,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
             </div>
             
             {isConnected && (
-                <div className="pointer-events-auto w-full opacity-90 scale-100 origin-top-left">
+                <div className="pointer-events-auto w-full opacity-95">
                     <MountController isConnected={isConnected} compact={true} />
                 </div>
             )}

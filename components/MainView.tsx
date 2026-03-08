@@ -76,6 +76,67 @@ export const MainView: React.FC<MainViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const [miniPreviewVisible, setMiniPreviewVisible] = useState(true);
+  const [miniViewSize, setMiniViewSize] = useState({ width: 240, height: 160 });
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+      if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+          setMiniViewSize({ width: 400, height: 300 });
+      }
+  }, []);
+
+  const handleResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsResizing(true);
+  };
+
+  useEffect(() => {
+      if (!isResizing) return;
+
+      const handleMove = (e: MouseEvent | TouchEvent) => {
+          const cX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+          const cY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+          
+          const container = document.querySelector('.mini-view-container');
+          if (container) {
+              const rect = container.getBoundingClientRect();
+              const isDesktop = window.innerWidth >= 1024;
+              
+              if (isDesktop) {
+                  // Anchored top-right, resize from bottom-left
+                  const newWidth = rect.right - cX;
+                  const newHeight = cY - rect.top;
+                  setMiniViewSize({ 
+                      width: Math.max(150, Math.min(600, newWidth)), 
+                      height: Math.max(100, Math.min(450, newHeight)) 
+                  });
+              } else {
+                  // Anchored bottom-left, resize from top-right
+                  const newWidth = cX - rect.left;
+                  const newHeight = rect.bottom - cY;
+                  setMiniViewSize({ 
+                      width: Math.max(120, Math.min(400, newWidth)), 
+                      height: Math.max(90, Math.min(300, newHeight)) 
+                  });
+              }
+          }
+      };
+
+      const handleEnd = () => setIsResizing(false);
+
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+      window.addEventListener('touchmove', handleMove);
+      window.addEventListener('touchend', handleEnd);
+
+      return () => {
+          window.removeEventListener('mousemove', handleMove);
+          window.removeEventListener('mouseup', handleEnd);
+          window.removeEventListener('touchmove', handleMove);
+          window.removeEventListener('touchend', handleEnd);
+      };
+  }, [isResizing]);
 
   const isActivityRunning = isLiveViewActive || isVideoStreamActive || isCapturing || isPreviewLoading;
 
@@ -166,9 +227,12 @@ export const MainView: React.FC<MainViewProps> = ({
             />
         </div>
 
-        {/* 修正：モバイルでのMiniビューを左端に寄せ、ボトムバーとのマージンを最適化 */}
+        {/* 修正：モバイルでのMiniビューを左端に寄せ、ボトムバーとのマージンを最適化。PCでのサイズアップとリサイズ機能追加 */}
         {activeView === 'Planetarium' && isActivityRunning && miniPreviewVisible && (
-            <div className="absolute bottom-11 left-1.5 w-32 h-24 sm:w-48 sm:h-32 md:top-4 md:right-4 md:bottom-auto md:left-auto z-40 animate-fadeIn pointer-events-auto">
+            <div 
+                className="absolute bottom-11 left-1.5 md:top-4 md:right-4 md:bottom-auto md:left-auto z-40 animate-fadeIn pointer-events-auto mini-view-container group"
+                style={{ width: miniViewSize.width, height: miniViewSize.height }}
+            >
                 <LinkedMiniView 
                     isCapturing={isCapturing}
                     captureProgress={captureProgress}
@@ -186,6 +250,16 @@ export const MainView: React.FC<MainViewProps> = ({
                     localSolverSettings={localSolverSettings || {host:'localhost', port:6000}}
                     setActiveView={setActiveView}
                 />
+                
+                {/* Resize Handle */}
+                <div 
+                    onMouseDown={handleResizeStart}
+                    onTouchStart={handleResizeStart}
+                    className={`absolute z-50 w-4 h-4 bg-red-600/50 hover:bg-red-500 rounded-full cursor-nwse-resize border border-white/20 shadow-lg transition-colors
+                        ${typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'bottom-0 left-0 cursor-nesw-resize' : 'top-0 right-0 cursor-nesw-resize'}
+                    `}
+                />
+
                 <button
                     onClick={(e) => {
                         e.stopPropagation();

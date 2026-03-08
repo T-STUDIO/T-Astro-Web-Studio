@@ -331,12 +331,32 @@ const App: React.FC = () => {
   }, []);
 
   const isDesktop = windowSize.width >= 1024;
-  const isLandscape = windowSize.width > windowSize.height && windowSize.height < 600;
-  const showControlPanel = isDesktop || isLandscape || (mobileActiveTab !== 'planetarium' && mobileActiveTab !== 'imaging_view');
-  const showMainView = isDesktop || isLandscape || (mobileActiveTab === 'planetarium' || mobileActiveTab === 'imaging_view');
+  const isTablet = windowSize.width >= 768 && windowSize.width < 1024;
+  const isSmartphone = windowSize.width < 768;
+  const isLandscape = windowSize.width > windowSize.height;
+  
+  // スマホの横向き制限を表示するかどうか
+  const showRotateOverlay = isSmartphone && isLandscape;
+
+  const showControlPanel = isDesktop || (isTablet && isLandscape) || (mobileActiveTab !== 'planetarium' && mobileActiveTab !== 'imaging_view');
+  const showMainView = isDesktop || (isTablet && isLandscape) || (mobileActiveTab === 'planetarium' || mobileActiveTab === 'imaging_view');
 
   return (
     <div className="flex flex-col h-[100dvh] bg-slate-950 text-slate-200 overflow-hidden">
+      {showRotateOverlay && (
+          <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+              <div className="w-16 h-16 mb-6 text-red-500 animate-bounce">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+              </div>
+              <h2 className="text-xl font-bold text-white mb-3">画面を縦にしてください</h2>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                  スマートフォンでの横画面表示には対応していません。<br />
+                  端末を縦向きにしてご利用ください。
+              </p>
+          </div>
+      )}
       <Header onToggleTSConect={() => setIsTSConectOpen(!isTSConectOpen)} isTSConectActive={isTSConectOpen} />
       <div className="flex-1 flex overflow-hidden relative">
         {isTSConectOpen ? (
@@ -400,7 +420,7 @@ const App: React.FC = () => {
         ) : (
           <>
             {showControlPanel && (
-                <div className={`h-full ${isDesktop ? 'w-80 lg:w-96' : isLandscape ? 'w-64' : 'w-full'} z-10 bg-slate-900 border-r border-red-900/30 shrink-0`}>
+                <div className={`h-full ${isDesktop ? 'w-80 lg:w-96' : (isTablet && isLandscape) ? 'w-72' : 'w-full'} z-10 bg-slate-900 border-r border-red-900/30 shrink-0`}>
                     <ControlPanel 
                         mobileTab={mobileActiveTab}
                         connectionStatus={connectionStatus}
@@ -500,7 +520,7 @@ const App: React.FC = () => {
                         isAutoCenterEnabled={isAutoCenterEnabled}
                         onToggleAutoCenter={setIsAutoCenterEnabled}
                         onStopStream={stopAllImaging}
-                        hideTabs={!isDesktop} 
+                        hideTabs={isDesktop || (isTablet && isLandscape) ? false : true} 
                     />
                 </div>
             )}
@@ -509,27 +529,27 @@ const App: React.FC = () => {
       </div>
       <StatusBar logs={logs} />
       
-      {!isDesktop && !isLandscape && (
-          <nav className="h-16 bg-slate-900 border-t border-red-900/30 flex items-center justify-around z-40 px-2 shrink-0 pb-safe">
-              <button onClick={() => handleMobileTabChange('planetarium')} className={`flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'planetarium' ? 'text-red-400' : 'text-slate-500'}`}>
-                  <StarIcon className="w-5 h-5" />
-                  <span className="text-[10px] font-bold uppercase">{t('mainView.planetarium')}</span>
+      {!isDesktop && !(isTablet && isLandscape) && (
+          <nav className="h-16 bg-slate-900 border-t border-red-900/30 flex items-center justify-around z-40 px-1 shrink-0 pb-safe">
+              <button onClick={() => handleMobileTabChange('planetarium')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'planetarium' ? 'text-red-400' : 'text-slate-500'}`}>
+                  <StarIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">{t('mainView.planetarium')}</span>
               </button>
-              <button onClick={() => handleMobileTabChange('imaging_view')} className={`flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_view' ? 'text-red-400' : 'text-slate-500'}`}>
-                  <CameraIcon className="w-5 h-5" />
-                  <span className="text-[10px] font-bold uppercase">View</span>
+              <button onClick={() => handleMobileTabChange('imaging_view')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_view' ? 'text-red-400' : 'text-slate-500'}`}>
+                  <CameraIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">View</span>
               </button>
-              <button onClick={() => handleMobileTabChange('equipment')} className={`flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'equipment' ? 'text-red-400' : 'text-slate-500'}`}>
-                  <TelescopeIcon className="w-5 h-5" />
-                  <span className="text-[10px] font-bold uppercase">Equip</span>
+              <button onClick={() => handleMobileTabChange('equipment')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'equipment' ? 'text-red-400' : 'text-slate-500'}`}>
+                  <TelescopeIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Equip</span>
               </button>
-              <button onClick={() => handleMobileTabChange('imaging_control')} className={`flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_control' ? 'text-red-400' : 'text-slate-500'}`}>
-                  <VideoIcon className="w-5 h-5" />
-                  <span className="text-[10px] font-bold uppercase">Ctrl</span>
+              <button onClick={() => handleMobileTabChange('imaging_control')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_control' ? 'text-red-400' : 'text-slate-500'}`}>
+                  <VideoIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Ctrl</span>
               </button>
-              <button onClick={() => handleMobileTabChange('settings')} className={`flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'settings' ? 'text-red-400' : 'text-slate-500'}`}>
-                  <ListIcon className="w-5 h-5" />
-                  <span className="text-[10px] font-bold uppercase">Set</span>
+              <button onClick={() => handleMobileTabChange('settings')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'settings' ? 'text-red-400' : 'text-slate-500'}`}>
+                  <ListIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Set</span>
               </button>
           </nav>
       )}

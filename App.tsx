@@ -319,12 +319,24 @@ const App: React.FC = () => {
       finally { setIsGeminiLoading(false); }
   };
 
-  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
-  const showControlPanel = isDesktop || (mobileActiveTab !== 'planetarium' && mobileActiveTab !== 'imaging_view');
-  const showMainView = isDesktop || (mobileActiveTab === 'planetarium' || mobileActiveTab === 'imaging_view');
+  const [windowSize, setWindowSize] = useState({ 
+    width: typeof window !== 'undefined' ? window.innerWidth : 1024, 
+    height: typeof window !== 'undefined' ? window.innerHeight : 768 
+  });
+
+  useEffect(() => {
+    const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isDesktop = windowSize.width >= 1024;
+  const isLandscape = windowSize.width > windowSize.height && windowSize.height < 600;
+  const showControlPanel = isDesktop || isLandscape || (mobileActiveTab !== 'planetarium' && mobileActiveTab !== 'imaging_view');
+  const showMainView = isDesktop || isLandscape || (mobileActiveTab === 'planetarium' || mobileActiveTab === 'imaging_view');
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-slate-950 text-slate-200 overflow-hidden">
       <Header onToggleTSConect={() => setIsTSConectOpen(!isTSConectOpen)} isTSConectActive={isTSConectOpen} />
       <div className="flex-1 flex overflow-hidden relative">
         {isTSConectOpen ? (
@@ -388,7 +400,7 @@ const App: React.FC = () => {
         ) : (
           <>
             {showControlPanel && (
-                <div className={`h-full ${isDesktop ? 'w-96' : 'w-full'} z-10 bg-slate-900 border-r border-red-900/30`}>
+                <div className={`h-full ${isDesktop ? 'w-80 lg:w-96' : isLandscape ? 'w-64' : 'w-full'} z-10 bg-slate-900 border-r border-red-900/30 shrink-0`}>
                     <ControlPanel 
                         mobileTab={mobileActiveTab}
                         connectionStatus={connectionStatus}
@@ -497,7 +509,7 @@ const App: React.FC = () => {
       </div>
       <StatusBar logs={logs} />
       
-      {!isDesktop && (
+      {!isDesktop && !isLandscape && (
           <nav className="h-16 bg-slate-900 border-t border-red-900/30 flex items-center justify-around z-40 px-2 shrink-0 pb-safe">
               <button onClick={() => handleMobileTabChange('planetarium')} className={`flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'planetarium' ? 'text-red-400' : 'text-slate-500'}`}>
                   <StarIcon className="w-5 h-5" />

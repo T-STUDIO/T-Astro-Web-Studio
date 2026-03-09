@@ -92,7 +92,7 @@ export interface ObjectRealtimeData {
 
 export type MountSpeed = 'Guide' | 'Center' | 'Find' | 'Slew';
 
-export type DeviceType = 'Camera' | 'GuideCamera' | 'Mount' | 'Focuser' | 'FilterWheel' | 'Dome' | 'Rotator' | 'Heater';
+export type DeviceType = 'Camera' | 'GuideCamera' | 'Mount' | 'Telescope' | 'Focuser' | 'FilterWheel' | 'Dome' | 'Rotator' | 'Heater';
 
 export interface DeviceConfig {
     type: DeviceType;
@@ -144,6 +144,15 @@ export type PlateSolverType = 'Remote' | 'Local';
 export interface LocalSolverSettings {
     host: string;
     port: number;
+}
+
+export interface SimulatorSettings {
+  focalLength: number; // mm
+  pixelWidth: number; // pixels
+  pixelHeight: number; // pixels
+  pixelSize: number; // micrometers
+  focuserPosition: number; // 0 - 100000
+  focuserStep: number; // 1 - 1000
 }
 
 // Saved Settings Types

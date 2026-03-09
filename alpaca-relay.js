@@ -78,6 +78,29 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // Discovery endpoint
+    if (pathname === '/discover') {
+        const results = [];
+        const client = dgram.createSocket('udp4');
+        client.on('message', (msg, rinfo) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                results.push({ host: rinfo.address, port: data.AlpacaPort, serverName: 'Discovered Server' });
+            } catch (e) {}
+        });
+        client.bind(0);
+        client.setBroadcast(true);
+        const discoveryMsg = Buffer.from('alpacadiscovery1');
+        client.send(discoveryMsg, 0, discoveryMsg.length, DISCOVERY_PORT, '255.255.255.255');
+        
+        setTimeout(() => {
+            client.close();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(results));
+        }, 2000);
+        return;
+    }
+
     // ブリッジ（ブラウザ）がいない場合の特別処理
     if (!activeBridge || activeBridge.readyState !== WebSocket.OPEN) {
         console.warn(`[HTTP] No active UI bridge for request: ${pathname}`);

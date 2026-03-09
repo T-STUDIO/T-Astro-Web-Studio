@@ -7,27 +7,33 @@ export default defineConfig(({ mode }) => {
     const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
 
     return {
-      base: isGitHubPages ? '/T-Astro-Web-Studio/' : '/',
+      base: '/',
       server: {
-        port: 6002,
+        port: 3000,
         host: '0.0.0.0',
-        allowedHosts: ['localhost', '127.0.0.1']
+        fs: {
+          allow: ['..']
+        }
       },
       plugins: [react()],
       build: {
         rollupOptions: {
           input: {
             main: path.resolve(__dirname, 'index.html'),
+            alpaca: path.resolve(__dirname, 'alpaca.html'),
+            simulator: path.resolve(__dirname, 'simulator.html'),
+            test: path.resolve(__dirname, 'test.html'),
             viewer: path.resolve(__dirname, 'viewer/index.html'),
           },
         },
       },
-
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
-        }
+          'react': path.resolve(__dirname, 'node_modules/react'),
+          'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+        },
+        dedupe: ['react', 'react-dom'],
       }
     };
 });
-

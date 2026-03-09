@@ -6,32 +6,32 @@ import {
   SavedLocation, SavedConnection, SavedApiKey, SavedLocalSolver, SavedSampSettings,
   LocationStatus
 } from './types';
-import { Header } from './components/Header';
-import { ControlPanel } from './components/ControlPanel';
-import { MainView } from './components/MainView';
-import { StatusBar } from './components/StatusBar';
+import { HeaderAlpaca as Header } from './components/HeaderAlpaca';
+import { ControlPanelAlpaca as ControlPanel } from './components/ControlPanelAlpaca';
+import { MainViewAlpaca as MainView } from './components/MainViewAlpaca';
+import { StatusBarAlpaca as StatusBar } from './components/StatusBarAlpaca';
 import { GeminiInfoModal } from './components/GeminiInfoModal';
-import { DeviceSettingsModal } from './components/DeviceSettingsModal';
-import { DiagnosticsModal } from './components/DiagnosticsModal';
-import { TSConect } from './components/TSConect'; // Import TSConect
+import { DeviceSettingsModalAlpaca as DeviceSettingsModal } from './components/DeviceSettingsModalAlpaca';
+import { DiagnosticsModalAlpaca as DiagnosticsModal } from './components/DiagnosticsModalAlpaca';
 import { useTranslation } from './contexts/LanguageContext';
 import { StarIcon } from './components/icons/StarIcon';
 import { CameraIcon } from './components/icons/CameraIcon';
 import { TelescopeIcon } from './components/icons/TelescopeIcon';
 import { VideoIcon } from './components/icons/VideoIcon';
 import { ListIcon } from './components/icons/ListIcon';
-import * as AstroService from './services/AstroService';
+import * as AstroService from './services/AstroServiceAlpaca';
 import * as SettingsService from './services/SettingsService';
 import * as GoogleDriveService from './services/GoogleDriveService';
 import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
-import { LiveStackingEngine } from './services/LiveStackingEngine'; // New Import
+import { LiveStackingEngine } from './services/LiveStackingEngine';
 import { CELESTIAL_OBJECTS } from './constants';
-import { MountController } from './components/MountController';
+import { MountControllerAlpaca } from './components/MountControllerAlpaca';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
+import { hmsToDegrees, dmsToDegrees } from './utils/coords';
 
-const App: React.FC = () => {
+const AppAlpaca: React.FC = () => {
   const { t, language } = useTranslation();
 
   const initialSettings = SettingsService.loadSettings();
@@ -47,13 +47,9 @@ const App: React.FC = () => {
   
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('Disconnected');
   const [connectionSettings, setConnectionSettings] = useState<ConnectionSettings>(initialSettings.connectionSettings);
-
-  useEffect(() => {
-    console.log("[App] Rendering INDI App Component");
-  }, []);
-
+  
   const handleSettingsChange = useCallback((newSettings: ConnectionSettings) => {
-    console.log(`[App] handleSettingsChange called with driver: ${newSettings.driver}`);
+    console.log(`[AppAlpaca] handleSettingsChange called with driver: ${newSettings.driver}`);
     setConnectionSettings(newSettings);
   }, []);
   
@@ -83,7 +79,11 @@ const App: React.FC = () => {
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [mobileActiveTab, setMobileActiveTab] = useState<TabType>('planetarium');
-  const [telescopePosition, setTelescopePosition] = useState<TelescopePosition | null>(null);
+  const [telescopePosition, setTelescopePosition] = useState<TelescopePosition | null>({ ra: 0, dec: 90 });
+
+  useEffect(() => {
+    console.log("[AppAlpaca] Rendering Alpaca App Component");
+  }, []);
 
   const [sampStatus, setSampStatus] = useState<SampStatus>('Disconnected');
   const [sampSettings, setSampSettings] = useState<SampSettings>(initialSettings.sampSettings);
@@ -104,8 +104,6 @@ const App: React.FC = () => {
 
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
-
-  const [isTSConectOpen, setIsTSConectOpen] = useState(false); // State for TS-Conect
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
 
@@ -132,6 +130,27 @@ const App: React.FC = () => {
   }, [location, connectionStatus, addLog]);
 
   useEffect(() => {
+    SampService.init((status) => {
+      setSampStatus(status);
+    });
+    return () => {
+      SampService.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (sampStatus === 'Connected') {
+      if (telescopePosition) {
+        SampService.sendSkyCoord(telescopePosition.ra, telescopePosition.dec);
+      } else if (selectedObject) {
+        const ra = hmsToDegrees(selectedObject.ra);
+        const dec = dmsToDegrees(selectedObject.dec);
+        SampService.sendSkyCoord(ra, dec);
+      }
+    }
+  }, [sampStatus, telescopePosition, selectedObject]);
+
+  useEffect(() => {
     if (!isAutoSyncLocationEnabled) return;
     const isConnectedNow = connectionStatus === 'Connected';
     const wasDisconnected = prevConnectionStatus.current !== 'Connected';
@@ -155,9 +174,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     AstroService.setImageReceivedCallback((url, format, metadata) => {
-      　// 画像をビューアーへ中継
     BroadcastService.getInstance().sendImage(url, metadata); 
-        // スタッキング実行中の場合は、エンジンに画像を渡して合成された画像を受け取る
         if (isCapturing) {
             const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
             if (stackedUrl) {
@@ -208,8 +225,6 @@ const App: React.FC = () => {
     if (!navigator.geolocation) { addLog('logs.locationNotSupported'); return; }
     setLocationStatus('Updating');
     addLog('logs.locationFetching');
-    
-    // スマートフォン・タブレットのGPSハードウェアを優先使用するため enableHighAccuracy: true に設定
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const newLoc = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, elevation: pos.coords.altitude || 0 };
@@ -224,8 +239,6 @@ const App: React.FC = () => {
   const handleUpdateLocationIP = useCallback(async () => {
     if (!navigator.geolocation) { addLog('logs.locationNotSupported'); return; }
     setLocationStatus('Updating'); addLog('logs.locationWebFetching');
-    
-    // 従来の「デバイスから取得」相当의挙動（ブラウザ標準の低精度・高速測位）
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const newLoc = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, elevation: pos.coords.altitude || 0 };
@@ -270,7 +283,6 @@ const App: React.FC = () => {
   const handleToggleVideoStream = () => {
       const targetState = !isVideoStreamActive;
       if (targetState) {
-          // 他の撮影モードのみ停止し、動画を開始する「動作版」ロジック
           if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopStream(); }
           if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
           setIsPreviewLoading(false);
@@ -291,7 +303,7 @@ const App: React.FC = () => {
 
   const handleStartCapture = async () => {
       stopAllImaging(); setIsCapturing(true); setActiveView('Imaging'); setMobileActiveTab('imaging_view');
-      setCaptureProgress({ count: 0, total: 0 }); // Total 0 means infinite in UI display
+      setCaptureProgress({ count: 0, total: 0 });
       addLog('logs.captureStarted', { objectName: selectedObject?.name || 'Target', total: 'Infinite', exposure, gain, offset });
       
       await LiveStackingEngine.getInstance().start(
@@ -344,8 +356,6 @@ const App: React.FC = () => {
   const isTablet = windowSize.width >= 768 && windowSize.width < 1024;
   const isSmartphone = windowSize.width < 768;
   const isLandscape = windowSize.width > windowSize.height;
-  
-  // スマホの横向き制限を表示するかどうか
   const showRotateOverlay = isSmartphone && isLandscape;
 
   const showControlPanel = isDesktop || (isTablet && isLandscape) || (mobileActiveTab !== 'planetarium' && mobileActiveTab !== 'imaging_view');
@@ -367,71 +377,8 @@ const App: React.FC = () => {
               </p>
           </div>
       )}
-      <Header 
-        currentDriver="INDI"
-        onToggleTSConect={() => setIsTSConectOpen(!isTSConectOpen)} 
-        isTSConectActive={isTSConectOpen} 
-      />
+      <Header currentDriver="Alpaca" />
       <div className="flex-1 flex overflow-hidden relative">
-        {isTSConectOpen ? (
-            <TSConect 
-                onClose={() => setIsTSConectOpen(false)}
-                connectionStatus={connectionStatus}
-                connectionSettings={connectionSettings}
-                onSettingsChange={setConnectionSettings}
-                onConnect={async () => {
-                    setConnectionStatus('Connecting');
-                    const ok = await AstroService.connect(connectionSettings);
-                    setConnectionStatus(ok ? 'Connected' : 'Error');
-                    if (ok) addLog('logs.connectSuccess', {}, 'success');
-                }}
-                onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
-                location={location}
-                locationStatus={locationStatus}
-                onUpdateLatitude={(lat: number) => setLocation(prev => ({ ...prev || { latitude: 0, longitude: 0 }, latitude: lat }))}
-                onUpdateLongitude={(lon: number) => setLocation(prev => ({ ...prev || { latitude: 0, longitude: 0 }, longitude: lon }))}
-                onUpdateElevation={(elev: number) => setLocation(prev => ({ ...prev || { latitude: 0, longitude: 0 }, elevation: elev }))}
-                onUpdateLocation={handleUpdateLocation}
-                onUpdateLocationIP={handleUpdateLocationIP}
-                onSendLocationToMount={onSendLocationToMount}
-                mountSyncStatus={mountSyncStatus}
-                localTime={localTime}
-                onSetTimeNow={() => { setLocalTime(new Date()); setIsTimeRunning(true); }}
-                isTimeRunning={isTimeRunning}
-                plateSolverType={plateSolverType}
-                onSetPlateSolverType={setPlateSolverType}
-                astrometryApiKey={astrometryApiKey}
-                onSetAstrometryApiKey={setAstrometryApiKey}
-                localSolverSettings={localSolverSettings}
-                onSetLocalSolverSettings={setLocalSolverSettings}
-                onSaveToDisk={handleSaveToDisk}
-                onLoadFromDisk={handleLoadFromDisk}
-                isDriveConnected={isDriveConnected}
-                onExportSettings={async () => { if(location) await GoogleDriveService.saveSettingsToDrive({ ...initialSettings, location }); }}
-                onImportSettings={async () => { const s = await GoogleDriveService.loadSettingsFromDrive(); if(s) handleLoadFromDisk(new File([JSON.stringify(s)], 'settings.json')); }}
-                onConnectDrive={async () => { await GoogleDriveService.signIn(); setIsDriveConnected(true); }}
-                onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
-                onOpenDeviceSettings={(type, name) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
-                isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
-                sampStatus={sampStatus}
-                sampSettings={sampSettings}
-                onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); setSampStatus('Connected'); }}
-                onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
-                isCapturing={isCapturing}
-                captureProgress={captureProgress}
-                selectedObject={selectedObject}
-                isLiveViewActive={isLiveViewActive}
-                isVideoStreamActive={isVideoStreamActive}
-                isPreviewLoading={isPreviewLoading}
-                latestImage={latestImage}
-                latestImageMetadata={latestImageMetadata}
-                latestImageFormat={latestImageFormat}
-                colorBalance={colorBalance}
-                setActiveView={setActiveView}
-            />
-        ) : (
           <>
             {showControlPanel && (
                 <div className={`h-full ${isDesktop ? 'w-80 lg:w-96' : (isTablet && isLandscape) ? 'w-72' : 'w-full'} z-10 bg-slate-900 border-r border-red-900/30 shrink-0`}>
@@ -478,7 +425,15 @@ const App: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
-                        onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
+                        onConnectSamp={async () => { 
+                          if (sampStatus === 'Connected') {
+                            SampService.disconnect();
+                          } else {
+                            setSampStatus('Connecting'); 
+                            await SampService.connect(sampSettings);
+                          }
+                        }}
+                        onDisconnectSamp={() => SampService.disconnect()}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}
@@ -534,13 +489,12 @@ const App: React.FC = () => {
                         isAutoCenterEnabled={isAutoCenterEnabled}
                         onToggleAutoCenter={setIsAutoCenterEnabled}
                         onStopStream={stopAllImaging}
-                        MountController={MountController}
+                        MountController={MountControllerAlpaca}
                         hideTabs={isDesktop || (isTablet && isLandscape) ? false : true} 
                     />
                 </div>
             )}
           </>
-        )}
       </div>
       <StatusBar logs={logs} />
       
@@ -606,4 +560,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default AppAlpaca;

@@ -323,7 +323,7 @@ class AlpacaDeviceInstance {
                     const dec = (dir === '0') ? dur : (dir === '1' ? -dur : 0);
                     xml = `<newNumberVector device='${dev}' name='TELESCOPE_PULSE_GUIDE'><oneNumber name='RA'>${ra}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`;
                 }
-                else if (lowAction === 'slewtocoordinates') {
+                else if (lowAction === 'slewtocoordinates' || lowAction === 'slewtocoordinatesasync') {
                     const ra = Number(getP('RightAscension'));
                     const dec = Number(getP('Declination'));
                     const coordTag = this.getLocked('coord');
@@ -335,7 +335,27 @@ class AlpacaDeviceInstance {
                     const slewEl = (typeof setTag?.e === 'object') ? setTag.e.slew : (setTag?.e || 'SLEW');
 
                     xml = `<newSwitchVector device='${dev}' name='${setProp}'><oneSwitch name='${slewEl}'>On</oneSwitch></newSwitchVector>` +
+                           `<newNumberVector device='${dev}' name='${p}'><oneNumber name='${raEl}'>${ra}</oneNumber><oneNumber name='${decEl}'>${dec}</oneNumber></newNumberVector>`;
+                }
+                else if (lowAction === 'synctocoordinates' || lowAction === 'synctocoordinatesasync') {
+                    const ra = Number(getP('RightAscension'));
+                    const dec = Number(getP('Declination'));
+                    const coordTag = this.getLocked('coord');
+                    const p = coordTag?.p || this.lockedRaDecProp || 'EQUATORIAL_EOD_COORD';
+                    const raEl = coordTag?.e?.ra || this.lockedRaEl || 'RA';
+                    const decEl = coordTag?.e?.dec || this.lockedDecEl || 'DEC';
+                    const setTag = this.getLocked('on_coord_set');
+                    const setProp = setTag?.p || 'ON_COORD_SET';
+                    const syncEl = (typeof setTag?.e === 'object') ? setTag.e.sync : 'SYNC';
+
+                    xml = `<newSwitchVector device='${dev}' name='${setProp}'><oneSwitch name='${syncEl}'>On</oneSwitch></newSwitchVector>` +
                           `<newNumberVector device='${dev}' name='${p}'><oneNumber name='${raEl}'>${ra}</oneNumber><oneNumber name='${decEl}'>${dec}</oneNumber></newNumberVector>`;
+                }
+                else if (lowAction === 'tracking') {
+                    const b = this.asBool(params, 'Tracking');
+                    if (b !== null) {
+                        xml = `<newSwitchVector device='${dev}' name='TELESCOPE_TRACK_STATE'><oneSwitch name='TRACK_ON'>${b ? 'On' : 'Off'}</oneSwitch><oneSwitch name='TRACK_OFF'>${!b ? 'On' : 'Off'}</oneSwitch></newSwitchVector>`;
+                    }
                 }
                 else if (lowAction === 'moveaxis') {
                     const axis = Number(getP('Axis')); const rate = Number(getP('Rate'));

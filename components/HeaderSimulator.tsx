@@ -6,12 +6,10 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 
 interface HeaderProps {
   currentDriver: 'INDI' | 'Alpaca' | 'Simulator';
-  onToggleTSConect?: () => void;
-  isTSConectActive?: boolean;
   className?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentDriver, onToggleTSConect, isTSConectActive, className }) => {
+export const HeaderSimulator: React.FC<HeaderProps> = ({ currentDriver, className }) => {
   const { t } = useTranslation();
   
   return (
@@ -23,18 +21,6 @@ export const Header: React.FC<HeaderProps> = ({ currentDriver, onToggleTSConect,
         </div>
       </div>
       <div className="flex items-center gap-4">
-        {currentDriver === 'INDI' && onToggleTSConect && (
-            <button 
-                onClick={onToggleTSConect}
-                className={`px-4 py-1.5 rounded-md text-xs font-black tracking-tighter transition-all ${
-                    isTSConectActive 
-                    ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]' 
-                    : 'bg-slate-800 text-red-500 border border-red-900/30 hover:bg-red-900/20'
-                }`}
-            >
-                TS-CONECT
-            </button>
-        )}
         <LanguageSwitcher />
       </div>
     </header>

@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { CelestialObject, LocationData, PlateSolverType, LocalSolverSettings } from '../types';
+import { CelestialObject, LocationData, PlateSolverType, LocalSolverSettings, SimulatorSettings, TelescopePosition } from '../types';
 import { useTranslation } from '../contexts/LanguageContext';
+import { calculateBlur, generateSimulatedStarField } from '../services/SimulatorService';
 import { Button } from './Button';
 import { ZoomInIcon } from './icons/ZoomInIcon';
 import { ZoomOutIcon } from './icons/ZoomOutIcon';
@@ -17,7 +17,7 @@ import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, calculateTransi
 import { exportFITS, exportTIFF, exportJPEG } from '../utils/imageExporter';
 import { MetadataViewer } from './MetadataViewer';
 import { CelestialObjectHUD } from './CelestialObjectHUD';
-import * as AstroService from '../services/AstroService';
+import * as AstroService from '../services/AstroServiceSimulator';
 
 interface ImagingViewProps {
   isCapturing: boolean;
@@ -40,6 +40,8 @@ interface ImagingViewProps {
   externalImageFormat?: string;
   isMini?: boolean; 
   onStopStream?: () => void;
+  simulatorSettings?: SimulatorSettings;
+  telescopePosition?: TelescopePosition | null;
 }
 
 interface HistogramStats {
@@ -60,7 +62,7 @@ const getDistance = (touch1: React.Touch, touch2: React.Touch) => {
     return Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
 };
 
-export const ImagingView: React.FC<ImagingViewProps> = ({ 
+export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({ 
     isCapturing, 
     captureProgress, 
     selectedObject, 
@@ -80,7 +82,9 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
     colorBalance = { r: 128, g: 128, b: 128 },
     externalImageFormat,
     isMini = false,
-    onStopStream
+    onStopStream,
+    simulatorSettings,
+    telescopePosition
 }) => {
   const { t } = useTranslation();
   
@@ -271,9 +275,30 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       };
       const img = new Image(); 
       img.crossOrigin = "Anonymous";
+      // @ts-ignore
+      img.referrerPolicy = "no-referrer";
       const url = blobOrUrl instanceof Blob ? URL.createObjectURL(blobOrUrl) : blobOrUrl;
       img.onload = () => { drawToCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height); if (blobOrUrl instanceof Blob) URL.revokeObjectURL(url); };
-      img.onerror = () => setDecodeError(true); img.src = url;
+      img.onerror = (e) => {
+          console.error("Image decode error for URL:", url, e);
+          setDecodeError(true);
+          
+          // Fallback to a simulated star field if it's an Aladin URL
+          if (typeof url === 'string' && url.includes('aladin') && telescopePosition && simulatorSettings) {
+              console.log("[Simulator] Aladin failed, generating simulated star field...");
+              const fallbackDataUrl = generateSimulatedStarField(telescopePosition, simulatorSettings);
+              if (fallbackDataUrl) {
+                  const fallbackImg = new Image();
+                  fallbackImg.crossOrigin = "Anonymous";
+                  fallbackImg.onload = () => { 
+                      drawToCanvas(fallbackImg, simulatorSettings.pixelWidth || 1920, simulatorSettings.pixelHeight || 1080); 
+                      setDecodeError(false); 
+                  };
+                  fallbackImg.src = fallbackDataUrl;
+              }
+          }
+      };
+      img.src = url;
   }, [fitImageToScreen, applyLutAndDraw]);
 
   const processImage = useCallback(() => {
@@ -349,7 +374,6 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       else imageUrl = canvasRef.current?.toDataURL('image/jpeg', 0.85);
       if (!imageUrl) return;
       if (imageUrl === canvasRef.current?.toDataURL('image/jpeg', 0.85)) { 
-        //onStopStream?.(); 
         setLoadedImage(imageUrl); 
         setLoadedImageName(defaultFrameName); }
 
@@ -474,6 +498,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
 
   const tX = pan.x + (flipH && imageDimensions ? imageDimensions.width * zoom : 0);
   const tY = pan.y + (flipV && imageDimensions ? imageDimensions.height * zoom : 0);
+  const blurAmount = simulatorSettings ? calculateBlur(simulatorSettings.focuserPosition) : 0;
   const hasContent = loadedImage || lastSafeImage || (canvasRef.current && canvasRef.current.width > 0);
 
   const stopProp = {
@@ -490,7 +515,10 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
        )}
        <div className="relative w-full h-full bg-[#020617] active:cursor-grabbing overflow-hidden touch-none" style={{ cursor, touchAction: 'none' }} ref={containerRef} onWheel={(e) => setZoom(prev => Math.max(0.01, Math.min(20, prev * (1 - e.deltaY * 0.001))))} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
         <input type="file" accept="image/*,.fits,.fit,.fts" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
-        <canvas ref={canvasRef} className="absolute top-0 left-0 origin-top-left rendering-pixelated" style={{ transform: `translate(${tX}px, ${tY}px) scale(${zoom}) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})` }} />
+        <canvas ref={canvasRef} className="absolute top-0 left-0 origin-top-left rendering-pixelated" style={{ 
+            transform: `translate(${tX}px, ${tY}px) scale(${zoom}) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`,
+            filter: blurAmount > 0 ? `blur(${blurAmount}px)` : 'none'
+        }} />
         {showHistogram && histogramData && !isMini && (
             <div 
                 className="absolute top-20 right-2 md:right-4 bg-slate-900/90 p-3 rounded-lg border border-slate-700 shadow-xl w-72 z-40 pointer-events-auto backdrop-blur-md animate-fadeIn flex flex-col gap-2"
@@ -537,7 +565,6 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
            </div>
        )}
 
-       {/* 修正：右側のボタン群。モバイルでは位置を下げ(bottom-20)、サイズを小型化(w-9 h-9) */}
        {!isMini && (
            <div 
                className="absolute bottom-20 md:bottom-4 right-2 md:right-4 flex flex-col gap-1 md:gap-2 z-30 pointer-events-auto items-end"

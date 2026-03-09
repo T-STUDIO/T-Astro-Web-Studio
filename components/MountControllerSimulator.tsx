@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from './Button';
 import { StopIcon } from './icons/StopIcon';
 import { useTranslation } from '../contexts/LanguageContext';
 import { MountSpeed } from '../types';
-import * as AstroService from '../services/AstroService';
+import * as AstroService from '../services/AstroServiceSimulator';
 
 interface MountControllerProps {
     isConnected: boolean;
@@ -47,29 +46,45 @@ const DirectionButton: React.FC<{
     );
 };
 
-export const MountController: React.FC<MountControllerProps> = ({ isConnected, compact }) => {
+export const MountControllerSimulator: React.FC<MountControllerProps> = ({ isConnected, compact }) => {
     const { t } = useTranslation();
     const [speed, setSpeed] = useState<MountSpeed>('Slew');
     const [tracking, setTracking] = useState(false);
     const [parked, setParked] = useState(false);
 
     useEffect(() => {
-        if(!isConnected) {
+        if (!isConnected) {
             setTracking(false);
             setParked(false);
+            return;
         }
+
+        const updateState = () => {
+            const trk = AstroService.getSwitchValue('Simulator Mount', 'TELESCOPE_TRACK_STATE', 'TRACK_ON');
+            const prk = AstroService.getSwitchValue('Simulator Mount', 'TELESCOPE_PARK', 'PARK');
+            setTracking(trk);
+            setParked(prk);
+        };
+
+        updateState();
+        const interval = setInterval(updateState, 500);
+        return () => clearInterval(interval);
     }, [isConnected]);
 
     const toggleTracking = () => {
         const newState = !tracking;
-        setTracking(newState);
-        AstroService.setTracking(newState);
+        AstroService.updateDeviceSetting('Simulator Mount', 'TELESCOPE_TRACK_STATE', {
+            TRACK_ON: newState,
+            TRACK_OFF: !newState
+        });
     };
 
     const togglePark = () => {
         const newState = !parked;
-        setParked(newState);
-        AstroService.setPark(newState);
+        AstroService.updateDeviceSetting('Simulator Mount', 'TELESCOPE_PARK', {
+            PARK: newState,
+            UNPARK: !newState
+        });
     };
 
     const handleStop = () => {

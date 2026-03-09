@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
-import { View, CelestialObject, SlewStatus, PlanetariumSettings, LocationData, TelescopePosition, PlateSolverType, LocalSolverSettings } from '../types';
+import { View, CelestialObject, SlewStatus, PlanetariumSettings, LocationData, TelescopePosition, PlateSolverType, LocalSolverSettings, SimulatorSettings } from '../types';
 import { Planetarium } from './Planetarium';
-import { ImagingView } from './ImagingView';
+import { ImagingViewSimulator as ImagingView } from './ImagingViewSimulator';
 import { LinkedMiniView } from './LinkedMiniView';
 import { useTranslation } from '../contexts/LanguageContext';
 import { CloseIcon } from './icons/CloseIcon';
@@ -39,10 +38,11 @@ interface MainViewProps {
   onStopStream?: () => void;
   isAutoCenterEnabled?: boolean;
   onToggleAutoCenter?: (enabled: boolean) => void;
+  simulatorSettings: SimulatorSettings;
   MountController?: React.ComponentType<any>;
 }
 
-export const MainView: React.FC<MainViewProps> = ({
+export const MainViewSimulator: React.FC<MainViewProps> = ({
   activeView,
   setActiveView,
   isCapturing,
@@ -74,6 +74,7 @@ export const MainView: React.FC<MainViewProps> = ({
   onStopStream,
   isAutoCenterEnabled,
   onToggleAutoCenter,
+  simulatorSettings,
   MountController
 }) => {
   const { t } = useTranslation();
@@ -106,7 +107,6 @@ export const MainView: React.FC<MainViewProps> = ({
               const isDesktop = window.innerWidth >= 1024;
               
               if (isDesktop) {
-                  // Anchored top-right, resize from bottom-left
                   const newWidth = rect.right - cX;
                   const newHeight = cY - rect.top;
                   setMiniViewSize({ 
@@ -114,7 +114,6 @@ export const MainView: React.FC<MainViewProps> = ({
                       height: Math.max(100, Math.min(450, newHeight)) 
                   });
               } else {
-                  // Anchored bottom-left, resize from top-right
                   const newWidth = cX - rect.left;
                   const newHeight = rect.bottom - cY;
                   setMiniViewSize({ 
@@ -143,10 +142,10 @@ export const MainView: React.FC<MainViewProps> = ({
   const isActivityRunning = isLiveViewActive || isVideoStreamActive || isCapturing || isPreviewLoading;
 
   useEffect(() => {
-      if (isActivityRunning) {
+      if (isActivityRunning || latestImage) {
           setMiniPreviewVisible(true);
       }
-  }, [isActivityRunning]);
+  }, [isActivityRunning, latestImage]);
 
   return (
     <main className="flex flex-col bg-black relative shrink-0 w-full h-full order-1 lg:flex-1 lg:order-2">
@@ -227,11 +226,12 @@ export const MainView: React.FC<MainViewProps> = ({
                 colorBalance={colorBalance || {r:128,g:128,b:128}}
                 externalImageFormat={latestImageFormat}
                 onStopStream={onStopStream}
+                simulatorSettings={simulatorSettings}
+                telescopePosition={telescopePosition}
             />
         </div>
 
-        {/* 修正：モバイルでのMiniビューを左端に寄せ、ボトムバーとのマージンを最適化。PCでのサイズアップとリサイズ機能追加 */}
-        {activeView === 'Planetarium' && isActivityRunning && miniPreviewVisible && (
+        {activeView === 'Planetarium' && (isActivityRunning || latestImage) && miniPreviewVisible && (
             <div 
                 className="absolute bottom-11 left-1.5 md:top-4 md:right-4 md:bottom-auto md:left-auto z-40 animate-fadeIn pointer-events-auto mini-view-container group"
                 style={{ width: miniViewSize.width, height: miniViewSize.height }}
@@ -254,7 +254,6 @@ export const MainView: React.FC<MainViewProps> = ({
                     setActiveView={setActiveView}
                 />
                 
-                {/* Resize Handle */}
                 <div 
                     onMouseDown={handleResizeStart}
                     onTouchStart={handleResizeStart}

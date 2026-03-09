@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { CelestialObject } from '../types';
 import { useTranslation } from '../contexts/LanguageContext';
-import { MountController } from './MountController';
 import { resolveAstroData, AstroData } from '../services/astroDataService';
 import { CELESTIAL_OBJECTS, NGC_TO_MESSIER } from '../constants';
 import { CloseIcon } from './icons/CloseIcon';
@@ -22,9 +21,10 @@ interface CelestialObjectHUDProps {
     isConnected: boolean;
     compact?: boolean;
     onClose?: () => void;
+    MountController?: React.ComponentType<any>;
 }
 
-export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, data, isConnected, compact, onClose }) => {
+export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, data, isConnected, compact, onClose, MountController }) => {
     const { t, language } = useTranslation();
     
     let displayName = language === 'ja' && object.nameJa ? object.nameJa : object.name;
@@ -114,7 +114,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
                 </div>
             </div>
             
-            {isConnected && (
+            {isConnected && MountController && (
                 <div className="pointer-events-auto w-full opacity-95">
                     <MountController isConnected={isConnected} compact={true} />
                 </div>

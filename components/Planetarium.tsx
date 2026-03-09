@@ -40,6 +40,7 @@ interface PlanetariumProps {
   isMini?: boolean; 
   isAutoCenterEnabled?: boolean;
   onToggleAutoCenter?: (enabled: boolean) => void;
+  MountController?: React.ComponentType<any>;
 }
 
 interface HitRegion {
@@ -78,7 +79,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     telescopePosition,
     isMini = false,
     isAutoCenterEnabled,
-    onToggleAutoCenter
+    onToggleAutoCenter,
+  MountController
 }) => {
     const { t, language } = useTranslation();
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -432,9 +434,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const stopControlInteraction = (e: React.MouseEvent | React.TouchEvent) => { e.stopPropagation(); };
 
     return (
-        <div ref={containerRef} className="w-full h-full relative overflow-hidden select-none bg-[#020617] touch-none" style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
+        <div ref={containerRef} className={`w-full h-full relative overflow-hidden select-none touch-none ${!isMini && settings.showDSS ? 'bg-transparent' : 'bg-[#020617]'}`} style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
             {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />}
-            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" />
+            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" style={{ background: 'transparent' }} />
             
             {!isMini && (
                 <div 
@@ -453,35 +455,41 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             
             {selectedObject && !isMini && (
                 <div onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}>
-                    <CelestialObjectHUD object={selectedObject} data={selectedObjectData} isConnected={isConnected} onClose={() => onSelectObject && onSelectObject(null)} />
+                    <CelestialObjectHUD 
+                        object={selectedObject} 
+                        data={selectedObjectData} 
+                        isConnected={isConnected} 
+                        onClose={() => onSelectObject && onSelectObject(null)} 
+                        MountController={MountController}
+                    />
                 </div>
             )}
             
             {/* 修正：アクションボタン群。ImagingViewと統一したサイズと位置 */}
             {!isMini && (
                 <div 
-                    className="absolute bottom-20 md:bottom-4 right-2 md:right-4 flex flex-col gap-1 md:gap-2 z-30 items-end"
+                    className="absolute bottom-20 md:bottom-4 landscape:bottom-2 right-2 md:right-4 flex flex-col gap-1 md:gap-2 z-30 items-end"
                     onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}
                 >
-                    <button onClick={() => setRecommendedMode(!recommendedMode)} className={`w-9 h-9 md:w-12 md:h-12 rounded-full border shadow-lg transition-colors flex items-center justify-center ${recommendedMode ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400' : 'bg-slate-800 border-slate-600 text-slate-400 hover:text-yellow-200'}`} title={t('tooltips.recommended')}><StarIcon className="w-5 h-5 md:w-6 md:h-6" /></button>
-                    <button onClick={handleZoomIn} className="bg-slate-800 w-9 h-9 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom In"><ZoomInIcon className="w-5 h-5 md:w-6 md:h-6"/></button>
-                    <button onClick={handleReset} className="bg-slate-800 w-9 h-9 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Reset View"><ResetIcon className="w-5 h-5 md:w-6 md:h-6"/></button>
-                    <button onClick={handleZoomOut} className="bg-slate-800 w-9 h-9 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom Out"><ZoomOutIcon className="w-5 h-5 md:w-6 md:h-6"/></button>
+                    <button onClick={() => setRecommendedMode(!recommendedMode)} className={`w-8 h-8 md:w-12 md:h-12 rounded-full border shadow-lg transition-colors flex items-center justify-center ${recommendedMode ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400' : 'bg-slate-800 border-slate-600 text-slate-400 hover:text-yellow-200'}`} title={t('tooltips.recommended')}><StarIcon className="w-4 h-4 md:w-6 md:h-6" /></button>
+                    <button onClick={handleZoomIn} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom In"><ZoomInIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
+                    <button onClick={handleReset} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Reset View"><ResetIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
+                    <button onClick={handleZoomOut} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom Out"><ZoomOutIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
                 </div>
             )}
             
             {!isMini && (
                 <div 
-                    className="absolute bottom-3 md:bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 md:gap-2 items-center z-30 w-auto max-w-[95%] md:w-auto justify-center"
+                    className="absolute bottom-3 md:bottom-4 landscape:bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1 md:gap-2 items-center z-30 w-auto max-w-[95%] md:w-auto justify-center"
                     onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}
                 >
-                    <div className="relative w-24 sm:w-36 md:w-48">
-                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('controlPanel.searchTarget')} className="bg-slate-800 border border-slate-600 rounded-lg pl-2 pr-7 py-1.5 md:py-2 text-[10px] md:text-sm text-slate-200 focus:ring-2 focus:ring-red-500 w-full outline-none shadow-lg" title={t('tooltips.search')} />
+                    <div className="relative w-24 sm:w-36 md:w-48 landscape:w-32">
+                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('controlPanel.searchTarget')} className="bg-slate-800 border border-slate-600 rounded-lg pl-2 pr-7 py-1 md:py-2 text-[10px] md:text-sm text-slate-200 focus:ring-2 focus:ring-red-500 w-full outline-none shadow-lg" title={t('tooltips.search')} />
                         <button onClick={handleSearch} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 p-1" title="Search Now"><SearchIcon className="w-3 h-3 md:w-4 md:h-4" /></button>
                     </div>
                     <div className="flex gap-1 md:gap-2 shrink-0">
-                        <Button onClick={() => selectedObject && onShowInfo && onShowInfo(selectedObject.name)} disabled={!selectedObject} variant="secondary" className="text-[10px] md:text-xs px-2 py-1.5 md:px-3 md:py-2 h-auto shadow-lg whitespace-nowrap" title={t('tooltips.objectInfo')}>{t('controlPanel.showObjectInfo')}</Button>
-                        <Button onClick={onSlew} disabled={!isConnected || !selectedObject || slewStatus !== 'Idle'} className="text-[10px] md:text-xs px-2 py-1.5 md:px-3 md:py-2 h-auto whitespace-nowrap min-w-[65px] md:min-w-[80px] shadow-lg" title={t('tooltips.goto')}><CrosshairIcon className="w-3 h-3 md:w-4 md:h-4" />{slewStatus === 'Slewing' ? t('controlPanel.slewing') : t('controlPanel.goToTarget')}</Button>
+                        <Button onClick={() => selectedObject && onShowInfo && onShowInfo(selectedObject.name)} disabled={!selectedObject} variant="secondary" className="text-[9px] md:text-xs px-1.5 py-1 md:px-3 md:py-2 h-auto shadow-lg whitespace-nowrap" title={t('tooltips.objectInfo')}>{t('controlPanel.showObjectInfo')}</Button>
+                        <Button onClick={onSlew} disabled={!isConnected || !selectedObject || slewStatus !== 'Idle'} className="text-[9px] md:text-xs px-1.5 py-1 md:px-3 md:py-2 h-auto whitespace-nowrap min-w-[55px] md:min-w-[80px] shadow-lg" title={t('tooltips.goto')}><CrosshairIcon className="w-3 h-3 md:w-4 md:h-4" />{slewStatus === 'Slewing' ? t('controlPanel.slewing') : t('controlPanel.goToTarget')}</Button>
                     </div>
                 </div>
             )}

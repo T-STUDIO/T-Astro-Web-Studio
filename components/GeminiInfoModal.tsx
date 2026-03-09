@@ -5,13 +5,15 @@ import { CloseIcon } from './icons/CloseIcon';
 import { CrosshairIcon } from './icons/CrosshairIcon';
 import { useTranslation } from '../contexts/LanguageContext';
 import { CelestialObject, ObjectRealtimeData, SampStatus } from '../types';
-import { fetchWikiImage } from '../services/wikipediaService';
+import { fetchWikiImage, fetchWikiSummary } from '../services/wikipediaService';
 import { resolveAstroData, AstroData } from '../services/astroDataService';
+import { summarizeExternalInfo } from '../services/geminiService';
 import { ResetIcon } from './icons/ResetIcon';
 import { CELESTIAL_OBJECTS } from '../constants';
 import { AladinIcon } from './icons/AladinIcon';
 import { sendSkyCoord } from '../services/sampService';
 import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
+import { fetchSimbadData } from '../services/simbadService';
 
 interface GeminiInfoModalProps {
   isOpen: boolean;
@@ -26,11 +28,17 @@ interface GeminiInfoModalProps {
   sampStatus?: SampStatus;
 }
 
-export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoading, content, object, realtimeData, onClose, onGoTo, onCenter, isConnected, sampStatus }) => {
+export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoading: isInitialLoading, content: initialContent, object, realtimeData, onClose, onGoTo, onCenter, isConnected, sampStatus }) => {
   const { language, t } = useTranslation();
   const [wikiImage, setWikiImage] = useState<string | null>(null);
   const [astroData, setAstroData] = useState<AstroData | null>(null);
   const [isDataLoading, setIsDataLoading] = useState(false);
+  const [displayContent, setDisplayContent] = useState(initialContent);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+
+  useEffect(() => {
+    setDisplayContent(initialContent);
+  }, [initialContent]);
 
   useEffect(() => {
     if (isOpen && object) {
@@ -90,17 +98,52 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
       displayDec = astroData.dec;
   }
 
-  const handleSearchWikipedia = () => {
+  const handleSearchWikipedia = async () => {
       const name = language === 'ja' && object.nameJa ? object.nameJa.split('(')[0].trim() : object.name.split('(')[0].trim();
       const langPrefix = language === 'ja' ? 'ja' : 'en';
+      
+      // 1. Open link in new tab (existing behavior)
       const url = `https://${langPrefix}.wikipedia.org/wiki/${encodeURIComponent(name)}`;
       window.open(url, '_blank', 'noopener,noreferrer');
+
+      // 2. Fetch and summarize (new behavior)
+      setIsSummarizing(true);
+      try {
+          const summaryText = await fetchWikiSummary(name, langPrefix as 'en' | 'ja');
+          if (summaryText) {
+              const summarized = await summarizeExternalInfo(object.name, summaryText, 'Wikipedia', language);
+              setDisplayContent(summarized);
+          }
+      } catch (e) {
+          console.error("Wiki summarization failed", e);
+      } finally {
+          setIsSummarizing(false);
+      }
   };
 
-  const handleSearchSimbad = () => {
+  const handleSearchSimbad = async () => {
       const name = object.name.split('(')[0].trim();
+      
+      // 1. Open link in new tab (existing behavior)
       const url = `http://simbad.cds.unistra.fr/simbad/sim-basic?Ident=${encodeURIComponent(name)}&submit=SIMBAD+search`;
       window.open(url, '_blank', 'noopener,noreferrer');
+
+      // 2. Fetch and summarize (new behavior)
+      setIsSummarizing(true);
+      try {
+          // SIMBAD data is mostly structured, so we fetch it and ask Gemini to explain it
+          const simbadData = await fetchSimbadData(object.name, language);
+          if (simbadData) {
+              const aliases = simbadData.aliases ? `Aliases: ${simbadData.aliases.join(', ')}` : '';
+              const rawText = `Type: ${simbadData.type}, RA: ${simbadData.ra}, Dec: ${simbadData.dec}, Magnitude: ${simbadData.magnitude}. ${aliases}`;
+              const summarized = await summarizeExternalInfo(object.name, rawText, 'SIMBAD', language);
+              setDisplayContent(summarized);
+          }
+      } catch (e) {
+          console.error("Simbad summarization failed", e);
+      } finally {
+          setIsSummarizing(false);
+      }
   };
 
   const handleSendToSamp = () => {
@@ -248,17 +291,19 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
               </div>
            </div>
 
-          {isLoading && (
+           {(isInitialLoading || isSummarizing) && (
             <div className="flex flex-col items-center justify-center gap-4 py-8">
               <div className="w-8 h-8 border-2 border-t-transparent border-red-500 rounded-full animate-spin"></div>
-              <p className="text-red-400 text-sm animate-pulse">{t('geminiModal.thinking')}</p>
+              <p className="text-red-400 text-sm animate-pulse">
+                  {isSummarizing ? (language === 'ja' ? '情報を取得・要約中...' : 'Fetching & Summarizing...') : t('geminiModal.thinking')}
+              </p>
             </div>
           )}
           
-          {!isLoading && content && (
+          {!(isInitialLoading || isSummarizing) && displayContent && (
             <div className="animate-fadeIn">
                  <h3 className="text-lg font-bold text-red-500 mb-3 border-b border-red-900/30 pb-2">{t('geminiModal.description')}</h3>
-                <div className="prose prose-invert prose-sm sm:prose-base max-w-none text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: content.replace(/\n/g, '<br />') }}>
+                <div className="prose prose-invert prose-sm sm:prose-base max-w-none text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: displayContent.replace(/\n/g, '<br />') }}>
                 </div>
             </div>
           )}

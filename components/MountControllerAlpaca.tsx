@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from './Button';
 import { StopIcon } from './icons/StopIcon';
 import { useTranslation } from '../contexts/LanguageContext';
 import { MountSpeed } from '../types';
-import * as AstroService from '../services/AstroService';
+import * as AstroService from '../services/AstroServiceAlpaca';
 
 interface MountControllerProps {
     isConnected: boolean;
@@ -47,7 +46,7 @@ const DirectionButton: React.FC<{
     );
 };
 
-export const MountController: React.FC<MountControllerProps> = ({ isConnected, compact }) => {
+export const MountControllerAlpaca: React.FC<MountControllerProps> = ({ isConnected, compact }) => {
     const { t } = useTranslation();
     const [speed, setSpeed] = useState<MountSpeed>('Slew');
     const [tracking, setTracking] = useState(false);

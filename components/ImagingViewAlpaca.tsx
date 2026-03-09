@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CelestialObject, LocationData, PlateSolverType, LocalSolverSettings } from '../types';
 import { useTranslation } from '../contexts/LanguageContext';
@@ -17,7 +16,7 @@ import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, calculateTransi
 import { exportFITS, exportTIFF, exportJPEG } from '../utils/imageExporter';
 import { MetadataViewer } from './MetadataViewer';
 import { CelestialObjectHUD } from './CelestialObjectHUD';
-import * as AstroService from '../services/AstroService';
+import * as AstroService from '../services/AstroServiceAlpaca';
 
 interface ImagingViewProps {
   isCapturing: boolean;
@@ -60,7 +59,7 @@ const getDistance = (touch1: React.Touch, touch2: React.Touch) => {
     return Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
 };
 
-export const ImagingView: React.FC<ImagingViewProps> = ({ 
+export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({ 
     isCapturing, 
     captureProgress, 
     selectedObject, 
@@ -349,7 +348,6 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       else imageUrl = canvasRef.current?.toDataURL('image/jpeg', 0.85);
       if (!imageUrl) return;
       if (imageUrl === canvasRef.current?.toDataURL('image/jpeg', 0.85)) { 
-        //onStopStream?.(); 
         setLoadedImage(imageUrl); 
         setLoadedImageName(defaultFrameName); }
 
@@ -537,7 +535,6 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
            </div>
        )}
 
-       {/* 修正：右側のボタン群。モバイルでは位置を下げ(bottom-20)、サイズを小型化(w-9 h-9) */}
        {!isMini && (
            <div 
                className="absolute bottom-20 md:bottom-4 right-2 md:right-4 flex flex-col gap-1 md:gap-2 z-30 pointer-events-auto items-end"

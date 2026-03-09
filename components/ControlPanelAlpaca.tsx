@@ -14,10 +14,13 @@ import { ListIcon } from './icons/ListIcon';
 import { GoogleDriveIcon } from './icons/GoogleDriveIcon'; 
 import { VideoIcon } from './icons/VideoIcon';
 import { useTranslation } from '../contexts/LanguageContext';
-import { FocuserControl } from './FocuserControl';
-import * as AstroService from '../services/AstroService';
+import { FocuserControlAlpaca } from './FocuserControlAlpaca';
+import * as AstroService from '../services/AstroServiceAlpaca';
 import * as GoogleDriveService from '../services/GoogleDriveService';
+import AlpacaDiscoveryService, { DiscoveryResult } from '../services/AlpacaDiscoveryService';
 import * as SettingsService from '../services/SettingsService';
+import { AlpacaControlPanel } from './AlpacaControlPanel';
+import { AlpacaDevice } from '../services/AlpacaClientService';
 import { decimalToSexagesimal, sexagesimalToDecimal } from '../utils/coords';
 
 const ConnectionStatusIndicator: React.FC<{ status: ConnectionStatus | SampStatus, labels: Record<string, string> }> = ({ status, labels }) => {
@@ -328,19 +331,20 @@ const ImagingPanel = memo((props: any) => {
     const { 
         connectionStatus, isLiveViewActive, onToggleLiveView, exposure, gain, offset, binning, colorBalance,
         onSetExposure, onSetGain, onSetOffset, onSetBinning, onSetColorBalance, onPreview, isCapturing, onStartCapture, onStopCapture,
-        indiDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings
+        alpacaDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings
     } = props;
 
-    const devices = (indiDevices || []) as INDIDevice[];
+    const devices = (alpacaDevices || []) as AlpacaDevice[];
     const activeCameraName = AstroService.getActiveCamera();
     const activeFocuserName = AstroService.getActiveFocuser();
-    // 既存のリストからマウント種別のデバイスを検索して取得
-    const activeMountName = devices.find(d => d.type === 'Mount')?.name;
+    const activeMountName = devices.find(d => d.deviceType === 'Mount')?.deviceName;
     
-    const activeCameraDevice = devices.find(d => d.name === activeCameraName);
+    const activeCameraDevice = devices.find(d => d.deviceName === activeCameraName);
 
     let formatProperty: INDIVector | undefined;
-    if (activeCameraDevice?.properties) {
+    // Alpaca devices don't have properties in the same way as INDI
+    // This part might need more work to fully support Alpaca properties
+    if ((activeCameraDevice as any)?.properties) {
         ['IMAGE_FORMAT', 'CCD_FILE_FORMAT', 'CCD_TRANSFER_FORMAT'].some(key => {
             if (activeCameraDevice.properties?.has(key)) {
                 formatProperty = activeCameraDevice.properties.get(key);
@@ -398,23 +402,6 @@ const ImagingPanel = memo((props: any) => {
             <Button onClick={onToggleVideoStream} disabled={isLiveViewActive} variant={isVideoStreamActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.videoStream')}>
                 {isVideoStreamActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopVideoStream')}</> : <><VideoIcon className="w-4 h-4" /> {t('controlPanel.videoStream')}</>}
             </Button>
-            {streamEncoderProperty?.elements && (
-                <div className="bg-slate-800/50 p-2 rounded border border-slate-700 flex justify-between items-center" title="Select hardware or software encoder for native INDI streaming.">
-                    <span className="text-[10px] font-semibold text-slate-400">{t('controlPanel.encoder')}</span>
-                    <div className="flex bg-slate-900 rounded p-1 gap-1">
-                        {Array.from(streamEncoderProperty.elements.values()).map((el: INDIElement) => {
-                            const isOn = el.value === true;
-                            return (
-                                <button
-                                    key={el.name}
-                                    onClick={() => AstroService.toggleVideoStreamEncoder(el.name)}
-                                    className={`px-3 py-1 text-[10px] rounded transition-colors ${isOn ? 'bg-red-700 text-white font-bold shadow-sm' : 'bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600'}`}
-                                >{el.label || el.name}</button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
         </div>
         
         <div className="space-y-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
@@ -455,36 +442,9 @@ const ImagingPanel = memo((props: any) => {
                     {isLiveViewActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopLiveView')}</> : <><CameraIcon className="w-4 h-4" /> {t('controlPanel.liveView')}</>}
                 </Button>
             </div>
-            {formatProperty?.elements && formatProperty.type === 'Switch' && (
-                <div className="bg-slate-800/50 p-2 rounded border border-slate-700 flex justify-between items-center" title="Select the primary image data format for static captures.">
-                    <span className="text-[10px] font-semibold text-slate-400">{formatProperty.label || t('controlPanel.format')}</span>
-                    <div className="flex flex-wrap gap-1 bg-slate-900 rounded p-1">
-                        {Array.from(formatProperty.elements.values()).map((el: INDIElement) => {
-                            const isOn = el.value === true;
-                            return (
-                                <button
-                                    key={el.name}
-                                    onClick={() => activeCameraName && AstroService.updateDeviceSetting(activeCameraName, formatProperty!.name, { [el.name]: true })}
-                                    className={`px-3 py-1 text-[10px] rounded transition-colors ${isOn ? 'bg-blue-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-                                >{el.label || el.name}</button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-            {compressionProperty?.elements && (
-                <div className="bg-slate-800/50 p-2 rounded border border-slate-700 flex justify-between items-center" title="Enable JPEG compression for faster preview downloads over slow networks.">
-                    <span className="text-[10px] font-semibold text-slate-400">{t('controlPanel.transfer')}</span>
-                    <div className="flex bg-slate-900 rounded p-1 gap-1">
-                        <button onClick={() => activeCameraName && AstroService.updateDeviceSetting(activeCameraName, 'CCD_COMPRESSION', { 'CCD_COMPRESS': false })} className={`px-3 py-1 text-[10px] rounded transition-colors ${compressionProperty.elements.get('CCD_COMPRESS')?.value !== true ? 'bg-blue-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}>FITS</button>
-                        <button onClick={() => activeCameraName && AstroService.updateDeviceSetting(activeCameraName, 'CCD_COMPRESSION', { 'CCD_COMPRESS': true })} className={`px-3 py-1 text-[10px] rounded transition-colors ${compressionProperty.elements.get('CCD_COMPRESS')?.value === true ? 'bg-blue-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}>JPEG</button>
-                    </div>
-                </div>
-            )}
-            <p className="text-[10px] text-slate-500 leading-tight">{t('tooltips.liveStacking')}</p>
             {!isCapturing ? (<Button onClick={onStartCapture} disabled={isVideoStreamActive} className="w-full" type="button" title={t('tooltips.liveStacking')}><CameraIcon className="w-5 h-5" /> {t('controlPanel.startLiveStacking')}</Button>) : (<Button onClick={onStopCapture} variant="danger" className="w-full" type="button" title="Stop the active live stacking session."><StopIcon className="w-5 h-5" /> {t('controlPanel.stopCapture')}</Button>)}
         </div>
-        <FocuserControl isConnected={connectionStatus === 'Connected'} />
+        <FocuserControlAlpaca isConnected={connectionStatus === 'Connected'} />
     </div>
     );
 });
@@ -502,6 +462,10 @@ const EquipmentPanel = memo((props: any) => {
     const [newLocalSolverName, setNewLocalSolverName] = useState('');
     const [showDriveConfig, setShowDriveConfig] = useState(false);
     const [clientIdInput, setClientIdInput] = useState('');
+    const [isDiscovering, setIsDiscovering] = useState(false);
+    const [discoveryResults, setDiscoveryResults] = useState<DiscoveryResult[]>([]);
+    const [discoveryPort, setDiscoveryPort] = useState(32227);
+    const [showAlpacaControlPanel, setShowAlpacaControlPanel] = useState(false);
     
     const [selectedLocationIndex, setSelectedLocationIndex] = useState<string>("");
     const [selectedConnectionIndex, setSelectedConnectionIndex] = useState<string>("");
@@ -518,7 +482,7 @@ const EquipmentPanel = memo((props: any) => {
         onSendLocationToMount, mountSyncStatus, onToggleAutoSyncLocation, isAutoSyncLocationEnabled,
         connectionStatus, onShowDiagnostics, connectionSettings, onSettingsChange, onConnect, onDisconnect, onAbortConnection,
         savedConnections, onSaveConnection, onUpdateSavedConnection, onDeleteConnection,
-        indiDevices, indiMessageCount, onOpenDeviceSettings
+        alpacaDevices, alpacaMessageCount, onOpenDeviceSettings
     } = props;
 
     const isConnected = connectionStatus === 'Connected';
@@ -533,11 +497,21 @@ const EquipmentPanel = memo((props: any) => {
     const handleSaveClientId = () => { if (clientIdInput.trim()) { GoogleDriveService.setClientId(clientIdInput.trim()); setShowDriveConfig(false); } };
     const handleConnectDriveWrapper = async () => { try { await onConnectDrive(); } catch (e: any) { if (e.message && (e.message.includes("Client ID") || e.message.includes("setup"))) setShowDriveConfig(true); } };
     const isDisconnected = connectionStatus === 'Disconnected' || connectionStatus === 'Error';
-    const isINDI = connectionSettings?.driver === 'INDI';
-    const isAlpaca = connectionSettings?.driver === 'Alpaca';
-    const useDynamicDeviceList = isINDI || isAlpaca;
-    const deviceTypes: DeviceType[] = ['Mount', 'Camera', 'GuideCamera', 'Focuser', 'FilterWheel', 'Dome', 'Rotator', 'Heater'];
     
+    const handleDiscover = async () => {
+        setIsDiscovering(true);
+        try {
+            // Since we can't do UDP, we try to scan the current host's subnet or just check common IPs
+            // For now, we'll just check the current host if it's an IP, or a few defaults
+            const results = await AlpacaDiscoveryService.scanSubnet(connectionSettings?.host || '192.168.1.1');
+            setDiscoveryResults(results);
+        } catch (e) {
+            console.error("Discovery failed", e);
+        } finally {
+            setIsDiscovering(false);
+        }
+    };
+
     const equipmentStatusLabels = {
         Disconnected: t('status.disconnected'), Connecting: t('status.connecting'), Connected: t('status.connected'), Error: t('status.error')
     };
@@ -563,14 +537,6 @@ const EquipmentPanel = memo((props: any) => {
                     </div>
                 ) : (
                     <Button onClick={handleConnectDriveWrapper} variant="secondary" className="w-full text-[10px] py-1 h-7 bg-slate-700/50" title={t('tooltips.connectDrive')}><GoogleDriveIcon className="w-3 h-3"/> {t('controlPanel.connectDrive')}</Button>
-                )}
-                {showDriveConfig && (
-                    <div className="bg-slate-900 p-2 rounded border border-slate-600 mt-2 animate-fadeIn">
-                        <p className="text-[10px] text-slate-400 mb-2 leading-tight">{t('controlPanel.backupHelp')}</p>
-                        <label className="block text-[10px] text-slate-300 mb-1">{t('controlPanel.googleClientId')}</label>
-                        <input type="text" value={clientIdInput} onChange={(e) => setClientIdInput(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 mb-2 select-text" placeholder="e.g. 123...apps.googleusercontent.com" title={t('tooltips.clientId')} />
-                        <Button onClick={handleSaveClientId} className="w-full text-[10px] py-1 h-6">{t('controlPanel.saveClientId')}</Button>
-                    </div>
                 )}
             </div>
         </div>
@@ -647,39 +613,11 @@ const EquipmentPanel = memo((props: any) => {
                 </div>
                 </>
             )}
-            <div className="px-1"><ToggleSwitch id="auto-center" label={t('controlPanel.autoCenter')} title={t('tooltips.autoCenter')} checked={isAutoCenterEnabled || false} onChange={onToggleAutoCenter} /><p className="text-[10px] text-slate-500 px-2 leading-tight mt-0.5">{t('controlPanel.autoCenterHint')}</p></div>
+            <div className="px-1"><ToggleSwitch id="auto-center" label={t('controlPanel.autoCenter')} title={t('tooltips.autoCenter')} checked={isAutoCenterEnabled || false} onChange={onToggleAutoCenter} /></div>
         </div>
 
         <div className="space-y-3 mt-6">
             <h2 className="text-lg font-semibold text-red-400 border-b border-red-900/50 pb-2">{t('controlPanel.locationAndTime')}</h2>
-            {isNamingLocation ? (
-                <div className="flex gap-2 mb-2 items-center">
-                    <input type="text" value={newLocationName} onChange={(e) => setNewLocationName(e.target.value)} placeholder={t('controlPanel.location.enterName')} className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500 select-text" autoFocus />
-                    <button onClick={() => { if(location && newLocationName.trim()) { onSaveLocation(newLocationName.trim(), {...location}); setSelectedLocationIndex(String(savedLocations.length)); setIsNamingLocation(false); } }} className="bg-green-700 hover:bg-green-600 text-white p-1 rounded border border-green-600"><span className="text-xs font-bold px-1">{t('common.ok')}</span></button>
-                    <button onClick={() => setIsNamingLocation(false)} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600"><CloseIcon className="w-4 h-4" /></button>
-                </div>
-            ) : (
-                <div className="flex gap-2 mb-2 items-center">
-                    <select className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500" value={selectedLocationIndex} onChange={(e) => {
-                        const idx = parseInt(e.target.value);
-                        setSelectedLocationIndex(e.target.value);
-                        if (!isNaN(idx) && savedLocations[idx]) {
-                            const loc = savedLocations[idx].data;
-                            if (onUpdateLatitude) onUpdateLatitude(loc.latitude);
-                            if (onUpdateLongitude) onUpdateLongitude(loc.longitude);
-                            if (onUpdateElevation) onUpdateElevation(loc.elevation || 0);
-                        }
-                    }}>
-                        <option value="" disabled>{t('controlPanel.location.select')}</option>
-                        {savedLocations.map((loc: any, i: number) => (<option key={i} value={String(i)}>{loc.name}</option>))}
-                    </select>
-                    {selectedLocationIndex !== "" && onUpdateSavedLocation && location && (
-                        <button onClick={() => onUpdateSavedLocation(Number(selectedLocationIndex), {...location})} className="bg-blue-800 hover:bg-blue-700 text-white p-1 rounded border border-blue-700" title={t('controlPanel.connectionProfiles.overwrite')}><SaveIcon className="w-4 h-4" /></button>
-                    )}
-                    <button onClick={() => { if(location) { setNewLocationName(''); setIsNamingLocation(true); } }} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600" title={t('controlPanel.connectionProfiles.saveCurrent')}><PlusIcon className="w-4 h-4" /></button>
-                    {selectedLocationIndex !== "" && (<button onClick={() => { onDeleteLocation(Number(selectedLocationIndex)); setSelectedLocationIndex(""); }} className="bg-red-900/50 hover:bg-red-800 text-white p-1 rounded border border-red-800" title={t('controlPanel.deleteSelected')}><TrashIcon className="w-4 h-4" /></button>)}
-                </div>
-            )}
             <div className="p-3 bg-slate-800/50 rounded-lg space-y-2 text-sm border border-slate-700">
                 <div className="flex justify-between items-center"><span className="font-semibold text-slate-400 w-16">{t('controlPanel.location.latitude')}:</span><div className="flex-1 max-w-[140px]"><SexagesimalInput value={location?.latitude || 0} unit="°" title={t('tooltips.latitude')} onChange={(val) => { setSelectedLocationIndex(""); if (onUpdateLatitude) onUpdateLatitude(val); }} /></div></div>
                 <div className="flex justify-between items-center"><span className="font-semibold text-slate-400 w-16">{t('controlPanel.location.longitude')}:</span><div className="flex-1 max-w-[140px]"><SexagesimalInput value={location?.longitude || 0} unit="°" title={t('tooltips.longitude')} onChange={(val) => { setSelectedLocationIndex(""); if (onUpdateLongitude) onUpdateLongitude(val); }} /></div></div>
@@ -693,73 +631,104 @@ const EquipmentPanel = memo((props: any) => {
             <div className="grid grid-cols-2 gap-2"><Button onClick={onUpdateLocation} disabled={locationStatus === 'Updating'} variant="secondary" className="text-xs">{t('controlPanel.location.updateFromDevice')}</Button><Button onClick={onUpdateLocationIP} disabled={locationStatus === 'Updating'} variant="secondary" className="text-xs">{t('controlPanel.location.updateFromWeb')}</Button></div>
             <div className="space-y-2"><Button onClick={() => onSendLocationToMount?.()} disabled={!isConnected || mountSyncStatus === 'sending'} variant={mountSyncStatus === 'success' ? 'secondary' : 'primary'} className={`w-full text-xs transition-colors ${mountSyncStatus === 'success' ? 'border-green-600 text-green-400 hover:text-green-300' : ''}`} title={t('tooltips.syncToMount')}>
                 {mountSyncStatus === 'sending' ? (<><div className="w-3 h-3 border-2 border-t-transparent border-white rounded-full animate-spin"></div> {t('controlPanel.location.syncing')}</>) : mountSyncStatus === 'success' ? (<><GpsIcon className="w-4 h-4 text-green-500" /> {t('controlPanel.location.resend')}</>) : (<><GpsIcon className="w-4 h-4" /> {t('controlPanel.location.syncToMount')}</>)}
-            </Button>{onToggleAutoSyncLocation && (<div className="px-1"><ToggleSwitch id="auto-sync-location" label={t('controlPanel.location.autoSync')} title={t('tooltips.autoSync')} checked={isAutoSyncLocationEnabled || false} onChange={onToggleAutoSyncLocation} /></div>)}</div>
+            </Button></div>
         </div>
 
         <div className="space-y-3 mt-6">
             <div className="flex justify-between items-center border-b border-red-900/50 pb-2"><h2 className="text-lg font-semibold text-red-400">{t('controlPanel.equipment')}</h2><button onClick={onShowDiagnostics} className="text-[10px] text-slate-400 underline hover:text-red-400">Diagnosis</button></div>
-            <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700"><ConnectionStatusIndicator status={connectionStatus} labels={equipmentStatusLabels} />{isConnected && (<p className="text-xs text-slate-400 mt-1 font-mono">{t('status.connectedTo', { driver: connectionSettings?.driver, host: connectionSettings?.host, port: connectionSettings?.port })}</p>)}</div>
+            <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700"><ConnectionStatusIndicator status={connectionStatus} labels={equipmentStatusLabels} />{isConnected && (<p className="text-xs text-slate-400 mt-1 font-mono">{t('status.connectedTo', { driver: 'Alpaca', host: connectionSettings?.host, port: connectionSettings?.port })}</p>)}</div>
             {isDisconnected && (
             <div className="space-y-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
                 <h3 className="text-sm font-semibold text-slate-300">{t('controlPanel.connectionSettings')}</h3>
-                {isNamingConnection ? (
-                    <div className="flex gap-2 mb-2 items-center"><input type="text" value={newConnectionName} onChange={(e) => setNewConnectionName(e.target.value)} placeholder={t('controlPanel.connectionProfiles.enterName')} className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500 select-text" autoFocus /><button onClick={() => { if(newConnectionName.trim()) { onSaveConnection(newConnectionName.trim(), { ...connectionSettings }); setSelectedConnectionIndex(String(savedConnections.length)); setIsNamingConnection(false); } }} className="bg-green-700 hover:bg-green-600 text-white p-1 rounded border border-green-600"><span className="text-xs font-bold px-1">{t('common.ok')}</span></button><button onClick={() => setIsNamingConnection(false)} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600"><CloseIcon className="w-4 h-4" /></button></div>
-                ) : (
-                    <div className="flex gap-2 mb-2 items-center"><select className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500" value={selectedConnectionIndex} onChange={(e) => {
-                        const idx = parseInt(e.target.value);
-                        setSelectedConnectionIndex(e.target.value);
-                        if (!isNaN(idx) && savedConnections[idx]) onSettingsChange(savedConnections[idx].settings);
-                    }}><option value="" disabled>{t('controlPanel.connectionProfiles.select')}</option>{savedConnections.map((conn: any, i: number) => (<option key={i} value={String(i)}>{conn.name}</option>))}</select>
-                    {selectedConnectionIndex !== "" && onUpdateSavedConnection && (
-                        <button onClick={() => onUpdateSavedConnection(Number(selectedConnectionIndex), {...connectionSettings})} className="bg-blue-800 hover:bg-blue-700 text-white p-1 rounded border border-blue-700" title={t('controlPanel.connectionProfiles.overwrite')}><SaveIcon className="w-4 h-4" /></button>
-                    )}
-                    <button onClick={() => { setNewConnectionName(''); setIsNamingConnection(true); }} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600" title={t('controlPanel.connectionProfiles.saveCurrent')}><PlusIcon className="w-4 h-4" /></button>{selectedConnectionIndex !== "" && (<button onClick={() => { onDeleteConnection(Number(selectedConnectionIndex)); setSelectedConnectionIndex(""); }} className="bg-red-900/50 hover:bg-red-800 text-white p-1 rounded border border-red-800" title={t('controlPanel.deleteSelected')}><TrashIcon className="w-4 h-4" /></button>)}</div>
-                )}
-                <div><label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label><select id="driver-type" value={connectionSettings?.driver || 'INDI'} onChange={(e) => { 
-                    const newDriver = e.target.value as any; 
-                    console.log(`[ControlPanel] Switching to: ${newDriver}`);
-                    
-                    // Save driver setting before navigating
-                    const settings = SettingsService.loadSettings();
-                    SettingsService.saveSettings({
-                        ...settings,
-                        connectionSettings: {
-                            ...settings.connectionSettings,
-                            driver: newDriver
-                        }
-                    });
+                <div className="space-y-3">
+                    <div>
+                        <label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label>
+                        <select id="driver-type" value={connectionSettings?.driver || 'Alpaca'} onChange={(e) => { 
+                            const newDriver = e.target.value as any; 
+                            console.log(`[ControlPanelAlpaca] Switching to: ${newDriver}`);
+                            
+                            // Save driver setting before navigating
+                            const settings = SettingsService.loadSettings();
+                            SettingsService.saveSettings({
+                                ...settings,
+                                connectionSettings: {
+                                    ...settings.connectionSettings,
+                                    driver: newDriver
+                                }
+                            });
 
-                    // Navigate to the correct page for the driver
-                    const pageMap: Record<string, string> = {
-                        'INDI': '/index.html',
-                        'Alpaca': '/alpaca.html',
-                        'Simulator': '/simulator.html'
-                    };
-                    window.location.href = pageMap[newDriver] || '/index.html';
-                }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}><option value="Simulator">Simulator</option><option value="INDI">INDI</option><option value="Alpaca">Alpaca</option></select></div>
-                {connectionSettings?.driver === 'INDI' && (
-                    <div><label className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.serverType')}</label><div className="flex gap-4"><label className="flex items-center space-x-2 cursor-pointer"><input type="radio" checked={connectionSettings.serverType === 'local'} onChange={() => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, serverType: 'local' }); }} className="text-red-500 focus:ring-red-500 bg-slate-700 border-slate-600" /><span className="text-sm text-slate-300">{t('controlPanel.local')}</span></label><label className="flex items-center space-x-2 cursor-pointer"><input type="radio" checked={connectionSettings.serverType === 'remote'} onChange={() => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, serverType: 'remote' }); }} className="text-red-500 focus:ring-red-500 bg-slate-700 border-slate-600" /><span className="text-sm text-slate-300">{t('controlPanel.remote')}</span></label></div></div>
-                )}
-                {connectionSettings?.driver !== 'Simulator' && (
-                    <><div><label htmlFor="host-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.host')}</label><input type="text" id="host-input" value={connectionSettings?.host || ''} onChange={(e) => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, host: e.target.value }); }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none font-mono text-slate-200 select-text" placeholder="e.g. stellarmate.local" title={t('tooltips.host')} /></div><div><label htmlFor="port-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.port')}</label><input type="number" id="port-input" value={connectionSettings?.port || 0} onChange={(e) => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, port: Number(e.target.value) }); }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none font-mono text-slate-200 select-text" title={t('tooltips.port')} /></div></>
-                )}
+                            // Navigate to the correct page for the driver
+                            const pageMap: Record<string, string> = {
+                                'INDI': '/index.html',
+                                'Alpaca': '/alpaca.html',
+                                'Simulator': '/simulator.html'
+                            };
+                            window.location.href = pageMap[newDriver] || '/index.html';
+                        }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
+                            <option value="Simulator">Simulator</option>
+                            <option value="INDI">INDI</option>
+                            <option value="Alpaca">Alpaca</option>
+                        </select>
+                    </div>
+
+                    <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                            <label htmlFor="host-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.host')}</label>
+                            <input type="text" id="host-input" value={connectionSettings?.host || ''} onChange={(e) => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, host: e.target.value, driver: 'Alpaca' }); }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none font-mono text-slate-200 select-text" placeholder="e.g. 192.168.1.100" title={t('tooltips.host')} />
+                        </div>
+                        <div className="w-24">
+                            <label htmlFor="port-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.port')}</label>
+                            <input type="number" id="port-input" value={connectionSettings?.port || 11111} onChange={(e) => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, port: Number(e.target.value), driver: 'Alpaca' }); }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none font-mono text-slate-200 select-text" title={t('tooltips.port')} />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2 items-end border-t border-slate-700 pt-3">
+                        <div className="flex-1">
+                            <label className="block text-xs font-medium mb-1 text-slate-500">Discovery Port</label>
+                            <input type="number" value={discoveryPort} onChange={(e) => setDiscoveryPort(Number(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300" />
+                        </div>
+                        <Button onClick={handleDiscover} disabled={isDiscovering} variant="secondary" className="text-xs h-7 px-3">
+                            {isDiscovering ? 'Scanning...' : 'Discover'}
+                        </Button>
+                    </div>
+
+                    {discoveryResults.length > 0 && (
+                        <div className="bg-black/30 rounded p-2 max-h-32 overflow-y-auto border border-slate-800">
+                            <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Found Servers:</p>
+                            {discoveryResults.map((res, i) => (
+                                <div key={i} onClick={() => onSettingsChange({ ...connectionSettings, host: res.host, port: res.port })} className="text-xs p-1 hover:bg-red-900/20 cursor-pointer rounded flex justify-between border-b border-slate-800 last:border-0">
+                                    <span>{res.serverName}</span>
+                                    <span className="text-slate-500 font-mono">{res.host}:{res.port}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
             )}
             {isConnected && (
-            <><div className="space-y-1"><div className="flex justify-between items-center mb-2"><h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Device Controls</h3>{isINDI && (<span className="text-[10px] text-slate-500 font-mono">{t('controlPanel.receivedPackets', { count: indiMessageCount })}</span>)}</div>
-                    {useDynamicDeviceList ? (
-                        (indiDevices || []).length === 0 ? (
-                            <div className="p-4 border border-dashed border-slate-700 rounded space-y-3"><div><div className="w-4 h-4 border-2 border-t-transparent border-slate-500 rounded-full animate-spin mx-auto mb-2"></div><span className="text-xs text-slate-500 italic">{t('controlPanel.searchingDevices')}</span></div>{isINDI && (<div className="text-[10px] text-slate-600">{t('controlPanel.receivedPackets', { count: indiMessageCount })}</div>)}<button onClick={() => AstroService.refreshIndiDevices()} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded">{t('controlPanel.forceRefresh')}</button></div>
-                        ) : (
-                            <div className="space-y-2">{(indiDevices || []).map((dev) => (<div key={dev.name} className="flex items-center justify-between p-2 bg-slate-800/60 rounded border border-slate-700 hover:border-slate-600"><div className="flex items-center gap-2 overflow-hidden"><div className={`w-2 h-2 rounded-full ${dev.connected ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-slate-600'}`}></div><span className="text-sm text-slate-200 font-mono truncate" title={dev.name}>{dev.name}</span>{dev.type && (<span className="text-[10px] text-slate-500 bg-slate-800 px-1 rounded">{t(`deviceType.${dev.type}`)}</span>)}</div><div className="flex items-center gap-2"><button onClick={() => dev.connected ? AstroService.disconnectIndiDevice(dev.name) : AstroService.connectIndiDevice(dev.name)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${dev.connected ? 'bg-green-600' : 'bg-slate-600'}`} title={dev.connected ? t('controlPanel.disconnect') : t('controlPanel.connect')}><span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ease-in-out ${dev.connected ? 'translate-x-5' : 'translate-x-1'}`} /></button>{!isAlpaca && (<button className="p-1 hover:bg-slate-600 rounded text-red-400 hover:text-red-200" title={t('tooltips.deviceSettings')} onClick={() => onOpenDeviceSettings(dev.type || 'Camera', dev.name)}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2-2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 0 2.83 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>)}</div></div>))}<div className="pt-2 text-center"><button onClick={() => AstroService.refreshIndiDevices()} className="text-[10px] text-slate-500 hover:text-slate-300 underline">{t('controlPanel.refreshDeviceList')}</button></div></div>
-                        )
-                    ) : (
-                        deviceTypes.map(device => (<div key={device} className="flex items-center justify-between p-2 bg-slate-800/60 rounded hover:bg-slate-700 transition-colors border border-transparent hover:border-red-900/30"><span className="text-sm text-slate-300">{t(`deviceType.${device}`)}</span><button onClick={() => onOpenDeviceSettings(device, device)} className="p-1 hover:bg-slate-600 rounded text-red-400 hover:text-red-300" title={t('tooltips.deviceSettings')}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2-2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 0 2.83 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button></div>))
-                    )}
-                </div><Button onClick={onDisconnect} variant="danger" className="w-full mt-4" title="Disconnect from all network devices."><DisconnectIcon className="w-5 h-5" /> {t('controlPanel.disconnect')}</Button></>
+            <><div className="space-y-1">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Device Controls</h3>
+                        <Button onClick={() => setShowAlpacaControlPanel(true)} variant="secondary" className="text-[10px] h-6 px-2">
+                            Alpaca Control Panel
+                        </Button>
+                    </div>
+                    <div className="space-y-2">{(alpacaDevices || []).map((dev) => (<div key={dev.uniqueId} className="flex items-center justify-between p-2 bg-slate-800/60 rounded border border-slate-700 hover:border-slate-600"><div className="flex items-center gap-2 overflow-hidden"><div className={`w-2 h-2 rounded-full ${dev.connected ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-slate-600'}`}></div><span className="text-sm text-slate-200 font-mono truncate" title={dev.deviceName}>{dev.deviceName}</span>{dev.deviceType && (<span className="text-[10px] text-slate-500 bg-slate-800 px-1 rounded">{dev.deviceType}</span>)}</div><div className="flex items-center gap-2"><button onClick={() => dev.connected ? AstroService.disconnectDevice(dev.deviceName) : AstroService.connectDevice(dev.deviceName)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${dev.connected ? 'bg-green-600' : 'bg-slate-600'}`} title={dev.connected ? t('controlPanel.disconnect') : t('controlPanel.connect')}><span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ease-in-out ${dev.connected ? 'translate-x-5' : 'translate-x-1'}`} /></button></div></div>))}</div>
+                </div>
+                <Button onClick={onDisconnect} variant="danger" className="w-full mt-4" title="Disconnect from all network devices."><DisconnectIcon className="w-5 h-5" /> {t('controlPanel.disconnect')}</Button>
+                
+                {showAlpacaControlPanel && (
+                    <AlpacaControlPanel 
+                        onClose={() => setShowAlpacaControlPanel(false)}
+                        host={connectionSettings?.host || ''}
+                        port={connectionSettings?.port || 11111}
+                    />
+                )}
+            </>
             )}
             {isDisconnected && (
-            <div className="space-y-2">{connectionStatus === 'Connecting' ? (<Button onClick={onAbortConnection} variant="danger" className="w-full animate-pulse"><CloseIcon className="w-5 h-5" /> {t('controlPanel.cancelConnection')}</Button>) : (<Button onClick={onConnect} className="w-full" title="Connect to the specified device server address."><ConnectIcon className="w-5 h-5" /> {t('controlPanel.connect')}</Button>)}</div>
+            <div className="space-y-2">{connectionStatus === 'Connecting' ? (<Button onClick={onAbortConnection} variant="danger" className="w-full animate-pulse"><CloseIcon className="w-5 h-5" /> {t('controlPanel.cancelConnection')}</Button>) : (<Button onClick={() => onConnect()} className="w-full" title="Connect to the specified device server address."><ConnectIcon className="w-5 h-5" /> {t('controlPanel.connect')}</Button>)}</div>
             )}
         </div>
         <LogViewer />
@@ -767,23 +736,23 @@ const EquipmentPanel = memo((props: any) => {
     );
 });
 
-export const ControlPanel: React.FC<any> = (props) => {
+export const ControlPanelAlpaca: React.FC<any> = (props) => {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<TabType>('equipment');
     const { mobileTab } = props;
-    const [indiDevices, setIndiDevices] = useState<INDIDevice[]>([]);
-    const [indiMessageCount, setIndiMessageCount] = useState(0);
+    const [alpacaDevices, setAlpacaDevices] = useState<any[]>([]);
+    const [alpacaMessageCount, setAlpacaMessageCount] = useState(0);
 
     useEffect(() => {
-        const updateDevices = (devs: INDIDevice[]) => setIndiDevices([...devs]);
-        const updateCount = (count: number) => setIndiMessageCount(count);
-        AstroService.setIndiDeviceCallback(updateDevices);
-        AstroService.setIndiMessageCountCallback(updateCount);
-        setIndiDevices(AstroService.getIndiDevices());
-        return () => { AstroService.setIndiDeviceCallback(null); AstroService.setIndiMessageCountCallback(null); };
+        const updateDevices = (devs: any[]) => setAlpacaDevices([...devs]);
+        const updateCount = (count: number) => setAlpacaMessageCount(count);
+        AstroService.setDeviceCallback(updateDevices);
+        AstroService.setMessageCountCallback(updateCount);
+        setAlpacaDevices(AstroService.getDevices());
+        return () => { AstroService.setDeviceCallback(null); AstroService.setMessageCountCallback(null); };
     }, []);
 
-    const passedProps = { ...props, indiDevices, indiMessageCount } as any;
+    const passedProps = { ...props, alpacaDevices, alpacaMessageCount } as any;
     
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
     const isLandscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerHeight < 600;

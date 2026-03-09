@@ -1,0 +1,121 @@
+
+/**
+ * AlpacaImageService
+ * ROLE: Handles binary image data from Alpaca cameras.
+ * Alpaca uses a specific binary format for imagearray and imagebytes.
+ */
+
+export interface AlpacaImageHeader {
+    metadataVersion: number;
+    errorNumber: number;
+    clientTransactionId: number;
+    serverTransactionId: number;
+    dataStart: number;
+    imageElementType: number;
+    transmissionElementType: number;
+    rank: number;
+    dimension1: number;
+    dimension2: number;
+    dimension3: number;
+}
+
+export class AlpacaImageService {
+    private static instance: AlpacaImageService;
+
+    public static getInstance() {
+        if (!AlpacaImageService.instance) AlpacaImageService.instance = new AlpacaImageService();
+        return AlpacaImageService.instance;
+    }
+
+    /**
+     * Parses the Alpaca binary image format.
+     * @param buffer The raw ArrayBuffer from the Alpaca server.
+     */
+    public parseBinaryImage(buffer: ArrayBuffer): { header: AlpacaImageHeader, data: Uint8Array | Int32Array | Float32Array } {
+        const view = new DataView(buffer);
+        
+        const header: AlpacaImageHeader = {
+            metadataVersion: view.getUint32(0, true),
+            errorNumber: view.getUint32(4, true),
+            clientTransactionId: view.getUint32(8, true),
+            serverTransactionId: view.getUint32(12, true),
+            dataStart: view.getUint32(16, true),
+            imageElementType: view.getInt32(20, true),
+            transmissionElementType: view.getInt32(24, true),
+            rank: view.getInt32(28, true),
+            dimension1: view.getInt32(32, true),
+            dimension2: view.getInt32(36, true),
+            dimension3: view.getInt32(40, true),
+        };
+
+        const dataOffset = header.dataStart;
+        const dataLength = buffer.byteLength - dataOffset;
+        
+        // Element Types: 1=Int16, 2=Int32, 3=Double, 4=Single, 5=Uint16, 6=Byte
+        let data: any;
+        switch (header.imageElementType) {
+            case 1: // Int16
+                data = new Int16Array(buffer, dataOffset, dataLength / 2);
+                break;
+            case 2: // Int32
+                data = new Int32Array(buffer, dataOffset, dataLength / 4);
+                break;
+            case 3: // Double
+                data = new Float64Array(buffer, dataOffset, dataLength / 8);
+                break;
+            case 4: // Single
+                data = new Float32Array(buffer, dataOffset, dataLength / 4);
+                break;
+            case 5: // Uint16
+                data = new Uint16Array(buffer, dataOffset, dataLength / 2);
+                break;
+            case 6: // Byte
+                data = new Uint8Array(buffer, dataOffset, dataLength);
+                break;
+            default:
+                data = new Uint8Array(buffer, dataOffset, dataLength);
+        }
+
+        return { header, data };
+    }
+
+    /**
+     * Converts the parsed Alpaca image data to a displayable format (Canvas/DataURL).
+     */
+    public async convertToDisplay(header: AlpacaImageHeader, data: any): Promise<string> {
+        const width = header.dimension1;
+        const height = header.dimension2;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Could not get canvas context');
+
+        const imageData = ctx.createImageData(width, height);
+        const pixels = imageData.data;
+
+        // Simple grayscale normalization for display
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] < min) min = data[i];
+            if (data[i] > max) max = data[i];
+        }
+
+        const range = max - min || 1;
+        for (let i = 0; i < data.length; i++) {
+            const val = ((data[i] - min) / range) * 255;
+            const idx = i * 4;
+            pixels[idx] = val;     // R
+            pixels[idx + 1] = val; // G
+            pixels[idx + 2] = val; // B
+            pixels[idx + 3] = 255; // A
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        return canvas.toDataURL('image/jpeg', 0.85);
+    }
+}
+
+export default AlpacaImageService.getInstance();

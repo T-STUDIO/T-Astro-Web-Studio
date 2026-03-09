@@ -4,6 +4,7 @@ export interface SimbadData {
     magnitude: string;
     ra: string;
     dec: string;
+    aliases?: string[];
 }
 
 const PROXY_BASE = "https://corsproxy.io/?";
@@ -204,11 +205,20 @@ export const fetchSimbadData = async (objectName: string, lang: 'en' | 'ja' = 'e
         const decSec = ((decAbs - decD) * 60 - decMin) * 60;
         const decStr = `${decSign}${decD}° ${decMin}′ ${decSec.toFixed(2)}″`;
 
+        // 3. Extract Aliases
+        const aliases: string[] = [];
+        const aliasTags = resolver.getElementsByTagName("alias");
+        for (let i = 0; i < aliasTags.length; i++) {
+            const a = aliasTags[i].textContent;
+            if (a && !aliases.includes(a)) aliases.push(a);
+        }
+
         return {
             type: mapSimbadTypes(otype || '', lang),
             magnitude: mag,
             ra: raStr,
-            dec: decStr
+            dec: decStr,
+            aliases: aliases.length > 0 ? aliases : undefined
         };
 
     } catch (e) {

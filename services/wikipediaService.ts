@@ -93,6 +93,38 @@ export const fetchWikiAstroData = async (objectName: string, lang: 'en' | 'ja' =
     }
 };
 
+export const fetchWikiSummary = async (objectName: string, lang: 'en' | 'ja' = 'en'): Promise<string | null> => {
+    try {
+        const searchName = objectName.split('(')[0].trim();
+        const endpoint = `https://${lang}.wikipedia.org/w/api.php`;
+
+        const params = new URLSearchParams({
+            action: 'query',
+            format: 'json',
+            prop: 'extracts',
+            exintro: '1',
+            explaintext: '1',
+            titles: searchName,
+            redirects: '1',
+            origin: '*'
+        });
+
+        const response = await fetch(`${endpoint}?${params.toString()}`);
+        const data = await response.json();
+        
+        const pages = data.query?.pages;
+        if (!pages) return null;
+        
+        const pageId = Object.keys(pages)[0];
+        if (pageId === '-1') return null;
+        
+        return pages[pageId].extract || null;
+    } catch (e) {
+        console.warn("Wikipedia summary fetch failed:", e);
+        return null;
+    }
+};
+
 const cleanWikiText = (text: string): string => {
     if (!text) return '';
     let clean = text;

@@ -1,0 +1,204 @@
+
+import { ConnectionSettings, INDIDevice, INDIVector, DeviceType } from '../types';
+
+/**
+ * AlpacaClientService
+ * ROLE: Client-side implementation to connect to external ASCOM Alpaca devices.
+ * This service handles REST API communication with Alpaca servers.
+ */
+
+export interface AlpacaDevice {
+    deviceName: string;
+    deviceType: string;
+    deviceNumber: number;
+    uniqueId: string;
+    properties?: Map<string, any>;
+}
+
+export class AlpacaClientService {
+    private static instance: AlpacaClientService;
+    private baseUrl: string = '';
+    private clientTransactionId: number = 0;
+    private devices: AlpacaDevice[] = [];
+    private pollInterval: any = null;
+    private onDeviceListUpdate: ((devices: AlpacaDevice[]) => void) | null = null;
+
+    public static getInstance() {
+        if (!AlpacaClientService.instance) AlpacaClientService.instance = new AlpacaClientService();
+        return AlpacaClientService.instance;
+    }
+
+    private getNextId() {
+        return ++this.clientTransactionId;
+    }
+
+    public async connect(settings: ConnectionSettings): Promise<boolean> {
+        this.baseUrl = `http://${settings.host}:${settings.port}/api/v1`;
+        try {
+            const response = await fetch(`http://${settings.host}:${settings.port}/management/v1/configureddevices`);
+            if (!response.ok) throw new Error('Failed to fetch configured devices');
+            
+            const data = await response.json();
+            this.devices = data.Value || [];
+            console.log(`[AlpacaClient] Connected to ${settings.host}. Found ${this.devices.length} devices.`);
+            
+            this.startPolling();
+            return true;
+        } catch (error) {
+            console.error('[AlpacaClient] Connection error:', error);
+            return false;
+        }
+    }
+
+    public disconnect() {
+        this.stopPolling();
+        this.devices = [];
+        this.baseUrl = '';
+    }
+
+    public getConfiguredDevices(): AlpacaDevice[] {
+        return this.devices;
+    }
+
+    public setDeviceUpdateCallback(cb: (devices: AlpacaDevice[]) => void) {
+        this.onDeviceListUpdate = cb;
+    }
+
+    private startPolling() {
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        this.pollInterval = setInterval(() => this.pollStatus(), 2000);
+    }
+
+    private stopPolling() {
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
+    }
+
+    private async pollStatus() {
+        if (!this.baseUrl) return;
+        
+        let changed = false;
+        const newDevices = [...this.devices];
+
+        for (let i = 0; i < newDevices.length; i++) {
+            const dev = newDevices[i];
+            try {
+                const res = await this.getCommand(dev.deviceType, dev.deviceNumber, 'Connected');
+                if (res && res.ErrorNumber === 0) {
+                    const isConnected = !!res.Value;
+                    if ((dev as any).connected !== isConnected) {
+                        (newDevices[i] as any).connected = isConnected;
+                        changed = true;
+                    }
+                }
+            } catch (e) {
+                if ((newDevices[i] as any).connected !== false) {
+                    (newDevices[i] as any).connected = false;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            this.devices = newDevices;
+            if (this.onDeviceListUpdate) this.onDeviceListUpdate(this.devices);
+        }
+    }
+
+    public async setDeviceConnected(deviceType: string, deviceNumber: number, connected: boolean): Promise<boolean> {
+        const res = await this.putCommand(deviceType, deviceNumber, 'Connected', { Connected: connected });
+        if (res && res.ErrorNumber === 0) {
+            await this.pollStatus(); // Immediate refresh
+            return true;
+        }
+        return false;
+    }
+
+    public async putCommand(deviceType: string, deviceNumber: number, action: string, params: Record<string, any> = {}) {
+        if (!this.baseUrl) return null;
+        
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}`;
+        const bodyParams = new URLSearchParams();
+        bodyParams.append('ClientTransactionID', this.getNextId().toString());
+        for (const [key, value] of Object.entries(params)) {
+            bodyParams.append(key, value.toString());
+        }
+
+        try {
+            // Try direct fetch first
+            const response = await fetch('/api/alpaca/proxy', {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'x-target-url': targetUrl
+                },
+                body: bodyParams
+            });
+            return await response.json();
+        } catch (error) {
+            console.error(`[AlpacaClient] Proxy command ${action} failed:`, error);
+            return null;
+        }
+    }
+
+    public async getCommand(deviceType: string, deviceNumber: number, action: string, params: Record<string, any> = {}) {
+        if (!this.baseUrl) return null;
+
+        const query = new URLSearchParams(params);
+        query.append('ClientTransactionID', this.getNextId().toString());
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}?${query.toString()}`;
+
+        try {
+            const response = await fetch('/api/alpaca/proxy', {
+                headers: {
+                    'x-target-url': targetUrl
+                }
+            });
+            return await response.json();
+        } catch (error) {
+            console.error(`[AlpacaClient] Proxy query ${action} failed:`, error);
+            return null;
+        }
+    }
+
+    public async getDeviceStatus(deviceType: string, deviceNumber: number) {
+        if (!this.baseUrl) return null;
+        // Standard Alpaca status is often spread across multiple calls
+        // For a generic control panel, we might want to fetch common properties
+        const commonProps = ['Connected', 'Name', 'Description', 'DriverInfo', 'DriverVersion', 'InterfaceVersion'];
+        const results: Record<string, any> = {};
+        
+        for (const prop of commonProps) {
+            const res = await this.getCommand(deviceType, deviceNumber, prop);
+            if (res && res.ErrorNumber === 0) {
+                results[prop] = res.Value;
+            }
+        }
+        return results;
+    }
+
+    public async getTelescopeStatus(deviceNumber: number) {
+        const props = ['AtHome', 'AtPark', 'Azimuth', 'CanSetDeclinationRate', 'CanSetGuideRate', 'CanSetPark', 'CanSetRightAscensionRate', 'CanSetTracking', 'CanSlew', 'CanSlewAsync', 'CanSync', 'Declination', 'RightAscension', 'Slewing', 'Tracking'];
+        const results: Record<string, any> = {};
+        for (const prop of props) {
+            const res = await this.getCommand('Telescope', deviceNumber, prop);
+            if (res && res.ErrorNumber === 0) results[prop] = res.Value;
+        }
+        return results;
+    }
+
+    public async getCameraStatus(deviceNumber: number) {
+        const props = ['CameraState', 'CCDTemperature', 'CanAbortExposure', 'CanAsymmetricBin', 'CanGetCCDTemperature', 'CanSetCCDTemperature', 'CanStopExposure', 'CoolerOn', 'ExposureMax', 'ExposureMin', 'ExposureResolution', 'ImageReady', 'PixelSizeX', 'PixelSizeY'];
+        const results: Record<string, any> = {};
+        for (const prop of props) {
+            const res = await this.getCommand('Camera', deviceNumber, prop);
+            if (res && res.ErrorNumber === 0) results[prop] = res.Value;
+        }
+        return results;
+    }
+}
+
+export const alpacaClient = AlpacaClientService.getInstance();
+export default alpacaClient;

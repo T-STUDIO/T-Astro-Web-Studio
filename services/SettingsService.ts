@@ -1,5 +1,6 @@
 
-import { ConnectionSettings, PlanetariumSettings, LocationData, SavedLocation, SavedConnection, SavedApiKey, SampSettings, SavedSampSettings, PlateSolverType, LocalSolverSettings, SavedLocalSolver } from '../types';
+import { ConnectionSettings, PlanetariumSettings, LocationData, SavedLocation, SavedConnection, SavedApiKey, SampSettings, SavedSampSettings, PlateSolverType, LocalSolverSettings, SavedLocalSolver, SimulatorSettings } from '../types';
+import { DEFAULT_SIMULATOR_SETTINGS } from './SimulatorService';
 
 const STORAGE_KEY = 't_astro_settings_v3';
 
@@ -23,12 +24,13 @@ export interface AppSettings {
     savedApiKeys: SavedApiKey[];
     savedLocalSolvers: SavedLocalSolver[];
     savedSampSettings: SavedSampSettings[]; 
+    simulatorSettings: SimulatorSettings;
     lastSaveTimestamp: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
     connectionSettings: {
-        driver: 'Simulator',
+        driver: 'INDI',
         host: 'localhost',
         port: 7624,
         serverType: 'local'
@@ -74,6 +76,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     savedApiKeys: [],
     savedLocalSolvers: [],
     savedSampSettings: [],
+    simulatorSettings: DEFAULT_SIMULATOR_SETTINGS,
     lastSaveTimestamp: new Date().toISOString()
 };
 
@@ -89,6 +92,7 @@ export const loadSettings = (): AppSettings => {
                 planetariumSettings: { ...DEFAULT_SETTINGS.planetariumSettings, ...parsed.planetariumSettings },
                 connectionSettings: { ...DEFAULT_SETTINGS.connectionSettings, ...parsed.connectionSettings },
                 localSolverSettings: { ...DEFAULT_SETTINGS.localSolverSettings, ...parsed.localSolverSettings },
+                simulatorSettings: { ...DEFAULT_SETTINGS.simulatorSettings, ...parsed.simulatorSettings },
                 savedSampSettings: Array.isArray(parsed.savedSampSettings) ? parsed.savedSampSettings : [],
                 savedLocalSolvers: Array.isArray(parsed.savedLocalSolvers) ? parsed.savedLocalSolvers : []
             };

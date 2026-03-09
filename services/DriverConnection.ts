@@ -86,20 +86,28 @@ let activeDebayerPattern = 'Auto';
 let activeCameraParams = { width: 0, height: 0, bpp: 8, format: '', pixelSize: 0 };
 let updateTimeout: any = null;
 const UPDATE_INTERVAL_MS = 100; 
-let alpacaPollInterval: any = null;
 
-const mockMount = {
-    connected: false,
-    connect: () => { mockMount.connected = true; log('[Simulator] Connected'); },
-    disconnect: () => { mockMount.connected = false; log('[Simulator] Disconnected'); },
-    sync: (ra: number, dec: number) => { log(`[Simulator] Slew to RA:${ra.toFixed(2)} Dec:${dec.toFixed(2)}`); },
-    setLocation: (lat: number, lon: number, elev: number) => { 
-        log(`[Simulator] Location set: ${lat}, ${lon}`);
-        if(onMountLocationUpdate) onMountLocationUpdate({latitude: lat, longitude: lon, elevation: elev});
-    }
+import { AstroSimulatorService } from './AstroSimulatorService';
+import * as AstroServiceSimulator from './AstroServiceSimulator';
+
+export const getSimulatorMock = () => {
+    const sim = AstroSimulatorService.getInstance();
+    const state = sim.getState();
+    return {
+        connected: state.mount.connected || state.camera.connected,
+        setLocation: (lat: number, lon: number, elev: number) => {
+            // Simulator doesn't strictly track location yet, but we can store it if needed
+            console.log(`[Simulator] Location set to ${lat}, ${lon}, ${elev}`);
+        },
+        sync: (ra: number, dec: number) => {
+            sim.syncTo(ra, dec);
+        },
+        slew: (ra: number, dec: number) => {
+            sim.slewTo(ra, dec);
+        }
+    };
 };
 
-export const getSimulatorMock = () => mockMount;
 export const getActiveMount = () => activeMountDevice;
 export const getActiveCamera = () => activeCameraDevice;
 export const getActiveFocuser = () => activeFocuserDevice;
@@ -107,16 +115,26 @@ export const getIndiDevices = () => Array.from(discoveredIndiDevices.values());
 export const getActiveCameraParams = () => activeCameraParams;
 
 export const getDeviceProperties = (devName: string): INDIVector[] => {
+    if (currentSettings.driver === 'Simulator') {
+        return AstroServiceSimulator.getDeviceProperties(devName);
+    }
     const dev = discoveredIndiDevices.get(devName);
     return dev ? Array.from(dev.properties.values()) : [];
 };
 
 export const hasProperty = (dev: string, prop: string): boolean => {
+    if (currentSettings.driver === 'Simulator') {
+        const props = AstroServiceSimulator.getDeviceProperties(dev);
+        return props.some(p => p.name === prop);
+    }
     const d = discoveredIndiDevices.get(dev);
     return !!d && d.properties.has(prop);
 };
 
 export const getNumericValue = (dev: string, prop: string, element: string): number | null => {
+    if (currentSettings.driver === 'Simulator') {
+        return AstroServiceSimulator.getNumericValue(dev, prop, element);
+    }
     const d = discoveredIndiDevices.get(dev);
     if (!d) return null;
     const vec = d.properties.get(prop);
@@ -172,10 +190,6 @@ const getAttr = (xml: string, attr: string): string | null => {
 export const diagnoseConnection = async (host: string, port: number, driver: string): Promise<string[]> => {
     const logs: string[] = [];
     logs.push(`Starting diagnosis for ${driver} at ${host}:${port}...`);
-    if (driver === 'Simulator') {
-        logs.push("✅ Simulator is internal (Browser-side). Connection OK.");
-        return logs;
-    }
     if (driver === 'INDI') {
         try {
             logs.push(`ℹ️ Attempting WebSocket connection to ws://${host}:${port}/...`);
@@ -211,12 +225,21 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
     disconnect(); 
 
     if (settings.driver === 'Simulator') {
-        mockMount.connect();
-        return true;
-    }
-
-    if (settings.driver === 'Alpaca') {
-        return connectAlpaca(settings);
+        const ok = await AstroServiceSimulator.connect(settings);
+        if (ok) {
+            AstroServiceSimulator.getIndiDevices().forEach(dev => {
+                discoveredIndiDevices.set(dev.name, dev);
+            });
+            activeCameraDevice = AstroServiceSimulator.getActiveCamera();
+            activeFocuserDevice = AstroServiceSimulator.getActiveFocuser();
+            activeMountDevice = 'Simulator Mount';
+            
+            AstroServiceSimulator.setImageReceivedCallback(triggerExternalImageReceived);
+            AstroServiceSimulator.setTelescopePositionCallback((pos) => {
+                if (onTelescopePositionUpdate) onTelescopePositionUpdate(pos);
+            });
+        }
+        return ok;
     }
 
     if (settings.driver === 'INDI') {
@@ -291,7 +314,6 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
 };
 
 export const disconnect = async () => {
-    mockMount.disconnect();
     if (socket) {
         socket.onopen = null;
         socket.onmessage = null;
@@ -299,10 +321,6 @@ export const disconnect = async () => {
         socket.onclose = null;
         socket.close();
         socket = null;
-    }
-    if (alpacaPollInterval) {
-        clearInterval(alpacaPollInterval);
-        alpacaPollInterval = null;
     }
     cleanup();
 };
@@ -334,18 +352,30 @@ export const clearBuffer = () => {
 };
 
 export const connectIndiDevice = (devName: string) => {
+    if (currentSettings.driver === 'Simulator') {
+        AstroServiceSimulator.connectDevice(devName);
+        return;
+    }
     const d = discoveredIndiDevices.get(devName);
     if (!d) return;
     sendRaw(`<newSwitchVector device='${devName}' name='CONNECTION'><oneSwitch name='CONNECT'>On</oneSwitch></newSwitchVector>`);
 };
 
 export const disconnectIndiDevice = (devName: string) => {
+    if (currentSettings.driver === 'Simulator') {
+        AstroServiceSimulator.disconnectDevice(devName);
+        return;
+    }
     const d = discoveredIndiDevices.get(devName);
     if (!d) return;
     sendRaw(`<newSwitchVector device='${devName}' name='CONNECTION'><oneSwitch name='DISCONNECT'>On</oneSwitch></newSwitchVector>`);
 };
 
 export const refreshIndiDevices = () => {
+    if (currentSettings.driver === 'Simulator') {
+        AstroServiceSimulator.refreshDevices();
+        return;
+    }
     sendRaw('<getProperties version="1.7" />');
 };
 
@@ -534,8 +564,9 @@ export const injectIndiValue = (device: string, vector: string, element: string,
 };
 
 export const updateDeviceSetting = (dev: string, prop: string, val: any) => {
-    if (currentSettings.driver === 'Alpaca') {
-        handleAlpacaCommand(dev, prop, val); return;
+    if (currentSettings.driver === 'Simulator') {
+        AstroServiceSimulator.updateDeviceSetting(dev, prop, val);
+        return;
     }
     const d = discoveredIndiDevices.get(dev);
     if (!d) return;
@@ -775,8 +806,6 @@ const scheduleUpdate = () => {
 };
 
 export const triggerImageUpdate = (url: string, format: string) => { if (onImageReceived) onImageReceived(url, format); };
-const connectAlpaca = async (settings: ConnectionSettings): Promise<boolean> => { console.log("[Alpaca] Connect not implemented yet (Stub)."); return false; };
-const handleAlpacaCommand = (dev: string, prop: string, val: any) => { console.log(`[Alpaca] Command: ${dev}.${prop} = ${JSON.stringify(val)}`); };
 
 function isBase64(u8: Uint8Array) {
     let start = 0;

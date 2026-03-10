@@ -17,8 +17,16 @@ export const setTelescopePositionCallback = (cb: typeof telescopePositionCallbac
 
 // Mock other callbacks for compatibility
 export const setLogCallback = (cb: any) => {};
-export const setDeviceCallback = (cb: any) => {};
-export const setMessageCountCallback = (cb: any) => {};
+let deviceCallback: ((devices: any[]) => void) | null = null;
+let messageCountCallback: ((count: number) => void) | null = null;
+
+export const setDeviceCallback = (cb: any) => {
+    deviceCallback = cb;
+};
+export const setMessageCountCallback = (cb: any) => {
+    messageCountCallback = cb;
+    alpacaClient.setMessageCountCallback(cb);
+};
 export const setFocuserUpdateCallback = (cb: any) => {};
 export const setMountLocationCallback = (cb: any) => {};
 export const setMountTimeCallback = (cb: any) => {};
@@ -27,8 +35,20 @@ export const setMountTimeCallback = (cb: any) => {};
 export const setIndiDeviceCallback = setDeviceCallback;
 export const setIndiMessageCountCallback = setMessageCountCallback;
 
+let debugLogs: string[] = [];
+
+const addDebugLog = (msg: string) => {
+    const time = new Date().toLocaleTimeString();
+    debugLogs.push(`[${time}] ${msg}`);
+    if (debugLogs.length > 500) debugLogs.shift();
+};
+
 export const connect = async (settings: any): Promise<boolean> => {
-    return await alpacaClient.connect(settings);
+    addDebugLog(`Connecting to Alpaca at ${settings.host}:${settings.port}...`);
+    const ok = await alpacaClient.connect(settings);
+    if (ok) addDebugLog(`Connected successfully.`);
+    else addDebugLog(`Connection failed.`);
+    return ok;
 };
 
 export const disconnect = async () => {
@@ -155,7 +175,7 @@ export const getDevices = (): any[] => {
 
 // Initialize callback for device updates
 alpacaClient.setDeviceUpdateCallback((devs) => {
-    if (setDeviceCallback) {
+    if (deviceCallback) {
         const formatted = devs.map(d => ({
             deviceName: d.deviceName,
             deviceType: d.deviceType as any,
@@ -163,13 +183,49 @@ alpacaClient.setDeviceUpdateCallback((devs) => {
             connected: (d as any).connected || false,
             properties: new Map()
         }));
-        (setDeviceCallback as any)(formatted);
+        deviceCallback(formatted);
     }
 });
 export const getCameraParams = () => ({});
 export const sendRaw = (xml: string) => {};
-export const diagnoseConnection = async (host: string, port: number, driver: string) => ({ status: 'ok' });
-export const getDebugLogs = () => [];
+export const diagnoseConnection = async (host: string, port: number, driver: string) => {
+    const results: string[] = [];
+    results.push(`Starting diagnostics for ${driver} at ${host}:${port}...`);
+    
+    try {
+        results.push(`Checking network connectivity to proxy...`);
+        const proxyCheck = await fetch('/api/alpaca/discover');
+        if (proxyCheck.ok) results.push(`✅ Proxy server is reachable.`);
+        else results.push(`❌ Proxy server returned error: ${proxyCheck.status}`);
+
+        results.push(`Attempting to fetch configured devices via proxy...`);
+        const targetUrl = `http://${host}:${port}/management/v1/configureddevices`;
+        const response = await fetch('/api/alpaca/proxy', {
+            headers: { 'x-target-url': targetUrl }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            results.push(`✅ Successfully reached Alpaca server.`);
+            if (data.Value) {
+                results.push(`✅ Found ${data.Value.length} devices.`);
+                data.Value.forEach((d: any) => {
+                    results.push(`  - ${d.DeviceName} (${d.DeviceType} #${d.DeviceNumber})`);
+                });
+            }
+        } else {
+            results.push(`❌ Failed to reach Alpaca server via proxy. Status: ${response.status}`);
+            const errorData = await response.json().catch(() => ({}));
+            if (errorData.ErrorMessage) results.push(`  Error: ${errorData.ErrorMessage}`);
+        }
+    } catch (e: any) {
+        results.push(`❌ Diagnostics failed with error: ${e.message}`);
+    }
+    
+    return results;
+};
+
+export const getDebugLogs = () => debugLogs;
 
 // Compatibility aliases
 export const connectIndiDevice = connectDevice;

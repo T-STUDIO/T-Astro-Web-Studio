@@ -22,6 +22,7 @@ export class AlpacaClientService {
     private devices: AlpacaDevice[] = [];
     private pollInterval: any = null;
     private onDeviceListUpdate: ((devices: AlpacaDevice[]) => void) | null = null;
+    private onMessageCountUpdate: ((count: number) => void) | null = null;
 
     public static getInstance() {
         if (!AlpacaClientService.instance) AlpacaClientService.instance = new AlpacaClientService();
@@ -29,18 +30,23 @@ export class AlpacaClientService {
     }
 
     private getNextId() {
-        return ++this.clientTransactionId;
+        const id = ++this.clientTransactionId;
+        if (this.onMessageCountUpdate) this.onMessageCountUpdate(id);
+        return id;
     }
 
     public async connect(settings: ConnectionSettings): Promise<boolean> {
         this.baseUrl = `http://${settings.host}:${settings.port}/api/v1`;
+        const targetUrl = `http://${settings.host}:${settings.port}/management/v1/configureddevices`;
         try {
-            const response = await fetch(`http://${settings.host}:${settings.port}/management/v1/configureddevices`);
-            if (!response.ok) throw new Error('Failed to fetch configured devices');
+            const response = await fetch('/api/alpaca/proxy', {
+                headers: { 'x-target-url': targetUrl }
+            });
+            if (!response.ok) throw new Error(`Failed to fetch configured devices: ${response.status}`);
             
             const data = await response.json();
             this.devices = data.Value || [];
-            console.log(`[AlpacaClient] Connected to ${settings.host}. Found ${this.devices.length} devices.`);
+            console.log(`[AlpacaClient] Connected to ${settings.host} via proxy. Found ${this.devices.length} devices.`);
             
             this.startPolling();
             return true;
@@ -62,6 +68,10 @@ export class AlpacaClientService {
 
     public setDeviceUpdateCallback(cb: (devices: AlpacaDevice[]) => void) {
         this.onDeviceListUpdate = cb;
+    }
+
+    public setMessageCountCallback(cb: (count: number) => void) {
+        this.onMessageCountUpdate = cb;
     }
 
     private startPolling() {
@@ -136,7 +146,14 @@ export class AlpacaClientService {
                 },
                 body: bodyParams
             });
-            return await response.json();
+            
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return await response.json();
+            } else {
+                const text = await response.text();
+                return { ErrorNumber: response.status, ErrorMessage: text };
+            }
         } catch (error) {
             console.error(`[AlpacaClient] Proxy command ${action} failed:`, error);
             return null;
@@ -156,7 +173,14 @@ export class AlpacaClientService {
                     'x-target-url': targetUrl
                 }
             });
-            return await response.json();
+            
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return await response.json();
+            } else {
+                const text = await response.text();
+                return { ErrorNumber: response.status, ErrorMessage: text };
+            }
         } catch (error) {
             console.error(`[AlpacaClient] Proxy query ${action} failed:`, error);
             return null;

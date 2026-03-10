@@ -10,6 +10,8 @@ let deviceCallback: ((devs: INDIDevice[]) => void) | null = null;
 let messageCountCallback: ((count: number) => void) | null = null;
 let messageCount = 0;
 
+let lastImageReceived: string | null = null;
+
 export const setImageReceivedCallback = (cb: typeof imageReceivedCallback) => {
     imageReceivedCallback = cb;
 };
@@ -51,7 +53,8 @@ export const connect = async (settings: any): Promise<boolean> => {
             if (telescopePositionCallback) {
                 telescopePositionCallback({ ra: state.mount.ra, dec: state.mount.dec });
             }
-            if (state.camera.lastImage && imageReceivedCallback) {
+            if (state.camera.lastImage && imageReceivedCallback && state.camera.lastImage !== lastImageReceived) {
+                lastImageReceived = state.camera.lastImage;
                 imageReceivedCallback(state.camera.lastImage, 'image/jpeg', {});
             }
         });

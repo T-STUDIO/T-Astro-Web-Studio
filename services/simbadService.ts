@@ -148,13 +148,11 @@ export const fetchSimbadData = async (objectName: string, lang: 'en' | 'ja' = 'e
         let mag = '';
         
         // STRICT REQUIREMENT: Only Visual Magnitude (V)
-        // Check case-insensitive 'V', 'v', 'Visual'
         const isVisual = (val: string | null) => {
             if (!val) return false;
             return val.trim().toUpperCase() === 'V';
         };
 
-        // 1. Check <mag> tags
         const mags = resolver.getElementsByTagName("mag");
         for (let i = 0; i < mags.length; i++) {
             const el = mags[i];
@@ -165,13 +163,11 @@ export const fetchSimbadData = async (objectName: string, lang: 'en' | 'ja' = 'e
             }
         }
 
-        // 2. Check <flux> tags (fallback if not in <mag> but still V band)
         if (!mag) {
             const fluxes = resolver.getElementsByTagName("flux");
             for (let i = 0; i < fluxes.length; i++) {
                 const el = fluxes[i];
                 const unit = el.getAttribute("unit");
-                // Filters often look like 'V' or 'B' or 'J'. Sometimes 'band' attr is used instead of filter.
                 const filter = el.getAttribute("filter") || el.getAttribute("band");
                 
                 if (unit === 'mag' && isVisual(filter)) {
@@ -181,7 +177,6 @@ export const fetchSimbadData = async (objectName: string, lang: 'en' | 'ja' = 'e
             }
         }
         
-        // Clean magnitude string (remove brackets, <, >, whitespace)
         if (mag) {
             mag = mag.replace(/[<>~]/g, '').trim();
         }
@@ -205,12 +200,12 @@ export const fetchSimbadData = async (objectName: string, lang: 'en' | 'ja' = 'e
         const decSec = ((decAbs - decD) * 60 - decMin) * 60;
         const decStr = `${decSign}${decD}° ${decMin}′ ${decSec.toFixed(2)}″`;
 
-        // 3. Extract Aliases
-        const aliases: string[] = [];
+        // Parse aliases
         const aliasTags = resolver.getElementsByTagName("alias");
+        const aliases: string[] = [];
         for (let i = 0; i < aliasTags.length; i++) {
             const a = aliasTags[i].textContent;
-            if (a && !aliases.includes(a)) aliases.push(a);
+            if (a) aliases.push(a);
         }
 
         return {

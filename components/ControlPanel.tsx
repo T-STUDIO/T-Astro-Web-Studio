@@ -699,23 +699,10 @@ const EquipmentPanel = memo((props: any) => {
         <div className="space-y-3 mt-6">
             <div className="flex justify-between items-center border-b border-red-900/50 pb-2"><h2 className="text-lg font-semibold text-red-400">{t('controlPanel.equipment')}</h2><button onClick={onShowDiagnostics} className="text-[10px] text-slate-400 underline hover:text-red-400">Diagnosis</button></div>
             <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700"><ConnectionStatusIndicator status={connectionStatus} labels={equipmentStatusLabels} />{isConnected && (<p className="text-xs text-slate-400 mt-1 font-mono">{t('status.connectedTo', { driver: connectionSettings?.driver, host: connectionSettings?.host, port: connectionSettings?.port })}</p>)}</div>
-            {isDisconnected && (
-            <div className="space-y-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
-                <h3 className="text-sm font-semibold text-slate-300">{t('controlPanel.connectionSettings')}</h3>
-                {isNamingConnection ? (
-                    <div className="flex gap-2 mb-2 items-center"><input type="text" value={newConnectionName} onChange={(e) => setNewConnectionName(e.target.value)} placeholder={t('controlPanel.connectionProfiles.enterName')} className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500 select-text" autoFocus /><button onClick={() => { if(newConnectionName.trim()) { onSaveConnection(newConnectionName.trim(), { ...connectionSettings }); setSelectedConnectionIndex(String(savedConnections.length)); setIsNamingConnection(false); } }} className="bg-green-700 hover:bg-green-600 text-white p-1 rounded border border-green-600"><span className="text-xs font-bold px-1">{t('common.ok')}</span></button><button onClick={() => setIsNamingConnection(false)} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600"><CloseIcon className="w-4 h-4" /></button></div>
-                ) : (
-                    <div className="flex gap-2 mb-2 items-center"><select className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500" value={selectedConnectionIndex} onChange={(e) => {
-                        const idx = parseInt(e.target.value);
-                        setSelectedConnectionIndex(e.target.value);
-                        if (!isNaN(idx) && savedConnections[idx]) onSettingsChange(savedConnections[idx].settings);
-                    }}><option value="" disabled>{t('controlPanel.connectionProfiles.select')}</option>{savedConnections.map((conn: any, i: number) => (<option key={i} value={String(i)}>{conn.name}</option>))}</select>
-                    {selectedConnectionIndex !== "" && onUpdateSavedConnection && (
-                        <button onClick={() => onUpdateSavedConnection(Number(selectedConnectionIndex), {...connectionSettings})} className="bg-blue-800 hover:bg-blue-700 text-white p-1 rounded border border-blue-700" title={t('controlPanel.connectionProfiles.overwrite')}><SaveIcon className="w-4 h-4" /></button>
-                    )}
-                    <button onClick={() => { setNewConnectionName(''); setIsNamingConnection(true); }} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600" title={t('controlPanel.connectionProfiles.saveCurrent')}><PlusIcon className="w-4 h-4" /></button>{selectedConnectionIndex !== "" && (<button onClick={() => { onDeleteConnection(Number(selectedConnectionIndex)); setSelectedConnectionIndex(""); }} className="bg-red-900/50 hover:bg-red-800 text-white p-1 rounded border border-red-800" title={t('controlPanel.deleteSelected')}><TrashIcon className="w-4 h-4" /></button>)}</div>
-                )}
-                <div><label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label><select id="driver-type" value={connectionSettings?.driver || 'INDI'} onChange={(e) => { 
+            
+            <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700">
+                <label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label>
+                <select id="driver-type" value={connectionSettings?.driver || 'INDI'} onChange={(e) => { 
                     const newDriver = e.target.value as any; 
                     console.log(`[ControlPanel] Switching to: ${newDriver}`);
                     
@@ -736,7 +723,29 @@ const EquipmentPanel = memo((props: any) => {
                         'Simulator': '/simulator.html'
                     };
                     window.location.href = pageMap[newDriver] || '/index.html';
-                }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}><option value="Simulator">Simulator</option><option value="INDI">INDI</option><option value="Alpaca">Alpaca</option></select></div>
+                }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
+                    <option value="Simulator">Simulator</option>
+                    <option value="INDI">INDI</option>
+                    <option value="Alpaca">Alpaca</option>
+                </select>
+            </div>
+
+            {isDisconnected && (
+            <div className="space-y-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
+                <h3 className="text-sm font-semibold text-slate-300">{t('controlPanel.connectionSettings')}</h3>
+                {isNamingConnection ? (
+                    <div className="flex gap-2 mb-2 items-center"><input type="text" value={newConnectionName} onChange={(e) => setNewConnectionName(e.target.value)} placeholder={t('controlPanel.connectionProfiles.enterName')} className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500 select-text" autoFocus /><button onClick={() => { if(newConnectionName.trim()) { onSaveConnection(newConnectionName.trim(), { ...connectionSettings }); setSelectedConnectionIndex(String(savedConnections.length)); setIsNamingConnection(false); } }} className="bg-green-700 hover:bg-green-600 text-white p-1 rounded border border-green-600"><span className="text-xs font-bold px-1">{t('common.ok')}</span></button><button onClick={() => setIsNamingConnection(false)} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600"><CloseIcon className="w-4 h-4" /></button></div>
+                ) : (
+                    <div className="flex gap-2 mb-2 items-center"><select className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500" value={selectedConnectionIndex} onChange={(e) => {
+                        const idx = parseInt(e.target.value);
+                        setSelectedConnectionIndex(e.target.value);
+                        if (!isNaN(idx) && savedConnections[idx]) onSettingsChange(savedConnections[idx].settings);
+                    }}><option value="" disabled>{t('controlPanel.connectionProfiles.select')}</option>{savedConnections.map((conn: any, i: number) => (<option key={i} value={String(i)}>{conn.name}</option>))}</select>
+                    {selectedConnectionIndex !== "" && onUpdateSavedConnection && (
+                        <button onClick={() => onUpdateSavedConnection(Number(selectedConnectionIndex), {...connectionSettings})} className="bg-blue-800 hover:bg-blue-700 text-white p-1 rounded border border-blue-700" title={t('controlPanel.connectionProfiles.overwrite')}><SaveIcon className="w-4 h-4" /></button>
+                    )}
+                    <button onClick={() => { setNewConnectionName(''); setIsNamingConnection(true); }} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600" title={t('controlPanel.connectionProfiles.saveCurrent')}><PlusIcon className="w-4 h-4" /></button>{selectedConnectionIndex !== "" && (<button onClick={() => { onDeleteConnection(Number(selectedConnectionIndex)); setSelectedConnectionIndex(""); }} className="bg-red-900/50 hover:bg-red-800 text-white p-1 rounded border border-red-800" title={t('controlPanel.deleteSelected')}><TrashIcon className="w-4 h-4" /></button>)}</div>
+                )}
                 {connectionSettings?.driver === 'INDI' && (
                     <div><label className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.serverType')}</label><div className="flex gap-4"><label className="flex items-center space-x-2 cursor-pointer"><input type="radio" checked={connectionSettings.serverType === 'local'} onChange={() => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, serverType: 'local' }); }} className="text-red-500 focus:ring-red-500 bg-slate-700 border-slate-600" /><span className="text-sm text-slate-300">{t('controlPanel.local')}</span></label><label className="flex items-center space-x-2 cursor-pointer"><input type="radio" checked={connectionSettings.serverType === 'remote'} onChange={() => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, serverType: 'remote' }); }} className="text-red-500 focus:ring-red-500 bg-slate-700 border-slate-600" /><span className="text-sm text-slate-300">{t('controlPanel.remote')}</span></label></div></div>
                 )}

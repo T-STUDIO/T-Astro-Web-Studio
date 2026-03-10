@@ -637,40 +637,41 @@ const EquipmentPanel = memo((props: any) => {
         <div className="space-y-3 mt-6">
             <div className="flex justify-between items-center border-b border-red-900/50 pb-2"><h2 className="text-lg font-semibold text-red-400">{t('controlPanel.equipment')}</h2><button onClick={onShowDiagnostics} className="text-[10px] text-slate-400 underline hover:text-red-400">Diagnosis</button></div>
             <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700"><ConnectionStatusIndicator status={connectionStatus} labels={equipmentStatusLabels} />{isConnected && (<p className="text-xs text-slate-400 mt-1 font-mono">{t('status.connectedTo', { driver: 'Alpaca', host: connectionSettings?.host, port: connectionSettings?.port })}</p>)}</div>
+            
+            <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700">
+                <label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label>
+                <select id="driver-type" value={connectionSettings?.driver || 'Alpaca'} onChange={(e) => { 
+                    const newDriver = e.target.value as any; 
+                    console.log(`[ControlPanelAlpaca] Switching to: ${newDriver}`);
+                    
+                    // Save driver setting before navigating
+                    const settings = SettingsService.loadSettings();
+                    SettingsService.saveSettings({
+                        ...settings,
+                        connectionSettings: {
+                            ...settings.connectionSettings,
+                            driver: newDriver
+                        }
+                    });
+
+                    // Navigate to the correct page for the driver
+                    const pageMap: Record<string, string> = {
+                        'INDI': '/index.html',
+                        'Alpaca': '/alpaca.html',
+                        'Simulator': '/simulator.html'
+                    };
+                    window.location.href = pageMap[newDriver] || '/index.html';
+                }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
+                    <option value="Simulator">Simulator</option>
+                    <option value="INDI">INDI</option>
+                    <option value="Alpaca">Alpaca</option>
+                </select>
+            </div>
+
             {isDisconnected && (
             <div className="space-y-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
                 <h3 className="text-sm font-semibold text-slate-300">{t('controlPanel.connectionSettings')}</h3>
                 <div className="space-y-3">
-                    <div>
-                        <label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label>
-                        <select id="driver-type" value={connectionSettings?.driver || 'Alpaca'} onChange={(e) => { 
-                            const newDriver = e.target.value as any; 
-                            console.log(`[ControlPanelAlpaca] Switching to: ${newDriver}`);
-                            
-                            // Save driver setting before navigating
-                            const settings = SettingsService.loadSettings();
-                            SettingsService.saveSettings({
-                                ...settings,
-                                connectionSettings: {
-                                    ...settings.connectionSettings,
-                                    driver: newDriver
-                                }
-                            });
-
-                            // Navigate to the correct page for the driver
-                            const pageMap: Record<string, string> = {
-                                'INDI': '/index.html',
-                                'Alpaca': '/alpaca.html',
-                                'Simulator': '/simulator.html'
-                            };
-                            window.location.href = pageMap[newDriver] || '/index.html';
-                        }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
-                            <option value="Simulator">Simulator</option>
-                            <option value="INDI">INDI</option>
-                            <option value="Alpaca">Alpaca</option>
-                        </select>
-                    </div>
-
                     <div className="flex gap-2 items-end">
                         <div className="flex-1">
                             <label htmlFor="host-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.host')}</label>
@@ -739,21 +740,8 @@ const EquipmentPanel = memo((props: any) => {
 export const ControlPanelAlpaca: React.FC<any> = (props) => {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<TabType>('equipment');
-    const { mobileTab } = props;
-    const [alpacaDevices, setAlpacaDevices] = useState<any[]>([]);
-    const [alpacaMessageCount, setAlpacaMessageCount] = useState(0);
+    const { mobileTab, alpacaDevices, alpacaMessageCount } = props;
 
-    useEffect(() => {
-        const updateDevices = (devs: any[]) => setAlpacaDevices([...devs]);
-        const updateCount = (count: number) => setAlpacaMessageCount(count);
-        AstroService.setDeviceCallback(updateDevices);
-        AstroService.setMessageCountCallback(updateCount);
-        setAlpacaDevices(AstroService.getDevices());
-        return () => { AstroService.setDeviceCallback(null); AstroService.setMessageCountCallback(null); };
-    }, []);
-
-    const passedProps = { ...props, alpacaDevices, alpacaMessageCount } as any;
-    
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
     const isLandscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerHeight < 600;
     const showTabs = isDesktop || isLandscape;
@@ -776,9 +764,9 @@ export const ControlPanelAlpaca: React.FC<any> = (props) => {
                 </div>
             )}
             <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
-                {currentTab === 'equipment' && <EquipmentPanel {...passedProps} />}
-                {currentTab === 'imaging' && <ImagingPanel {...passedProps} />}
-                {currentTab === 'settings' && <SettingsPanel {...passedProps} />}
+                {currentTab === 'equipment' && <EquipmentPanel {...props} />}
+                {currentTab === 'imaging' && <ImagingPanel {...props} />}
+                {currentTab === 'settings' && <SettingsPanel {...props} />}
             </div>
         </div>
     );

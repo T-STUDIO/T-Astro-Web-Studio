@@ -526,6 +526,36 @@ const EquipmentPanel = memo((props: any) => {
             <div className="flex justify-between items-center border-b border-red-900/50 pb-2"><h2 className="text-lg font-semibold text-red-400">{t('controlPanel.equipment')}</h2><button onClick={onShowDiagnostics} className="text-[10px] text-slate-400 underline hover:text-red-400">Diagnosis</button></div>
             <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700"><ConnectionStatusIndicator status={connectionStatus} labels={equipmentStatusLabels} />{isConnected && (<p className="text-xs text-slate-400 mt-1 font-mono">{t('status.connectedTo', { driver: 'Simulator', host: 'Local', port: 'N/A' })}</p>)}</div>
             
+            <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700">
+                <label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label>
+                <select id="driver-type" value={connectionSettings?.driver || 'Simulator'} onChange={(e) => { 
+                    const newDriver = e.target.value as any; 
+                    console.log(`[ControlPanelSimulator] Switching to: ${newDriver}`);
+                    
+                    // Save driver setting before navigating
+                    const settings = SettingsService.loadSettings();
+                    SettingsService.saveSettings({
+                        ...settings,
+                        connectionSettings: {
+                            ...settings.connectionSettings,
+                            driver: newDriver
+                        }
+                    });
+
+                    // Navigate to the correct page for the driver
+                    const pageMap: Record<string, string> = {
+                        'INDI': '/index.html',
+                        'Alpaca': '/alpaca.html',
+                        'Simulator': '/simulator.html'
+                    };
+                    window.location.href = pageMap[newDriver] || '/index.html';
+                }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
+                    <option value="Simulator">Simulator</option>
+                    <option value="INDI">INDI</option>
+                    <option value="Alpaca">Alpaca</option>
+                </select>
+            </div>
+
             {isConnected && props.telescopePosition && (
                 <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700 space-y-2">
                     <h3 className="text-sm font-semibold text-slate-300 border-b border-slate-700 pb-1">マウント状態</h3>
@@ -549,35 +579,6 @@ const EquipmentPanel = memo((props: any) => {
             <div className="space-y-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
                 <h3 className="text-sm font-semibold text-slate-300">{t('controlPanel.connectionSettings')}</h3>
                 <div className="space-y-3">
-                    <div>
-                        <label htmlFor="driver-type" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.driver')}</label>
-                        <select id="driver-type" value={connectionSettings?.driver || 'Simulator'} onChange={(e) => { 
-                            const newDriver = e.target.value as any; 
-                            console.log(`[ControlPanelSimulator] Switching to: ${newDriver}`);
-                            
-                            // Save driver setting before navigating
-                            const settings = SettingsService.loadSettings();
-                            SettingsService.saveSettings({
-                                ...settings,
-                                connectionSettings: {
-                                    ...settings.connectionSettings,
-                                    driver: newDriver
-                                }
-                            });
-
-                            // Navigate to the correct page for the driver
-                            const pageMap: Record<string, string> = {
-                                'INDI': '/index.html',
-                                'Alpaca': '/alpaca.html',
-                                'Simulator': '/simulator.html'
-                            };
-                            window.location.href = pageMap[newDriver] || '/index.html';
-                        }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
-                            <option value="Simulator">Simulator</option>
-                            <option value="INDI">INDI</option>
-                            <option value="Alpaca">Alpaca</option>
-                        </select>
-                    </div>
                     <p className="text-xs text-slate-400 italic">Simulator driver is running locally.</p>
                 </div>
             </div>

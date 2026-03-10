@@ -88,8 +88,14 @@ async function startServer() {
                 body: method !== 'GET' ? new URLSearchParams(req.body).toString() : undefined
             });
 
-            const data = await response.json();
-            res.json(data);
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                res.json(data);
+            } else {
+                const text = await response.text();
+                res.status(response.status).send(text);
+            }
         } catch (e: any) {
             res.status(500).json({ ErrorNumber: 0x500, ErrorMessage: e.message });
         }

@@ -81,6 +81,9 @@ const AppAlpaca: React.FC = () => {
   const [mobileActiveTab, setMobileActiveTab] = useState<TabType>('planetarium');
   const [telescopePosition, setTelescopePosition] = useState<TelescopePosition | null>({ ra: 0, dec: 90 });
 
+  const [alpacaDevices, setAlpacaDevices] = useState<any[]>([]);
+  const [alpacaMessageCount, setAlpacaMessageCount] = useState(0);
+
   useEffect(() => {
     console.log("[AppAlpaca] Rendering Alpaca App Component");
   }, []);
@@ -191,9 +194,14 @@ const AppAlpaca: React.FC = () => {
         setIsPreviewLoading(false);
     });
     AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
+    AstroService.setDeviceCallback(devs => setAlpacaDevices(devs));
+    AstroService.setMessageCountCallback(count => setAlpacaMessageCount(count));
+    setAlpacaDevices(AstroService.getDevices());
     return () => {
         AstroService.setImageReceivedCallback(null);
         AstroService.setTelescopePositionCallback(null);
+        AstroService.setDeviceCallback(null);
+        AstroService.setMessageCountCallback(null);
     };
   }, [isCapturing]);
 
@@ -449,6 +457,8 @@ const AppAlpaca: React.FC = () => {
                         savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
+                        alpacaDevices={alpacaDevices}
+                        alpacaMessageCount={alpacaMessageCount}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
                         onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                         onSendLocationToMount={onSendLocationToMount}

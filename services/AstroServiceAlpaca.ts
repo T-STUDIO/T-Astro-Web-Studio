@@ -194,32 +194,76 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
     
     try {
         results.push(`Checking network connectivity to proxy...`);
-        const proxyCheck = await fetch('/api/alpaca/discover');
-        if (proxyCheck.ok) results.push(`✅ Proxy server is reachable.`);
-        else results.push(`❌ Proxy server returned error: ${proxyCheck.status}`);
+        const proxyCheck = await fetch('/api/alpaca/discover').catch(e => ({ ok: false, status: 0, statusText: e.message }));
+        if (proxyCheck.ok) {
+            results.push(`✅ Proxy server is reachable.`);
+        } else {
+            results.push(`❌ Proxy server is unreachable or returned error. Status: ${(proxyCheck as any).status || 'Network Error'}`);
+            results.push(`   Note: If you are using Cloud Run, it cannot reach private IPs like 192.168.x.x directly.`);
+            return results;
+        }
 
         results.push(`Attempting to fetch configured devices via proxy...`);
         const targetUrl = `http://${host}:${port}/management/v1/configureddevices`;
         const response = await fetch('/api/alpaca/proxy', {
             headers: { 'x-target-url': targetUrl }
+        }).catch(e => {
+            return { 
+                ok: false, 
+                status: 0, 
+                statusText: e.message,
+                headers: new Headers(),
+                json: async () => ({}),
+                text: async () => e.message
+            } as any;
         });
         
         if (response.ok) {
-            const data = await response.json();
-            results.push(`✅ Successfully reached Alpaca server.`);
-            if (data.Value) {
-                results.push(`✅ Found ${data.Value.length} devices.`);
-                data.Value.forEach((d: any) => {
-                    results.push(`  - ${d.DeviceName} (${d.DeviceType} #${d.DeviceNumber})`);
-                });
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                results.push(`✅ Successfully reached Alpaca server.`);
+                if (data && Array.isArray(data.Value)) {
+                    results.push(`✅ Found ${data.Value.length} devices.`);
+                    data.Value.forEach((d: any) => {
+                        const name = d.DeviceName || d.deviceName || 'Unknown';
+                        const type = d.DeviceType || d.deviceType || 'Unknown';
+                        const num = d.DeviceNumber !== undefined ? d.DeviceNumber : d.deviceNumber;
+                        results.push(`  - ${name} (${type} #${num})`);
+                    });
+                } else {
+                    results.push(`⚠️ Reached server but response format was unexpected.`);
+                }
+            } else {
+                const text = await response.text();
+                results.push(`❌ Proxy returned non-JSON response. Status: ${response.status}`);
+                results.push(`  Response: ${String(text).substring(0, 100)}...`);
             }
         } else {
-            results.push(`❌ Failed to reach Alpaca server via proxy. Status: ${response.status}`);
-            const errorData = await response.json().catch(() => ({}));
-            if (errorData.ErrorMessage) results.push(`  Error: ${errorData.ErrorMessage}`);
+            const status = response.status;
+            results.push(`❌ Failed to reach Alpaca server via proxy. Status: ${status || 'Network Error'}`);
+            
+            if (status === 500) {
+                try {
+                    const errorData = await response.json();
+                    if (errorData && errorData.ErrorMessage) {
+                        results.push(`  Error from proxy: ${errorData.ErrorMessage}`);
+                        if (errorData.ErrorMessage.includes('timed out') || errorData.ErrorMessage.includes('ETIMEDOUT') || errorData.ErrorMessage.includes('EHOSTUNREACH') || errorData.ErrorMessage.includes('ENOTFOUND')) {
+                            results.push(`  💡 Tip: The Linux server (${window.location.hostname}) cannot reach the Windows machine (${host}).`);
+                            results.push(`  1. Check if Windows machine (${host}) is on the same network.`);
+                            results.push(`  2. Check if Windows Firewall allows port ${port}.`);
+                            results.push(`  3. Try pinging ${host} from the Linux terminal.`);
+                        }
+                    }
+                } catch (e) {
+                    // Not JSON
+                }
+            } else if (status === 0) {
+                results.push(`  Error: ${response.statusText}`);
+            }
         }
     } catch (e: any) {
-        results.push(`❌ Diagnostics failed with error: ${e.message}`);
+        results.push(`❌ Diagnostics failed with unexpected error: ${String(e.message || e)}`);
     }
     
     return results;

@@ -1,7 +1,7 @@
 
 /// <reference types="vite/client" />
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { Language } from '../types';
 
 /* GUIDELINE: Initialize GoogleGenAI right before making a call to ensure it uses the latest API key. */
@@ -33,14 +33,14 @@ export const getObjectInfo = async (objectName: string, language: Language): Pro
   try {
     /* GUIDELINE: Always obtain API key exclusively from process.env.API_KEY and initialize inside the function. */
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
-    if (!apiKey) {
-      return language === 'ja' ? "APIキーが設定されていません。" : "API key is not configured.";
-    }
-    const ai = new GoogleGenerativeAI(apiKey);
-    const genModel = ai.getGenerativeModel({ model: model });
-    const result = await genModel.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: prompt,
+    });
+    
+    /* GUIDELINE: Extracting generated text via the '.text' property (not a method). */
+    const text = response.text;
     if (!text) {
         return language === 'ja' ? "情報を取得できませんでした。" : "Could not retrieve information.";
     }
@@ -99,19 +99,16 @@ export const summarizeExternalInfo = async (objectName: string, rawText: string,
 
   try {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
-    if (!apiKey) return language === 'ja' ? "APIキー未設定" : "API Key Missing";
-    
-    const ai = new GoogleGenerativeAI(apiKey);
-    const genModel = ai.getGenerativeModel({ 
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
       model: model,
-      systemInstruction: "あなたはプロの天文家であり、一般の人にも分かりやすく天体の魅力を伝えるガイドです。提供された構造化データやテキストを元に、その天体の特徴、物理的属性、歴史的背景を日本語で丁寧に要約してください。学術的な正確さを保ちつつ、読み手に感動を与えるような表現を心がけてください。"
+      contents: prompt,
+      config: {
+        systemInstruction: "あなたはプロの天文家であり、一般の人にも分かりやすく天体の魅力を伝えるガイドです。提供された構造化データやテキストを元に、その天体の特徴、物理的属性、歴史的背景を日本語で丁寧に要約してください。学術的な正確さを保ちつつ、読み手に感動を与えるような表現を心がけてください。",
+      }
     });
-
-    const result = await genModel.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
     
-    return text || (language === 'ja' ? "要約を作成できませんでした。" : "Could not create summary.");
+    return response.text || (language === 'ja' ? "要約を作成できませんでした。" : "Could not create summary.");
   } catch (error: any) {
     console.error("Gemini Summarization failed:", error);
     return language === 'ja' ? "要約の作成中にエラーが発生しました。" : "Error occurred during summarization.";

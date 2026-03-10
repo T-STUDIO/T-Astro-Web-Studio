@@ -1,17 +1,14 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+This is a real-time EAA web app compatible with INDI and Alpaca. You can platesolve while viewing a preview, and after platesolving is complete, clickable annotations are displayed, along with links to Wikipedia, SIMBAD, AladinLite, etc. It also features live stacking, auto-centering, and image export functions.
 
-# Run and deploy your AI Studio app
+To use it in a local environment, you will need to install drivers such as INDI or Alpaca, and if you want to use a local solver, you will need to install astrometry.net.
 
-This contains everything you need to run your app locally.
+Instructions for using each function and simple operation methods are posted on my blog:
 
-View your app in AI Studio: https://ai.studio/apps/9cc5dbfb-f1d1-4613-bf98-ed93f4b82515
+https://tstudioastronomy.blog.fc2.com/blog-category-46.html
 
 ## Run Locally
 
 **Prerequisites:**  Node.js
-
 
 1. Install dependencies:
    `npm install`

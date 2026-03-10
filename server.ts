@@ -78,15 +78,30 @@ async function startServer() {
         const targetUrl = req.headers['x-target-url'] as string;
         if (!targetUrl) return res.status(400).send('Missing x-target-url header');
 
+        console.log(`[AlpacaProxy] ${req.method} -> ${targetUrl}`);
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
         try {
             const method = req.method;
-            const response = await fetch(targetUrl, {
+            const fetchOptions: any = {
                 method,
                 headers: {
-                    'Content-Type': req.headers['content-type'] as string || 'application/x-www-form-urlencoded'
+                    'Content-Type': req.headers['content-type'] as string || 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
                 },
-                body: method !== 'GET' ? new URLSearchParams(req.body).toString() : undefined
-            });
+                signal: controller.signal
+            };
+
+            if (method !== 'GET' && method !== 'HEAD') {
+                if (req.body && Object.keys(req.body).length > 0) {
+                    fetchOptions.body = new URLSearchParams(req.body).toString();
+                }
+            }
+
+            const response = await fetch(targetUrl, fetchOptions);
+            clearTimeout(timeout);
 
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
@@ -97,7 +112,13 @@ async function startServer() {
                 res.status(response.status).send(text);
             }
         } catch (e: any) {
-            res.status(500).json({ ErrorNumber: 0x500, ErrorMessage: e.message });
+            clearTimeout(timeout);
+            const isTimeout = e.name === 'AbortError';
+            console.error(`[AlpacaProxy] Error: ${isTimeout ? 'Timeout' : e.message}`);
+            res.status(500).json({ 
+                ErrorNumber: 0x500, 
+                ErrorMessage: isTimeout ? 'Connection timed out (5s)' : e.message 
+            });
         }
     });
 

@@ -86,15 +86,12 @@ export class AlpacaDiscoveryService {
         // Scan a reasonable range
         for (let i = 1; i < 255; i++) {
             const ip = `${subnet}.${i}`;
-            // Common Alpaca ports
-            [11111, 32227].forEach(port => {
-                tasks.push(this.checkHost(ip, port).then(res => {
-                    if (res) results.push(res);
-                }));
-            });
+            tasks.push(this.checkHost(ip).then(res => {
+                if (res) results.push(res);
+            }));
             
-            // Limit concurrent requests to avoid browser throttling
-            if (tasks.length >= 20) {
+            // Limit concurrent requests
+            if (tasks.length >= 10) {
                 await Promise.all(tasks);
                 tasks.length = 0;
             }

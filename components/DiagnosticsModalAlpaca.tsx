@@ -63,12 +63,12 @@ export const DiagnosticsModalAlpaca: React.FC<DiagnosticsModalProps> = ({ isOpen
                         </p>
                         
                         <div className="bg-black/50 p-2 rounded mb-3 min-h-[60px] max-h-[150px] overflow-y-auto font-mono text-xs border border-slate-700/50">
-                             {results.length === 0 ? (
+                             {(!results || !Array.isArray(results) || results.length === 0) ? (
                                  <span className="text-slate-500 italic">{t('diagnostics.ready')}</span>
                              ) : (
                                  results.map((line, i) => (
-                                     <div key={i} className={`mb-1 ${line.includes('❌') ? 'text-red-400' : line.includes('✅') ? 'text-green-400' : 'text-slate-300'}`}>
-                                         {line}
+                                     <div key={i} className={`mb-1 ${String(line).includes('❌') ? 'text-red-400' : String(line).includes('✅') ? 'text-green-400' : 'text-slate-300'}`}>
+                                         {String(line)}
                                      </div>
                                  ))
                              )}

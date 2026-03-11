@@ -38,14 +38,37 @@ export class AlpacaClientService {
     public async connect(settings: ConnectionSettings): Promise<boolean> {
         this.baseUrl = `http://${settings.host}:${settings.port}/api/v1`;
         const targetUrl = `http://${settings.host}:${settings.port}/management/v1/configureddevices`;
+        console.log(`[AlpacaClient] Connecting to ${targetUrl}...`);
         try {
             const response = await fetch('/api/alpaca/proxy', {
                 headers: { 'x-target-url': targetUrl }
             });
-            if (!response.ok) throw new Error(`Failed to fetch configured devices: ${response.status}`);
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Failed to fetch configured devices: ${response.status} ${text}`);
+            }
             
-            const data = await response.json();
-            this.devices = data.Value || [];
+            const contentType = response.headers.get('content-type');
+            let data;
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                const text = await response.text();
+                console.warn(`[AlpacaClient] Expected JSON but got ${contentType}: ${text.substring(0, 100)}`);
+                try { data = JSON.parse(text); } catch(e) { throw new Error(`Invalid JSON response from proxy`); }
+            }
+
+            if (data && Array.isArray(data.Value)) {
+                this.devices = data.Value.map((d: any) => ({
+                    deviceName: d.DeviceName || d.deviceName || 'Unknown',
+                    deviceType: d.DeviceType || d.deviceType || 'Unknown',
+                    deviceNumber: d.DeviceNumber !== undefined ? d.DeviceNumber : d.deviceNumber,
+                    uniqueId: d.UniqueID || d.uniqueId || `${d.DeviceType}-${d.DeviceNumber}`
+                }));
+            } else {
+                console.warn(`[AlpacaClient] No devices found in response:`, data);
+                this.devices = [];
+            }
             console.log(`[AlpacaClient] Connected to ${settings.host} via proxy. Found ${this.devices.length} devices.`);
             
             this.startPolling();
@@ -165,7 +188,8 @@ export class AlpacaClientService {
 
         const query = new URLSearchParams(params);
         query.append('ClientTransactionID', this.getNextId().toString());
-        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}?${query.toString()}`;
+        const queryString = query.toString();
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}${queryString ? '?' + queryString : ''}`;
 
         try {
             const response = await fetch('/api/alpaca/proxy', {

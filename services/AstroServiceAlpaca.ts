@@ -199,7 +199,7 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
             results.push(`✅ Proxy server is reachable.`);
         } else {
             results.push(`❌ Proxy server is unreachable or returned error. Status: ${(proxyCheck as any).status || 'Network Error'}`);
-            results.push(`   Note: If you are using Cloud Run, it cannot reach private IPs like 192.168.x.x directly.`);
+            results.push(`   Note: Ensure the web server is running on port 3000.`);
             return results;
         }
 
@@ -212,7 +212,7 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
                 ok: false, 
                 status: 0, 
                 statusText: e.message,
-                headers: new Headers(),
+                headers: { get: () => null },
                 json: async () => ({}),
                 text: async () => e.message
             } as any;
@@ -233,6 +233,7 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
                     });
                 } else {
                     results.push(`⚠️ Reached server but response format was unexpected.`);
+                    results.push(`   Response: ${JSON.stringify(data).substring(0, 100)}...`);
                 }
             } else {
                 const text = await response.text();
@@ -249,7 +250,7 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
                     if (errorData && errorData.ErrorMessage) {
                         results.push(`  Error from proxy: ${errorData.ErrorMessage}`);
                         if (errorData.ErrorMessage.includes('timed out') || errorData.ErrorMessage.includes('ETIMEDOUT') || errorData.ErrorMessage.includes('EHOSTUNREACH') || errorData.ErrorMessage.includes('ENOTFOUND')) {
-                            results.push(`  💡 Tip: The Linux server (${window.location.hostname}) cannot reach the Windows machine (${host}).`);
+                            results.push(`  💡 Tip: The Linux server cannot reach the Windows machine (${host}).`);
                             results.push(`  1. Check if Windows machine (${host}) is on the same network.`);
                             results.push(`  2. Check if Windows Firewall allows port ${port}.`);
                             results.push(`  3. Try pinging ${host} from the Linux terminal.`);

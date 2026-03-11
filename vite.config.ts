@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
     const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
 
     return {
-      base: './',
+      base: '/',
       server: {
         port: process.env.PORT ? parseInt(process.env.PORT) : 6002,
         host: '0.0.0.0',

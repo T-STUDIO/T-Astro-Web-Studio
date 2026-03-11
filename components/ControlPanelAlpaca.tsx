@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { Settings2, AlertTriangle, Search, Info, MapPin, Clock, Globe, Save, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronUp, Play, Square, Loader2 } from 'lucide-react';
 import { ConnectionStatus, SlewStatus, CelestialObject, ConnectionSettings, DriverType, PlanetariumSettings, LocationStatus, LocationData, SampStatus, DeviceType, INDIDevice, TabType, SavedLocation, SavedConnection, SavedApiKey, INDIVector, INDIElement, SampSettings, SavedSampSettings, PlateSolverType, LocalSolverSettings, SavedLocalSolver } from '../types';
 import { Button } from './Button';
 import { ConnectIcon } from './icons/ConnectIcon';
@@ -486,6 +487,29 @@ const EquipmentPanel = memo((props: any) => {
     } = props;
 
     const isConnected = connectionStatus === 'Connected';
+    const [serverMode, setServerMode] = useState<'Cloud' | 'Local' | 'Static'>('Cloud');
+
+    useEffect(() => {
+        const checkServer = async () => {
+            try {
+                const res = await fetch('/api/alpaca/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'ok') {
+                        setServerMode(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') ? 'Local' : 'Cloud');
+                    } else {
+                        setServerMode('Static');
+                    }
+                } else {
+                    setServerMode('Static');
+                }
+            } catch (e) {
+                setServerMode('Static');
+            }
+        };
+        checkServer();
+    }, []);
+
     useEffect(() => { const current = GoogleDriveService.getClientId(); if (current) setClientIdInput(current); }, []);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -670,7 +694,20 @@ const EquipmentPanel = memo((props: any) => {
 
             {isDisconnected && (
             <div className="space-y-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700">
-                <h3 className="text-sm font-semibold text-slate-300">{t('controlPanel.connectionSettings')}</h3>
+                <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                        <Settings2 className="w-4 h-4" />
+                        {t('controlPanel.connectionSettings')}
+                    </h3>
+                    <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${
+                        serverMode === 'Local' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                        serverMode === 'Cloud' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                        'bg-red-500/20 text-red-400 border border-red-500/30'
+                    }`}>
+                        {serverMode === 'Static' && <AlertTriangle className="w-3 h-3" />}
+                        {serverMode === 'Local' ? 'Local (StellarMate)' : serverMode === 'Cloud' ? 'Cloud (Preview)' : 'Static (No Backend)'}
+                    </div>
+                </div>
                 <div className="space-y-3">
                     <div className="flex gap-2 items-end">
                         <div className="flex-1">

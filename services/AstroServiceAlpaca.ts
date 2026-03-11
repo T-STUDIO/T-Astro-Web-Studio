@@ -212,9 +212,11 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
                 results.push(`❌ CRITICAL ERROR: Proxy returned HTML instead of JSON.`);
                 results.push(`   Response Preview: ${text.substring(0, 100)}...`);
                 results.push(`   --------------------------------------------------`);
-                results.push(`   ⚠️ 原因: APIリクエストがNode.jsサーバーによって処理されず、Viteまたは静的ファイルサーバーによって横取りされています。`);
-                results.push(`   💡 解決策: StellarMate上で 'npm run dev' または 'npm start' が正しく実行されているか確認してください。`);
-                results.push(`   💡 また、ブラウザのURLが 'http://stellarmate.local:3000' であることを確認してください。`);
+                results.push(`   ⚠️ 原因1: GitHub Pagesなどの静的ホストを使用している。`);
+                results.push(`   ⚠️ 理由: 静的ホストはNode.jsのバックエンド（プロキシ）を動かせません。`);
+                results.push(`   ⚠️ 原因2: APIリクエストがViteまたは静的ファイルサーバーによって横取りされている。`);
+                results.push(`   💡 解決策: StellarMate上で 'npm run dev' または 'npm start' を実行し、`);
+                results.push(`   💡 'http://stellarmate.local:3000' または 'http://<IP>:3000' でアクセスしてください。`);
                 results.push(`   --------------------------------------------------`);
                 return results;
             }

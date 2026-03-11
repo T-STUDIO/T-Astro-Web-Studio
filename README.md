@@ -1,12 +1,8 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+This is an EAA web app specialized for real-time observation. Platesolving and auto-centering are possible while viewing the live view. Platesolving is compatible with nova.astrometry.net, and local API solvers are supported via TSPS.
 
-# Run and deploy your AI Studio app
+Features include clickable annotations and links to Wikipedia, SIMBAD, and AladinLite.
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/9cc5dbfb-f1d1-4613-bf98-ed93f4b82515
+Includes INDI client and AlpacaBridge functionality. (INDI devices can be converted using AlpacaBridge.)
 
 ## Run Locally
 
@@ -17,4 +13,4 @@ View your app in AI Studio: https://ai.studio/apps/9cc5dbfb-f1d1-4613-bf98-ed93f
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
-   `npm run dev`
+   `npm run build`→`npm run preview`

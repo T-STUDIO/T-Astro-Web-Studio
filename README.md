@@ -16,6 +16,10 @@ https://tstudioastronomy.blog.fc2.com/blog-entry-625.html
 
 ## Run Locally
 
+WebSockets are required to run web apps with the INDI driver. 
+
+You will also need to install INDI and Astrometry.net in your local environment.
+
 **Prerequisites:**  Node.js
 
 

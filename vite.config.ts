@@ -7,9 +7,9 @@ export default defineConfig(({ mode }) => {
     const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
 
     return {
-      base: '/',
+      base: './',
       server: {
-        port: 3000,
+        port: process.env.PORT ? parseInt(process.env.PORT) : 6002,
         host: '0.0.0.0',
         allowedHosts: true,
         fs: {
@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
         }
       },
       preview: {
-        port: 3000,
+        port: process.env.PORT ? parseInt(process.env.PORT) : 6002,
         host: '0.0.0.0',
         allowedHosts: true
       },

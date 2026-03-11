@@ -60,13 +60,20 @@ export class AlpacaDiscoveryService {
         this.isScanning = true;
         
         try {
-            // Try server-side discovery first
-            const response = await fetch('/api/alpaca/discover');
+            // Try server-side status check first
+            const response = await fetch('/api/alpaca/status');
             if (response.ok) {
-                const results = await response.json();
-                if (results.length > 0) {
-                    this.isScanning = false;
-                    return results;
+                const statusData = await response.json();
+                if (statusData.status === 'ok') {
+                    // Then try discovery
+                    const discResponse = await fetch('/api/alpaca/discover');
+                    if (discResponse.ok) {
+                        const results = await discResponse.json();
+                        if (results && Array.isArray(results) && results.length > 0) {
+                            this.isScanning = false;
+                            return results;
+                        }
+                    }
                 }
             }
         } catch (e) {

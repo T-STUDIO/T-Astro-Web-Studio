@@ -193,10 +193,31 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
     results.push(`Starting diagnostics for ${driver} at ${host}:${port}...`);
     
     try {
+        const isLocalIp = host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.') || host === 'localhost' || host === '127.0.0.1';
+        if (isLocalIp && !window.location.hostname.includes('localhost')) {
+            results.push(`⚠️ Warning: You are trying to connect to a local IP (${host}) from a cloud-hosted app (${window.location.hostname}).`);
+            results.push(`   This will NOT work unless you have a tunnel or bridge set up.`);
+            results.push(`   💡 Tip: Run this app locally on your StellarMate/Linux machine to connect to local devices.`);
+        }
+
         results.push(`Checking network connectivity to proxy...`);
-        const proxyCheck = await fetch('/api/alpaca/discover').catch(e => ({ ok: false, status: 0, statusText: e.message }));
+        const proxyCheck = await fetch('/api/alpaca/status').catch(e => ({ ok: false, status: 0, statusText: e.message }));
+        
         if (proxyCheck.ok) {
-            results.push(`✅ Proxy server is reachable.`);
+            const contentType = (proxyCheck as any).headers?.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                results.push(`✅ Proxy server is reachable and responding with JSON.`);
+            } else {
+                const text = await (proxyCheck as any).text();
+                results.push(`❌ CRITICAL ERROR: Proxy returned HTML instead of JSON.`);
+                results.push(`   Response Preview: ${text.substring(0, 100)}...`);
+                results.push(`   --------------------------------------------------`);
+                results.push(`   ⚠️ 原因: APIリクエストがNode.jsサーバーによって処理されず、Viteまたは静的ファイルサーバーによって横取りされています。`);
+                results.push(`   💡 解決策: StellarMate上で 'npm run dev' または 'npm start' が正しく実行されているか確認してください。`);
+                results.push(`   💡 また、ブラウザのURLが 'http://stellarmate.local:3000' であることを確認してください。`);
+                results.push(`   --------------------------------------------------`);
+                return results;
+            }
         } else {
             results.push(`❌ Proxy server is unreachable or returned error. Status: ${(proxyCheck as any).status || 'Network Error'}`);
             results.push(`   Note: Ensure the web server is running on port 3000.`);
@@ -238,7 +259,12 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
             } else {
                 const text = await response.text();
                 results.push(`❌ Proxy returned non-JSON response. Status: ${response.status}`);
-                results.push(`  Response: ${String(text).substring(0, 100)}...`);
+                if (text.includes('<!DOCTYPE html>')) {
+                    results.push(`  ⚠️ Warning: The proxy returned an HTML page instead of JSON.`);
+                    results.push(`  This usually means the API route was not found or redirected.`);
+                    results.push(`  💡 Tip: If you are using Cloud Run, ensure you are accessing the app via the correct URL.`);
+                }
+                results.push(`  Response preview: ${String(text).substring(0, 100)}...`);
             }
         } else {
             const status = response.status;

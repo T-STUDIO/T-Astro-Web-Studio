@@ -18,15 +18,6 @@ async function startServer() {
     app.use(express.urlencoded({ extended: true }));
 
     const server = http.createServer(app);
-
-    // Request Logger
-    app.use((req, res, next) => {
-        if (req.path.startsWith('/api/')) {
-            console.log(`[API Request] ${req.method} ${req.path}`);
-        }
-        next();
-    });
-
     const wss = new WebSocketServer({ port: WS_PORT });
 
     let activeBridge: WebSocket | null = null;
@@ -63,120 +54,52 @@ async function startServer() {
     udp.bind(DISCOVERY_PORT, '0.0.0.0');
 
     // API Routes
-    const apiRouter = express.Router();
-
-    apiRouter.get('/alpaca/discover', (req, res) => {
-        console.log('[AlpacaDiscovery] Starting UDP scan...');
+    app.get('/api/alpaca/discover', (req, res) => {
         const results: any[] = [];
         const client = dgram.createSocket('udp4');
-        
-        client.on('error', (err) => {
-            console.error('[AlpacaDiscovery] UDP Error:', err);
-            client.close();
-        });
-
         client.on('message', (msg, rinfo) => {
-            console.log(`[AlpacaDiscovery] Received response from ${rinfo.address}`);
             try {
                 const data = JSON.parse(msg.toString());
-                results.push({ 
-                    host: rinfo.address, 
-                    port: data.AlpacaPort, 
-                    serverName: 'Discovered Server',
-                    manufacturer: 'Unknown'
-                });
+                results.push({ host: rinfo.address, port: data.AlpacaPort, serverName: 'Discovered Server' });
             } catch (e) {}
         });
-
-        try {
-            client.bind(0);
-            client.setBroadcast(true);
-            const discoveryMsg = Buffer.from('alpacadiscovery1');
-            client.send(discoveryMsg, 0, discoveryMsg.length, DISCOVERY_PORT, '255.255.255.255');
-        } catch (e) {
-            console.error('[AlpacaDiscovery] Send Error:', e);
-        }
+        client.bind(0);
+        client.setBroadcast(true);
+        const discoveryMsg = Buffer.from('alpacadiscovery1');
+        client.send(discoveryMsg, 0, discoveryMsg.length, DISCOVERY_PORT, '255.255.255.255');
         
         setTimeout(() => {
-            try { client.close(); } catch(e) {}
-            console.log(`[AlpacaDiscovery] Scan complete. Found ${results.length} servers.`);
+            client.close();
             res.json(results);
         }, 2000);
     });
 
-    apiRouter.get('/alpaca/status', (req, res) => {
-        res.json({ 
-            status: 'ok', 
-            message: 'Alpaca proxy is active', 
-            env: process.env.NODE_ENV || 'development',
-            nodeVersion: process.version,
-            timestamp: new Date().toISOString()
-        });
-    });
-
-    apiRouter.all('/alpaca/proxy', async (req, res) => {
+    app.all('/api/alpaca/proxy', async (req, res) => {
         const targetUrl = req.headers['x-target-url'] as string;
-        console.log(`[AlpacaProxy] Incoming request: ${req.method} for ${targetUrl || 'MISSING URL'}`);
-        
-        if (!targetUrl) {
-            console.error('[AlpacaProxy] Error: Missing x-target-url header');
-            return res.status(400).json({ ErrorNumber: 0x400, ErrorMessage: 'Missing x-target-url header' });
-        }
+        if (!targetUrl) return res.status(400).send('Missing x-target-url header');
 
         try {
-            const options = {
-                method: req.method,
+            const method = req.method;
+            const response = await fetch(targetUrl, {
+                method,
                 headers: {
-                    'Content-Type': req.headers['content-type'] as string || 'application/x-www-form-urlencoded',
-                    'Accept': 'application/json'
+                    'Content-Type': req.headers['content-type'] as string || 'application/x-www-form-urlencoded'
                 },
-                timeout: 5000
-            };
-
-            const proxyReq = http.request(targetUrl, options, (proxyRes) => {
-                console.log(`[AlpacaProxy] Response: ${proxyRes.statusCode} from ${targetUrl}`);
-                res.status(proxyRes.statusCode || 500);
-                
-                const headers = { ...proxyRes.headers };
-                delete headers['transfer-encoding'];
-                delete headers['content-length'];
-                res.set(headers);
-                
-                proxyRes.pipe(res);
+                body: method !== 'GET' ? new URLSearchParams(req.body).toString() : undefined
             });
 
-            proxyReq.on('error', (e) => {
-                console.error(`[AlpacaProxy] Request Error for ${targetUrl}: ${e.message}`);
-                res.status(500).json({ ErrorNumber: 0x500, ErrorMessage: `Proxy Error: ${e.message}` });
-            });
-
-            proxyReq.on('timeout', () => {
-                console.error(`[AlpacaProxy] Timeout for ${targetUrl}`);
-                proxyReq.destroy();
-                res.status(500).json({ ErrorNumber: 0x500, ErrorMessage: 'Connection timed out (5s)' });
-            });
-
-            if (req.method !== 'GET' && req.method !== 'HEAD') {
-                const body = req.body;
-                if (body && Object.keys(body).length > 0) {
-                    const bodyStr = typeof body === 'string' ? body : 
-                                   (req.is('json') ? JSON.stringify(body) : new URLSearchParams(body as any).toString());
-                    proxyReq.write(bodyStr);
-                }
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                res.json(data);
+            } else {
+                const text = await response.text();
+                res.status(response.status).send(text);
             }
-            proxyReq.end();
         } catch (e: any) {
-            console.error(`[AlpacaProxy] Setup Error for ${targetUrl}: ${e.message}`);
-            res.status(500).json({ ErrorNumber: 0x500, ErrorMessage: `Setup Error: ${e.message}` });
+            res.status(500).json({ ErrorNumber: 0x500, ErrorMessage: e.message });
         }
     });
-
-    // API 404 Handler (Ensures no HTML fallback for /api/*)
-    apiRouter.use((req, res) => {
-        res.status(404).json({ error: 'API route not found', path: req.path });
-    });
-
-    app.use('/api', apiRouter);
 
     // Vite middleware for development
     if (process.env.NODE_ENV !== 'production') {

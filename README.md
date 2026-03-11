@@ -1,8 +1,18 @@
-This is an EAA web app specialized for real-time observation. Platesolving and auto-centering are possible while viewing the live view. Platesolving is compatible with nova.astrometry.net, and local API solvers are supported via TSPS.
+This is an EAA web app specialized for real-time observations. It allows plate solving and auto-centering while viewing the live view. Plate solving is compatible with nova.astrometry.net, and a local API solver is supported via TSPS.
 
 Features include clickable annotations and links to Wikipedia, SIMBAD, and AladinLite.
 
-Includes INDI client and AlpacaBridge functionality. (INDI devices can be converted using AlpacaBridge.)
+Includes an INDI client and AlpacaBridge functionality. (INDI devices can be converted using AlpacaBridge.)
+
+Install INDI and Astrometry.net locally. Use TSPS on my Github page to access the local solver functionality.
+
+Please see my blog for information on how to use the app (Japanese only)
+
+https://tstudioastronomy.blog.fc2.com/blog-category-46.html
+
+We also distribute a Raspberry Pi distribution that includes this app and other astronomy apps.
+
+https://tstudioastronomy.blog.fc2.com/blog-entry-625.html
 
 ## Run Locally
 
@@ -11,6 +21,6 @@ Includes INDI client and AlpacaBridge functionality. (INDI devices can be conver
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the `GEMINI_API_KEY` in [.env.local]to your Gemini API key
 3. Run the app:
    `npm run build`→`npm run preview`

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { CelestialObject, SlewStatus, PlanetariumSettings, LocationData, TelescopePosition } from '../types';
 import { CELESTIAL_OBJECTS, CONSTELLATIONS } from '../constants';
-import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, projectStereographic, calculateTransitTime, azAltToRaDec } from '../utils/coords';
+import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, projectStereographic, calculateTransitTime, azAltToRaDec, degreesToHms, degreesToDms } from '../utils/coords';
 import { ZoomInIcon } from './icons/ZoomInIcon';
 import { ZoomOutIcon } from './icons/ZoomOutIcon';
 import { ResetIcon } from './icons/ResetIcon';
@@ -103,6 +103,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const lastPinchDist = useRef<number | null>(null);
     const wwtControlRef = useRef<any>(null);
     const [wwtInitialized, setWwtInitialized] = useState(false);
+    const [dssImage, setDssImage] = useState<HTMLImageElement | null>(null);
+    const [dssLoading, setDssLoading] = useState(false);
+    const lastDssParams = useRef({ ra: -1, dec: -1, zoom: -1 });
     const [searchQuery, setSearchQuery] = useState('');
 
     const effLocation = location || { latitude: 35.6, longitude: 139.6 };
@@ -193,6 +196,16 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const wwtCenter = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
             const fov = 60 / zoom;
             if (!isNaN(wwtCenter.ra) && !isNaN(wwtCenter.dec)) { try { wwtControlRef.current.gotoRaDecZoom(wwtCenter.ra / 15, wwtCenter.dec, fov, false); } catch (e) { } }
+        }
+
+        // Fallback DSS rendering if WWT is not used or as a secondary layer
+        if (!isMini && settings.showDSS && !wwtInitialized && dssImage) {
+            ctx.save();
+            ctx.globalAlpha = 1.0;
+            // Draw image to cover the whole canvas
+            ctx.drawImage(dssImage, 0, 0, width, height);
+            ctx.restore();
+            console.log('[Planetarium] Rendered DSS image fallback');
         }
 
         if (!settings.showDSS && settings.showMilkyWay && milkyWaySprite) {
@@ -400,6 +413,44 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const handleReset = () => { setViewAz(0); setViewAlt(30); setZoom(60/70); };
 
     useEffect(() => {
+        if (isMini || !settings.showDSS || wwtInitialized) return;
+        
+        const lst = calculateLST(effLocation.longitude, effTime);
+        const center = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
+        const fov = 60 / zoom;
+        
+        // Only update if moved significantly
+        const dist = Math.hypot(center.ra - lastDssParams.current.ra, center.dec - lastDssParams.current.dec);
+        const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
+        
+        if (dist < fov * 0.1 && zoomDiff < 0.1 && dssImage) return;
+        
+        const updateDss = async () => {
+            setDssLoading(true);
+            const ra = center.ra;
+            const dec = center.dec;
+            const width = dimensions.width || 1024;
+            const height = dimensions.height || 768;
+            
+            const aladinUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${ra}&dec=${dec}&fov=${fov}&width=${width}&height=${height}&format=jpg&survey=P%2FDSS2%2Fcolor`;
+            const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(aladinUrl)}`;
+            
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+                setDssImage(img);
+                setDssLoading(false);
+                lastDssParams.current = { ra, dec, zoom };
+            };
+            img.onerror = () => setDssLoading(false);
+            img.src = proxiedUrl;
+        };
+
+        const timer = setTimeout(updateDss, 500);
+        return () => clearTimeout(timer);
+    }, [viewAz, viewAlt, zoom, settings.showDSS, isMini, dimensions, wwtInitialized, effLocation, effTime]);
+
+    useEffect(() => {
         if (centerRequest && centerRequest > 0 && selectedObject) {
             const lst = calculateLST(effLocation.longitude, effTime); const ra = hmsToDegrees(selectedObject.ra); const dec = dmsToDegrees(selectedObject.dec);
             const { alt, az } = raDecToAzAlt(ra, dec, effLocation.latitude, lst); setViewAz(az); setViewAlt(alt);
@@ -436,6 +487,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     return (
         <div ref={containerRef} className={`w-full h-full relative overflow-hidden select-none touch-none ${!isMini && settings.showDSS ? 'bg-transparent' : 'bg-[#020617]'}`} style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
             {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />}
+            {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading...</div>}
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" style={{ background: 'transparent' }} />
             
             {!isMini && (

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { CelestialObject, SlewStatus, PlanetariumSettings, LocationData, TelescopePosition } from '../types';
 import { CELESTIAL_OBJECTS, CONSTELLATIONS } from '../constants';
-import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, projectStereographic, calculateTransitTime, azAltToRaDec, degreesToHms, degreesToDms } from '../utils/coords';
+import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, projectStereographic, calculateTransitTime, azAltToRaDec } from '../utils/coords';
 import { ZoomInIcon } from './icons/ZoomInIcon';
 import { ZoomOutIcon } from './icons/ZoomOutIcon';
 import { ResetIcon } from './icons/ResetIcon';
@@ -103,7 +103,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const lastPinchDist = useRef<number | null>(null);
     const wwtControlRef = useRef<any>(null);
     const [wwtInitialized, setWwtInitialized] = useState(false);
-    const [dssImage, setDssImage] = useState<HTMLImageElement | null>(null);
+    const [dssTiles, setDssTiles] = useState<{ image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[]>([]);
     const [dssLoading, setDssLoading] = useState(false);
     const lastDssParams = useRef({ ra: -1, dec: -1, zoom: -1 });
     const [searchQuery, setSearchQuery] = useState('');
@@ -191,6 +191,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const calcDsoLimit = 5.0 + 2.5 * Math.log2(Math.max(0.5, zoom) / 0.5); const dynamicDsoMagLimit = Math.min(settings.dsoMagLimit, calcDsoLimit);
         const starMap = new Map<string, {x: number, y: number}>();
         ctx.clearRect(0, 0, width, height);
+        
+        // Only fill background if DSS is NOT being shown via WWT
+        // This prevents the canvas from hiding the WWT layer underneath
+        if (!settings.showDSS || isMini || !wwtInitialized) {
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, 0, width, height);
+        }
 
         if (!isMini && settings.showDSS && wwtInitialized && wwtControlRef.current) {
             const wwtCenter = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
@@ -198,14 +205,52 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             if (!isNaN(wwtCenter.ra) && !isNaN(wwtCenter.dec)) { try { wwtControlRef.current.gotoRaDecZoom(wwtCenter.ra / 15, wwtCenter.dec, fov, false); } catch (e) { } }
         }
 
-        // Fallback DSS rendering if WWT is not used or as a secondary layer
-        if (!isMini && settings.showDSS && !wwtInitialized && dssImage) {
+        // DSS rendering
+        if (!isMini && settings.showDSS && dssTiles.length > 0) {
             ctx.save();
             ctx.globalAlpha = 1.0;
-            // Draw image to cover the whole canvas
-            ctx.drawImage(dssImage, 0, 0, width, height);
+            
+            for (const tile of dssTiles) {
+                try {
+                    const { alt, az } = raDecToAzAlt(tile.metadata.ra, tile.metadata.dec, effLocation.latitude, lst);
+                    const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                    
+                    if (p) {
+                        const viewFov = 60 / zoom;
+                        const pixelsPerDegree = Math.min(width, height) / viewFov;
+                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree;
+                        
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        
+                        // Calculate rotation to match North orientation
+                        const northPoint = raDecToAzAlt(tile.metadata.ra, Math.min(89.9, tile.metadata.dec + 0.1), effLocation.latitude, lst);
+                        const pNorth = projectStereographic(northPoint.alt, northPoint.az, width, height, zoom, center, viewAlt, viewAz);
+                        if (pNorth) {
+                            const angle = Math.atan2(pNorth.y - p.y, pNorth.x - p.x) + Math.PI/2;
+                            ctx.rotate(angle);
+                        }
+                        
+                        ctx.drawImage(tile.image, -dssSizeInPixels/2, -dssSizeInPixels/2, dssSizeInPixels, dssSizeInPixels);
+                        ctx.restore();
+                    }
+                } catch (e) {
+                    // Silent fail for individual tiles
+                }
+            }
             ctx.restore();
-            console.log('[Planetarium] Rendered DSS image fallback');
+        }
+
+        // DSS Status Indicator
+        if (!isMini && settings.showDSS && (dssLoading || dssTiles.length === 0)) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(10, height - 30, 150, 20);
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(dssLoading ? `DSS: Loading Tiles (${dssTiles.length})...` : 'DSS: No Data (Zoom in)', 15, height - 16);
+            ctx.restore();
         }
 
         if (!settings.showDSS && settings.showMilkyWay && milkyWaySprite) {
@@ -413,7 +458,14 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const handleReset = () => { setViewAz(0); setViewAlt(30); setZoom(60/70); };
 
     useEffect(() => {
-        if (isMini || !settings.showDSS || wwtInitialized) return;
+        const controller = new AbortController();
+        const signal = controller.signal;
+
+        if (isMini || !settings.showDSS) {
+            if (dssTiles.length > 0) setDssTiles([]);
+            setDssLoading(false);
+            return () => controller.abort();
+        }
         
         const lst = calculateLST(effLocation.longitude, effTime);
         const center = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
@@ -423,31 +475,97 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const dist = Math.hypot(center.ra - lastDssParams.current.ra, center.dec - lastDssParams.current.dec);
         const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
         
-        if (dist < fov * 0.1 && zoomDiff < 0.1 && dssImage) return;
+        if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTiles.length > 0) return () => controller.abort();
         
         const updateDss = async () => {
+            if (signal.aborted) return;
             setDssLoading(true);
-            const ra = center.ra;
-            const dec = center.dec;
-            const width = dimensions.width || 1024;
-            const height = dimensions.height || 768;
             
-            const aladinUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${ra}&dec=${dec}&fov=${fov}&width=${width}&height=${height}&format=jpg&survey=P%2FDSS2%2Fcolor`;
-            const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(aladinUrl)}`;
+            const ra = parseFloat(center.ra.toFixed(4));
+            const dec = parseFloat(center.dec.toFixed(4));
             
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            img.onload = () => {
-                setDssImage(img);
+            const tileFov = 2.0;
+            const viewFov = 60 / zoom;
+            
+            const offsets = viewFov > tileFov * 0.5 ? [
+                {dra: 0, ddec: 0},
+                {dra: tileFov, ddec: 0}, {dra: -tileFov, ddec: 0},
+                {dra: 0, ddec: tileFov}, {dra: 0, ddec: -tileFov},
+                {dra: tileFov, ddec: tileFov}, {dra: -tileFov, ddec: tileFov},
+                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov}
+            ] : [{dra: 0, ddec: 0}];
+
+            const newTiles: { image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[] = [];
+
+            for (const offset of offsets) {
+                if (signal.aborted) return;
+                
+                const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
+                const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
+                const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
+                
+                const sources = [
+                    {
+                        name: 'NASA SkyView',
+                        url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
+                    },
+                    {
+                        name: 'Aladin',
+                        url: `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`
+                    }
+                ];
+
+                if (offsets.indexOf(offset) > 0) {
+                    await new Promise(resolve => {
+                        const t = setTimeout(resolve, 300);
+                        signal.addEventListener('abort', () => clearTimeout(t));
+                    });
+                }
+
+                if (signal.aborted) return;
+
+                for (const source of sources) {
+                    if (signal.aborted) return;
+                    try {
+                        const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(source.url)}`;
+                        const response = await fetch(proxiedUrl, { signal });
+                        if (!response.ok) throw new Error(`Proxy error ${response.status}`);
+                        
+                        const blob = await response.blob();
+                        const img = new Image();
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                            img.src = URL.createObjectURL(blob);
+                            signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
+                        });
+
+                        if (signal.aborted) return;
+
+                        newTiles.push({
+                            image: img,
+                            metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
+                        });
+                        setDssTiles([...newTiles]);
+                        break; 
+                    } catch (e: any) {
+                        if (e.name === 'AbortError') return;
+                        console.warn(`[Planetarium] Tile ${offset.dra},${offset.ddec} failed from ${source.name}`);
+                    }
+                }
+            }
+
+            if (!signal.aborted) {
                 setDssLoading(false);
                 lastDssParams.current = { ra, dec, zoom };
-            };
-            img.onerror = () => setDssLoading(false);
-            img.src = proxiedUrl;
+            }
         };
 
-        const timer = setTimeout(updateDss, 500);
-        return () => clearTimeout(timer);
+        const timer = setTimeout(updateDss, 800);
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
     }, [viewAz, viewAlt, zoom, settings.showDSS, isMini, dimensions, wwtInitialized, effLocation, effTime]);
 
     useEffect(() => {
@@ -487,7 +605,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     return (
         <div ref={containerRef} className={`w-full h-full relative overflow-hidden select-none touch-none ${!isMini && settings.showDSS ? 'bg-transparent' : 'bg-[#020617]'}`} style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
             {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />}
-            {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading...</div>}
+            {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading ({dssTiles.length}/9)...</div>}
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" style={{ background: 'transparent' }} />
             
             {!isMini && (

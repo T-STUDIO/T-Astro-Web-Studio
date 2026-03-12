@@ -41,36 +41,64 @@ async function startServer() {
         const imageUrl = req.query.url as string;
         if (!imageUrl) return res.status(400).send('Missing url');
 
-        const fetchImage = (url: string, depth = 0) => {
-            if (depth > 5) return res.status(500).send('Too many redirects');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET');
+
+        const fetchWithRetry = async (url: string, retries = 2): Promise<void> => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 25000);
             
-            const protocol = url.startsWith('https') ? https : http;
-            protocol.get(url, (proxyRes) => {
-                // Handle redirects
-                if (proxyRes.statusCode && proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
-                    return fetchImage(proxyRes.headers.location, depth + 1);
+            // Link client disconnect to our fetch
+            req.on('close', () => controller.abort());
+
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'image/jpeg,image/png,image/*;q=0.8',
+                        'Connection': 'keep-alive'
+                    },
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    if (retries > 0 && (response.status === 503 || response.status === 429 || response.status === 500)) {
+                        console.log(`[ImageProxy] Retrying ${url} due to status ${response.status} (${retries} left)`);
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        return fetchWithRetry(url, retries - 1);
+                    }
+                    throw new Error(`Remote server returned ${response.status} ${response.statusText}`);
                 }
 
-                if (proxyRes.statusCode !== 200) {
-                    res.setHeader('Content-Type', 'application/json');
-                    return res.status(proxyRes.statusCode || 500).send(JSON.stringify({ error: `Failed to fetch image: ${proxyRes.statusCode}` }));
-                }
-
-                res.setHeader('Content-Type', proxyRes.headers['content-type'] || 'image/jpeg');
+                const contentType = response.headers.get('content-type');
+                if (contentType) res.setHeader('Content-Type', contentType);
                 res.setHeader('Cache-Control', 'public, max-age=86400');
-                proxyRes.pipe(res);
-            }).on('error', (e) => {
-                res.setHeader('Content-Type', 'application/json');
-                res.status(500).send(JSON.stringify({ error: e.message }));
-            });
+                
+                const arrayBuffer = await response.arrayBuffer();
+                res.send(Buffer.from(arrayBuffer));
+            } catch (error: any) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    if (!res.headersSent) res.status(504).json({ error: 'Gateway Timeout or Client Abort' });
+                    return;
+                }
+
+                if (retries > 0 && (error.message.includes('socket hang up') || error.message.includes('ECONNRESET') || error.message.includes('ETIMEDOUT'))) {
+                    console.log(`[ImageProxy] Retrying ${url} due to network error: ${error.message} (${retries} left)`);
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    return fetchWithRetry(url, retries - 1);
+                }
+
+                console.error(`[ImageProxy] Final error for ${url}:`, error.message);
+                if (!res.headersSent) {
+                    res.status(500).json({ error: error.message, url });
+                }
+            }
         };
 
-        try {
-            fetchImage(imageUrl);
-        } catch (e: any) {
-            res.setHeader('Content-Type', 'application/json');
-            res.status(500).send(JSON.stringify({ error: e.message }));
-        }
+        fetchWithRetry(imageUrl);
     });
 
     apiRouter.use((req, res, next) => {
@@ -208,29 +236,10 @@ async function startServer() {
     if (process.env.NODE_ENV !== 'production') {
         const vite = await createViteServer({
             server: { middlewareMode: true },
-            appType: 'custom', 
+            appType: 'spa', 
         });
 
         app.use(vite.middlewares);
-
-        // Handle specific HTML files AFTER vite.middlewares
-        app.get(['/', '/index.html', '/alpaca.html', '/simulator.html', '/test.html'], async (req, res, next) => {
-            const url = req.path === '/' ? '/index.html' : req.path;
-            try {
-                const fs = await import('fs');
-                const path = await import('path');
-                const templatePath = path.resolve(process.cwd(), url.substring(1));
-                
-                if (!fs.existsSync(templatePath)) return next();
-
-                let template = fs.readFileSync(templatePath, 'utf-8');
-                template = await vite.transformIndexHtml(url, template);
-                res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-            } catch (e) {
-                vite.ssrFixStacktrace(e as Error);
-                next(e);
-            }
-        });
     } else {
         app.use(express.static('dist'));
         // Fallback to serve html files without extension in production

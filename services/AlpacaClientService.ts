@@ -160,14 +160,22 @@ export class AlpacaClientService {
         }
 
         try {
+            // Reconstruct a simple object for JSON body to the proxy
+            const paramsObj: Record<string, string> = {
+                'ClientTransactionID': this.getNextId().toString()
+            };
+            for (const [key, value] of Object.entries(params)) {
+                paramsObj[key] = value.toString();
+            }
+
             // Try direct fetch first
             const response = await fetch('/api/alpaca/proxy', {
                 method: 'PUT',
                 headers: { 
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Type': 'application/json',
                     'x-target-url': targetUrl
                 },
-                body: bodyParams
+                body: JSON.stringify(paramsObj)
             });
             
             const contentType = response.headers.get('content-type');

@@ -34,9 +34,9 @@ const checkProxyAvailable = async (): Promise<boolean> => {
     }
     
     try {
-        // 1-second timeout for proxy check
+        // 3-second timeout for proxy check (allow for network delays)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
         
         const res = await fetch('/api/alpaca/status', { 
             method: 'GET',
@@ -46,11 +46,12 @@ const checkProxyAvailable = async (): Promise<boolean> => {
         
         proxyAvailable = res.ok;
         console.log(`[AlpacaClient] Proxy available: ${proxyAvailable}`);
+        return proxyAvailable;
     } catch (err: any) {
         console.warn('[AlpacaClient] Proxy check failed:', err.message);
         proxyAvailable = false;
+        return false;
     }
-    return proxyAvailable;
 };
 
 export class AlpacaClientService {
@@ -82,9 +83,40 @@ export class AlpacaClientService {
         options: RequestInit = {}
     ): Promise<Response> {
         const method = (options.method || 'GET').toUpperCase();
-        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
-        // --- 1. Try server-side proxy first (most reliable for both HTTP and HTTPS) ---
+        // --- 1. Try direct fetch (works when CORS is allowed or same-origin) ---
+        try {
+            const directRes = await fetch(targetUrl, {
+                ...options,
+                mode: 'cors',
+                signal: options.signal,
+            });
+            if (directRes.ok || directRes.status < 500) {
+                console.log(`[AlpacaClient] Direct fetch (CORS) succeeded for ${targetUrl}`);
+                return directRes;
+            }
+        } catch (directErr: any) {
+            console.warn(`[AlpacaClient] Direct fetch (CORS) failed for ${targetUrl}: ${directErr.message}`);
+        }
+
+        // --- 2. For HTTP context, try no-cors mode (GET only) ---
+        if (typeof window !== 'undefined' && window.location.protocol === 'http:' && method === 'GET') {
+            try {
+                const noCorsRes = await fetch(targetUrl, {
+                    ...options,
+                    mode: 'no-cors',
+                    signal: options.signal,
+                });
+                if (noCorsRes.status === 0 || noCorsRes.ok) {
+                    console.log(`[AlpacaClient] Direct fetch (no-cors) succeeded for ${targetUrl}`);
+                    return noCorsRes;
+                }
+            } catch (noCorsErr: any) {
+                console.warn(`[AlpacaClient] Direct fetch (no-cors) failed for ${targetUrl}: ${noCorsErr.message}`);
+            }
+        }
+
+        // --- 3. Try server-side proxy (fallback) ---
         const useProxy = await checkProxyAvailable();
         if (useProxy) {
             const proxyHeaders: Record<string, string> = {
@@ -103,41 +135,6 @@ export class AlpacaClientService {
                 return proxyRes;
             } catch (proxyErr: any) {
                 console.warn(`[AlpacaClient] Proxy request failed: ${proxyErr.message}`);
-                // Fall through to direct fetch
-            }
-        }
-
-        // --- 2. Try direct fetch (works when CORS is allowed or same-origin) ---
-        if (!isHttps) {
-            try {
-                const directRes = await fetch(targetUrl, {
-                    ...options,
-                    mode: 'cors',
-                    signal: options.signal,
-                });
-                if (directRes.ok || directRes.status < 500) {
-                    console.log(`[AlpacaClient] Direct fetch (CORS) succeeded for ${targetUrl}`);
-                    return directRes;
-                }
-            } catch (directErr: any) {
-                console.warn(`[AlpacaClient] Direct fetch (CORS) failed for ${targetUrl}: ${directErr.message}`);
-            }
-
-            // --- 3. For HTTP context, try no-cors mode (GET only) ---
-            if (method === 'GET') {
-                try {
-                    const noCorsRes = await fetch(targetUrl, {
-                        ...options,
-                        mode: 'no-cors',
-                        signal: options.signal,
-                    });
-                    if (noCorsRes.status === 0 || noCorsRes.ok) {
-                        console.log(`[AlpacaClient] Direct fetch (no-cors) succeeded for ${targetUrl}`);
-                        return noCorsRes;
-                    }
-                } catch (noCorsErr: any) {
-                    console.warn(`[AlpacaClient] Direct fetch (no-cors) failed for ${targetUrl}: ${noCorsErr.message}`);
-                }
             }
         }
 

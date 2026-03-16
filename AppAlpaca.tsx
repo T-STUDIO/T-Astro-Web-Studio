@@ -306,7 +306,12 @@ const AppAlpaca: React.FC = () => {
 
   const handlePreview = async () => {
       stopAllImaging(); setIsPreviewLoading(true); setActiveView('Imaging'); setMobileActiveTab('imaging_view');
-      await AstroService.capturePreview(exposure, gain, offset);
+      try {
+          await AstroService.capturePreview(exposure, gain, offset);
+      } finally {
+          // Ensure loading state is cleared even if capturePreview fails or imageReceivedCallback is not called
+          setIsPreviewLoading(false);
+      }
   };
 
   const handleStartCapture = async () => {

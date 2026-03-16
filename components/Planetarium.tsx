@@ -425,7 +425,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tp.x - 30, tp.y); ctx.lineTo(tp.x + 30, tp.y); ctx.moveTo(tp.x, tp.y - 30); ctx.lineTo(tp.x, tp.y + 30); ctx.stroke();
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t]);
+    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, dssTiles, dssLoading, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }

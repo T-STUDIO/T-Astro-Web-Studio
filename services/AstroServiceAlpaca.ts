@@ -6,6 +6,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 let imageReceivedCallback: ((url: string, format: string, metadata?: any) => void) | null = null;
 let telescopePositionCallback: ((pos: TelescopePosition) => void) | null = null;
+let focuserUpdateCallback: ((position: number) => void) | null = null;
 
 export const setImageReceivedCallback = (cb: typeof imageReceivedCallback) => {
     imageReceivedCallback = cb;
@@ -27,7 +28,9 @@ export const setMessageCountCallback = (cb: any) => {
     messageCountCallback = cb;
     alpacaClient.setMessageCountCallback(cb);
 };
-export const setFocuserUpdateCallback = (cb: any) => {};
+export const setFocuserUpdateCallback = (cb: any) => {
+    focuserUpdateCallback = cb;
+};
 export const setMountLocationCallback = (cb: any) => {};
 export const setMountTimeCallback = (cb: any) => {};
 
@@ -43,22 +46,77 @@ const addDebugLog = (msg: string) => {
     if (debugLogs.length > 500) debugLogs.shift();
 };
 
+// ---- Telescope position polling ----
+let telescopePositionPollInterval: any = null;
+
+const startTelescopePositionPolling = () => {
+    if (telescopePositionPollInterval) return;
+    telescopePositionPollInterval = setInterval(async () => {
+        if (!telescopePositionCallback) return;
+        try {
+            const pos = await getTelescopePosition();
+            if (pos) telescopePositionCallback(pos);
+        } catch (e) { /* silent */ }
+    }, 2000);
+};
+
+const stopTelescopePositionPolling = () => {
+    if (telescopePositionPollInterval) {
+        clearInterval(telescopePositionPollInterval);
+        telescopePositionPollInterval = null;
+    }
+};
+
+// ---- Focuser position polling ----
+let focuserPollInterval: any = null;
+
+const startFocuserPolling = () => {
+    if (focuserPollInterval) return;
+    focuserPollInterval = setInterval(async () => {
+        if (!focuserUpdateCallback) return;
+        try {
+            const posRes = await alpacaClient.getCommand('Focuser', 0, 'Position');
+            if (posRes && posRes.ErrorNumber === 0 && posRes.Value !== undefined) {
+                focuserUpdateCallback(posRes.Value);
+            }
+        } catch (e) { /* silent */ }
+    }, 2000);
+};
+
+const stopFocuserPolling = () => {
+    if (focuserPollInterval) {
+        clearInterval(focuserPollInterval);
+        focuserPollInterval = null;
+    }
+};
+
 export const connect = async (settings: any): Promise<boolean> => {
     addDebugLog(`Connecting to Alpaca at ${settings.host}:${settings.port}...`);
     const ok = await alpacaClient.connect(settings);
-    if (ok) addDebugLog(`Connected successfully.`);
-    else addDebugLog(`Connection failed.`);
+    if (ok) {
+        addDebugLog(`Connected successfully.`);
+        startTelescopePositionPolling();
+        startFocuserPolling();
+    } else {
+        addDebugLog(`Connection failed.`);
+    }
     return ok;
 };
 
 export const disconnect = async () => {
+    stopTelescopePositionPolling();
+    stopFocuserPolling();
     alpacaClient.disconnect();
 };
 
 export const slewTo = async (obj: CelestialObject) => {
     const ra = hmsToDegrees(obj.ra) / 15;
     const dec = dmsToDegrees(obj.dec);
-    await alpacaClient.putCommand('Telescope', 0, 'SlewToCoordinates', { RightAscension: ra, Declination: dec });
+    // Try SlewToCoordinatesAsync first (non-blocking), fall back to SlewToCoordinates
+    const asyncRes = await alpacaClient.putCommand('Telescope', 0, 'SlewToCoordinatesAsync', { RightAscension: ra, Declination: dec });
+    if (!asyncRes || asyncRes.ErrorNumber !== 0) {
+        await alpacaClient.putCommand('Telescope', 0, 'SlewToCoordinates', { RightAscension: ra, Declination: dec });
+    }
 };
 
 export const syncTo = async (obj: CelestialObject) => {
@@ -74,18 +132,46 @@ export const syncToCoordinates = async (ra: number, dec: number) => {
 export const getTelescopePosition = async (): Promise<TelescopePosition | null> => {
     const raRes = await alpacaClient.getCommand('Telescope', 0, 'RightAscension');
     const decRes = await alpacaClient.getCommand('Telescope', 0, 'Declination');
-    if (raRes && decRes) {
+    if (raRes && raRes.ErrorNumber === 0 && decRes && decRes.ErrorNumber === 0) {
         return { ra: raRes.Value * 15, dec: decRes.Value };
     }
     return null;
 };
 
+/**
+ * MoveAxis speed mapping:
+ * Guide  = 0.1°/s, Center = 0.5°/s, Find = 2.0°/s, Slew = 4.0°/s
+ */
+const MOUNT_SPEED_RATES: Record<MountSpeed, number> = {
+    Guide: 0.1,
+    Center: 0.5,
+    Find: 2.0,
+    Slew: 4.0,
+};
+
+/**
+ * Direction → Alpaca axis/rate mapping.
+ * Axis 0 = RA/Az, Axis 1 = Dec/Alt
+ * Positive rate = East/North, Negative = West/South
+ */
+const DIR_AXIS: Record<string, { axis: number; sign: number }> = {
+    N: { axis: 1, sign: 1 },
+    S: { axis: 1, sign: -1 },
+    E: { axis: 0, sign: 1 },
+    W: { axis: 0, sign: -1 },
+};
+
 export const startMotion = async (dir: string, speed: MountSpeed) => {
-    // Alpaca PulseGuide or MoveAxis
+    const mapping = DIR_AXIS[dir.toUpperCase()];
+    if (!mapping) return;
+    const rate = MOUNT_SPEED_RATES[speed] * mapping.sign;
+    await alpacaClient.putCommand('Telescope', 0, 'MoveAxis', { Axis: mapping.axis, Rate: rate });
 };
 
 export const stopMotion = async (dir: string) => {
-    // Alpaca MoveAxis with rate 0
+    const mapping = DIR_AXIS[dir.toUpperCase()];
+    if (!mapping) return;
+    await alpacaClient.putCommand('Telescope', 0, 'MoveAxis', { Axis: mapping.axis, Rate: 0 });
 };
 
 export const setTracking = async (enabled: boolean) => {
@@ -97,8 +183,31 @@ export const setPark = async (parked: boolean) => {
     else await alpacaClient.putCommand('Telescope', 0, 'Unpark');
 };
 
+// ---- Camera: waitForCameraIdle (Alpaca implementation) ----
+let cameraIdle = true;
+
+export const waitForCameraIdle = async (timeoutMs: number = 30000): Promise<boolean> => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const stateRes = await alpacaClient.getCommand('Camera', 0, 'CameraState');
+            // CameraState: 0=Idle, 1=Waiting, 2=Exposing, 3=Reading, 4=Download, 5=Error
+            if (stateRes && stateRes.ErrorNumber === 0 && stateRes.Value === 0) {
+                return true;
+            }
+        } catch (e) { /* silent */ }
+        await sleep(500);
+    }
+    return false;
+};
+
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
     addDebugLog(`[Alpaca] Starting exposure: ${exp}ms, Gain: ${gain}...`);
+    cameraIdle = false;
+
+    // Set gain if supported
+    const gainRes = await alpacaClient.putCommand('Camera', 0, 'Gain', { Gain: gain }).catch(() => null);
+
     const startRes = await alpacaClient.putCommand('Camera', 0, 'StartExposure', { Duration: exp / 1000, Light: true });
     
     if (startRes && startRes.ErrorNumber === 0) {
@@ -107,13 +216,13 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
         // Poll for ImageReady
         let ready = false;
         let attempts = 0;
-        const maxAttempts = Math.ceil(exp / 500) + 20; // Allow for exposure time + 10s overhead
+        const maxAttempts = Math.ceil((exp + 10000) / 500); // exposure time + 10s overhead
         
         while (!ready && attempts < maxAttempts) {
             await sleep(500);
             attempts++;
             const statusRes = await alpacaClient.getCommand('Camera', 0, 'ImageReady');
-            if (statusRes && statusRes.Value === true) {
+            if (statusRes && statusRes.ErrorNumber === 0 && statusRes.Value === true) {
                 ready = true;
                 addDebugLog(`[Alpaca] Image is ready. Downloading...`);
                 break;
@@ -121,7 +230,7 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
         }
         
         if (ready) {
-            // Use proxy-aware image download
+            // Download image via imagearraybytes (binary) or imagearray (JSON)
             const imageUrl = await alpacaClient.getImageUrl('Camera', 0);
             if (imageUrl && imageReceivedCallback) {
                 addDebugLog(`[Alpaca] Image downloaded successfully.`);
@@ -135,18 +244,32 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     } else {
         addDebugLog(`[Alpaca] Failed to start exposure: ${startRes?.ErrorMessage || 'Unknown error'}`);
     }
+    cameraIdle = true;
 };
 
 export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {
-    // Implementation for sequence
+    // Continuous capture loop for live stacking
+    let count = 0;
+    let running = true;
+    const loop = async () => {
+        while (running) {
+            await capturePreview(exp, gain, offset, true);
+            count++;
+            cb(count);
+            await sleep(200);
+        }
+        done();
+    };
+    loop();
+    // Return stop function via stopCapture
 };
 
 export const stopCapture = async () => {
-    await alpacaClient.putCommand('Camera', 0, 'AbortExposure');
+    await alpacaClient.putCommand('Camera', 0, 'AbortExposure').catch(() => null);
 };
 
 export const startStream = () => {
-    // Alpaca doesn't support stream easily without MJPEG
+    // Alpaca doesn't support MJPEG stream natively
 };
 
 export const stopStream = () => {
@@ -188,11 +311,20 @@ export const refreshDevices = async () => {
     // Polling will handle this, but can trigger manual fetch if needed
 };
 export const moveFocuser = async (steps: number) => {
-    // Get current position first
+    // Get current position first, then move to absolute position
     const posRes = await alpacaClient.getCommand('Focuser', 0, 'Position');
-    if (posRes) {
-        const target = posRes.Value + steps;
-        await alpacaClient.putCommand('Focuser', 0, 'Move', { Position: target });
+    if (posRes && posRes.ErrorNumber === 0 && posRes.Value !== undefined) {
+        const target = Math.max(0, posRes.Value + steps);
+        const moveRes = await alpacaClient.putCommand('Focuser', 0, 'Move', { Position: target });
+        if (moveRes && moveRes.ErrorNumber === 0 && focuserUpdateCallback) {
+            // Update position after move
+            setTimeout(async () => {
+                const newPosRes = await alpacaClient.getCommand('Focuser', 0, 'Position');
+                if (newPosRes && newPosRes.ErrorNumber === 0 && focuserUpdateCallback) {
+                    focuserUpdateCallback(newPosRes.Value);
+                }
+            }, 500);
+        }
     }
 };
 export const reprocessRawFITS = (fmt: string) => {};

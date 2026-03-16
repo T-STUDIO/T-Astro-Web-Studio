@@ -169,6 +169,8 @@ export class AlpacaClientService {
             }
             console.log(`[AlpacaClient] Connected to ${settings.host}. Found ${this.devices.length} devices.`);
 
+            // Notify immediately after connect so UI can update device list without waiting for first poll
+            if (this.onDeviceListUpdate) this.onDeviceListUpdate(this.devices);
             this.startPolling();
             return true;
         } catch (error) {
@@ -339,29 +341,107 @@ export class AlpacaClientService {
     }
 
     /**
+     * Convert Alpaca imagearray JSON data to a canvas data URL.
+     * imagearray returns a 2D or 3D array of pixel values.
+     */
+    private imageArrayToDataUrl(data: any): string | null {
+        try {
+            const arr = data.Value;
+            if (!arr || !Array.isArray(arr)) return null;
+            // Rank 2: grayscale [row][col], Rank 3: color [row][col][channel]
+            const rank = data.Rank || (Array.isArray(arr[0]) && Array.isArray(arr[0][0]) ? 3 : 2);
+            const height = arr.length;
+            const width = arr[0].length;
+            if (!height || !width) return null;
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+            const imgData = ctx.createImageData(width, height);
+            const pixels = imgData.data;
+            if (rank === 2) {
+                // Grayscale
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const v = Math.min(255, Math.max(0, Math.round(arr[y][x])));
+                        const i = (y * width + x) * 4;
+                        pixels[i] = v; pixels[i+1] = v; pixels[i+2] = v; pixels[i+3] = 255;
+                    }
+                }
+            } else {
+                // Color [row][col][channel] or [channel][row][col]
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x) * 4;
+                        if (Array.isArray(arr[y][x])) {
+                            // [row][col][channel]
+                            pixels[i]   = Math.min(255, Math.max(0, Math.round(arr[y][x][0])));
+                            pixels[i+1] = Math.min(255, Math.max(0, Math.round(arr[y][x][1] || 0)));
+                            pixels[i+2] = Math.min(255, Math.max(0, Math.round(arr[y][x][2] || 0)));
+                            pixels[i+3] = 255;
+                        } else {
+                            const v = Math.min(255, Math.max(0, Math.round(arr[y][x])));
+                            pixels[i] = v; pixels[i+1] = v; pixels[i+2] = v; pixels[i+3] = 255;
+                        }
+                    }
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return canvas.toDataURL('image/jpeg', 0.92);
+        } catch (e) {
+            console.error('[AlpacaClient] imageArrayToDataUrl error:', e);
+            return null;
+        }
+    }
+
+    /**
      * Get image data from Alpaca camera.
-     * Tries direct fetch first; falls back to proxy URL if available.
+     * Tries imagearraybytes (binary FITS/PNG) first, then imagearray (JSON), then proxy fallback.
      */
     public async getImageUrl(deviceType: string, deviceNumber: number): Promise<string | null> {
         if (!this.baseUrl) return null;
+        const base = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}`;
+        const txId = this.getNextId();
 
-        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/imagearray?ClientTransactionID=${this.getNextId()}`;
-
-        // Try direct fetch to get image as blob
+        // 1. Try imagearraybytes (binary, most efficient)
+        const bytesUrl = `${base}/imagearraybytes?ClientTransactionID=${txId}`;
         try {
-            const res = await fetch(targetUrl, { mode: 'cors' });
+            const res = await fetch(bytesUrl, { mode: 'cors' });
             if (res.ok) {
-                const blob = await res.blob();
-                return URL.createObjectURL(blob);
+                const contentType = res.headers.get('content-type') || '';
+                if (contentType.includes('image/') || contentType.includes('application/octet-stream')) {
+                    const blob = await res.blob();
+                    return URL.createObjectURL(blob);
+                }
             }
-        } catch {
-            // Fall through to proxy
-        }
+        } catch { /* fall through */ }
 
-        // Proxy fallback
+        // 2. Try imagearray (JSON pixel data)
+        const arrayUrl = `${base}/imagearray?ClientTransactionID=${txId}`;
+        try {
+            const res = await fetch(arrayUrl, { mode: 'cors' });
+            if (res.ok) {
+                const contentType = res.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await res.json();
+                    if (data && data.ErrorNumber === 0) {
+                        const dataUrl = this.imageArrayToDataUrl(data);
+                        if (dataUrl) return dataUrl;
+                    }
+                } else {
+                    // Binary response from imagearray endpoint
+                    const blob = await res.blob();
+                    return URL.createObjectURL(blob);
+                }
+            }
+        } catch { /* fall through */ }
+
+        // 3. Proxy fallback (server-side proxy can handle CORS)
         const useProxy = await checkProxyAvailable();
         if (useProxy) {
-            return `/api/proxy/image?url=${encodeURIComponent(targetUrl)}`;
+            // Use proxy image endpoint for binary download
+            return `/api/proxy/image?url=${encodeURIComponent(bytesUrl)}`;
         }
 
         return null;

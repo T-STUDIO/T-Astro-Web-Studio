@@ -519,7 +519,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
     ];
 
     return (
-        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-red-900/50 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                 <div className="p-4 border-b border-red-900/30 flex justify-between items-center bg-slate-800/50 sticky top-0 z-10">
                     <h2 className="text-xl font-bold text-red-400">{language === 'ja' ? 'オンラインヘルプ - 完全ガイド' : 'Online Help - Complete Guide'}</h2>

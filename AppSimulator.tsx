@@ -380,7 +380,12 @@ const AppSimulator: React.FC = () => {
                             setConnectionStatus(ok ? 'Connected' : 'Error');
                             if (ok) { addLog('logs.connectSuccess', {}, 'success'); }
                         }}
+                        onAbortConnection={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                         onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
+                        isDriveConnected={isDriveConnected}
+                        onConnectDrive={async () => { await GoogleDriveService.signIn(); setIsDriveConnected(true); }}
+                        onExportSettings={async () => { if(location) await GoogleDriveService.saveSettingsToDrive({ ...initialSettings, location }); }}
+                        onImportSettings={async () => { const s = await GoogleDriveService.loadSettingsFromDrive(); if(s) handleLoadFromDisk(new File([JSON.stringify(s)], 'settings.json')); }}
                         planetariumSettings={planetariumSettings}
                         onPlanetariumSettingsChange={(s: any) => setPlanetariumSettings(prev => ({ ...prev, ...s }))}
                         location={location}
@@ -412,7 +417,11 @@ const AppSimulator: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
+                        sampSettings={sampSettings}
+                        onSampSettingsChange={(s: any) => setSampSettings((prev: any) => ({ ...prev, ...s }))}
                         onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
+                        onConnectVirtualSamp={() => { SampService.connectMock((status) => setSampStatus(status as any)); }}
+                        onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}
@@ -426,6 +435,8 @@ const AppSimulator: React.FC = () => {
                         savedLocalSolvers={savedLocalSolvers} onSaveLocalSolver={(name, settings) => setSavedLocalSolvers(prev => [...prev, { name, settings }])}
                         onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
                         savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
+                        onUpdateSavedSampSettings={(idx: number, settings: any) => setSavedSampSettings(prev => { const n = [...prev]; n[idx].settings = settings; return n; })}
+                        onDeleteSampSettings={(idx: number) => setSavedSampSettings(prev => prev.filter((_: any, i: number) => i !== idx))}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}

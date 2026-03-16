@@ -237,27 +237,67 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
 
         results.push(`Checking network connectivity to proxy...`);
         const proxyCheck = await fetch('/api/alpaca/status').catch(e => ({ ok: false, status: 0, statusText: e.message }));
+        let proxyAvailable = false;
         
         if (proxyCheck.ok) {
             const contentType = (proxyCheck as any).headers?.get('content-type') || '';
             if (contentType.includes('application/json')) {
                 results.push(`✅ Proxy server is reachable and responding with JSON.`);
+                proxyAvailable = true;
             } else {
-                const text = await (proxyCheck as any).text();
-                results.push(`❌ CRITICAL ERROR: Proxy returned HTML instead of JSON.`);
-                results.push(`   Response Preview: ${text.substring(0, 100)}...`);
-                results.push(`   --------------------------------------------------`);
-                results.push(`   ⚠️ 原因1: GitHub Pagesなどの静的ホストを使用している。`);
-                results.push(`   ⚠️ 理由: 静的ホストはNode.jsのバックエンド（プロキシ）を動かせません。`);
-                results.push(`   ⚠️ 原因2: APIリクエストがViteまたは静的ファイルサーバーによって横取りされている。`);
-                results.push(`   💡 解決策: StellarMate上で 'npm run dev' または 'npm start' を実行し、`);
-                results.push(`   💡 'http://stellarmate.local:3000' または 'http://<IP>:3000' でアクセスしてください。`);
-                results.push(`   --------------------------------------------------`);
-                return results;
+                results.push(`⚠️ Proxy server returned non-JSON (likely static host / GitHub Pages).`);
+                results.push(`   Falling back to direct connection mode.`);
             }
         } else {
-            results.push(`❌ Proxy server is unreachable or returned error. Status: ${(proxyCheck as any).status || 'Network Error'}`);
-            results.push(`   Note: Ensure the web server is running on port 3000.`);
+            results.push(`⚠️ Proxy server is unreachable (Status: ${(proxyCheck as any).status || 'Network Error'}).`);
+            results.push(`   Attempting direct connection to Alpaca server...`);
+        }
+
+        // --- Direct connection check (works when CORS is allowed) ---
+        results.push(`Attempting direct connection to Alpaca server at http://${host}:${port}...`);
+        try {
+            const directController = new AbortController();
+            const directTimeout = setTimeout(() => directController.abort(), 5000);
+            const directRes = await fetch(`http://${host}:${port}/management/v1/configureddevices`, {
+                signal: directController.signal,
+                mode: 'cors'
+            }).catch(e => null as any);
+            clearTimeout(directTimeout);
+
+            if (directRes && directRes.ok) {
+                const data = await directRes.json();
+                results.push(`✅ Direct connection to Alpaca server succeeded!`);
+                if (data && Array.isArray(data.Value)) {
+                    results.push(`✅ Found ${data.Value.length} devices.`);
+                    data.Value.forEach((d: any) => {
+                        const name = d.DeviceName || d.deviceName || 'Unknown';
+                        const type = d.DeviceType || d.deviceType || 'Unknown';
+                        const num = d.DeviceNumber !== undefined ? d.DeviceNumber : d.deviceNumber;
+                        results.push(`  - ${name} (${type} #${num})`);
+                    });
+                } else {
+                    results.push(`⚠️ Connected but no devices found in response.`);
+                }
+                return results;
+            } else if (directRes) {
+                results.push(`⚠️ Direct connection returned status ${directRes.status}.`);
+            } else {
+                results.push(`⚠️ Direct connection failed (CORS blocked or network error).`);
+                results.push(`   💡 To allow direct browser access, enable CORS on your Alpaca server.`);
+                results.push(`   💡 For ASCOM Remote: set 'Allow CORS' in the server settings.`);
+                results.push(`   💡 For N.I.N.A.: enable the Alpaca server with CORS support.`);
+            }
+        } catch (e: any) {
+            results.push(`⚠️ Direct connection error: ${e.message}`);
+        }
+
+        if (!proxyAvailable) {
+            results.push(``);
+            results.push(`--- 接続できない場合の対処法 ---`);
+            results.push(`⚠️ 静的ホスト（GitHub Pages等）からローカルAlpacaサーバーへの接続には制限があります。`);
+            results.push(`💡 解決策1: Alpacaサーバー側でCORSを有効にする（推奨）。`);
+            results.push(`💡 解決策2: StellarMate/ローカルPCで 'npm run dev' を実行しローカルアクセスする。`);
+            results.push(`💡 解決策3: ngrokなどのトンネルを使用してプロキシ経由でアクセスする。`);
             return results;
         }
 

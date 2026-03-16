@@ -17,6 +17,7 @@ export const ja = {
     close: '閉じる',
     loading: '読み込み中...',
     none: '---',
+    help: 'ヘルプ',
   },
   tooltips: {
     // Equipment

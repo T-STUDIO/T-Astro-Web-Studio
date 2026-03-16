@@ -55,11 +55,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: 'Alpaca接続',
-                    content: '・デフォルトホスト: localhost\n・デフォルトポート: 11111\n・リモート接続の場合はIPアドレスを入力します\n・ファイアウォール設定を確認してください'
+                    content: '・デフォルトホスト: localhost→接続ホスト名に変更\n・デフォルトポート: 11111\n・リモート接続の場合はIPアドレスを入力します\n・ファイアウォール設定を確認してください'
                 },
                 {
                     title: 'INDI接続',
-                    content: '・デフォルトホスト: localhost\n・デフォルトポート: 7624\n・INDIサーバーが起動していることを確認してください\n・複数デバイスは自動検出されます'
+                    content: '・デフォルトホスト: localhost→接続ホスト名に変更\n・デフォルトポート: 7624→WebSocketポートに変更\n・INDIサーバーが起動していることを確認してください\n・複数デバイスは自動検出されます'
                 },
                 {
                     title: 'デバイス管理',
@@ -117,20 +117,22 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: 'ライブビュー',
-                    content: '・[ライブビュー]ボタンで連続撮影を開始\n・設定した露出で繰り返し撮影\n・リアルタイムでフォーカス調整が可能\n・[停止]ボタンで撮影を終了'
+                    content: '・[レイブビュー]ボタンで高速ストリーミング開始\n・フォーカシングやガイド星選択に最適\n・低遅延で実時間フィードバック'
                 },
                 {
                     title: 'プレビュー',
                     content: '・[プレビュー]ボタンで単一フレームを撮影\n・構図確認やフォーカス調整に便利\n・撮影後、画像が画面に表示されます'
                 },
                 {
-                    title: 'ライブスタッキング',
-                    content: '・[ライブスタッキング開始]ボタンで複数フレームを自動合成\n・ノイズ低減と詳細表現が向上\n・リアルタイムで合成結果を確認\n・スタック数は自動調整されます'
+                    title: 'Loop',
+                    content: '・[Loop]ボタンで連続撮影を開始\n・設定した露出で繰り返し撮影\n・リアルタイムでフォーカス調整が可能\n・[停止]ボタンで撮影を終了'
                 },
                 {
-                    title: 'ビデオストリーム',
-                    content: '・[ビデオストリーム]ボタンで高速ストリーミング開始\n・フォーカシングやガイド星選択に最適\n・低遅延で実時間フィードバック'
+                    title: 'ライブスタッキング',
+                    content: '・[ライブスタッキング開始]ボタンで複数フレームを自動合成\n・ノイズ低減と詳細表現が向上\n・リアルタイムで合成結果を確認\n・スタック数は自動調整されます'
                 }
+                
+           
             ]
         },
         {
@@ -167,7 +169,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: 'ローカルソルバー',
-                    content: '・ローカルコンピュータで実行\n・インターネット接続不要\n・高速処理（1～2秒）\n・Astrometry.netのローカル版を使用'
+                    content: '・ローカルコンピュータで実行\n・インターネット接続不要\n・高速処理（1～2秒）\n・ローカル版Astrometry.net＋TSPSを使用'
                 },
                 {
                     title: 'クラウドソルバー（Nova Solver）',
@@ -188,7 +190,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: '有効化方法',
-                    content: '1. INDI接続を確立します\n2. ブリッジ機能を有効化します\n3. Alpacaクライアントが自動検出\n4. INDI機材がAlpacaデバイスとして利用可能に'
+                    content: '1. INDI接続を確立します\n2. TS-Connect→Alpacaボタンで起動\n3. Alpacaクライアントが自動検出\n4. INDI機材がAlpacaデバイスとして利用可能に'
                 }
             ]
         },
@@ -299,11 +301,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: 'Alpaca Connection',
-                    content: '・Default host: localhost\n・Default port: 11111\n・For remote connection, enter IP address\n・Verify firewall settings'
+                    content: '・Default host: localhost→Alpaca Server IP\n・Default port: 11111\n・For remote connection, enter IP address\n・Verify firewall settings'
                 },
                 {
                     title: 'INDI Connection',
-                    content: '・Default host: localhost\n・Default port: 7624\n・Verify INDI server is running\n・Multiple devices auto-detected'
+                    content: '・Default host: localhost→INDI Server IP\n・Default port: 7624→WebSocket Port\n・Verify INDI server is running\n・Multiple devices auto-detected'
                 },
                 {
                     title: 'Device Management',
@@ -361,19 +363,19 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: 'Live View',
-                    content: '・Click [Live View] to start continuous capture\n・Repeats capture with configured exposure\n・Real-time focus adjustment possible\n・Click [Stop] to end capture'
-                },
+                    content: '・Click [Live View] to start high-speed streaming\n・Optimal for focusing and guide star selection\n・Low-latency real-time feedback'
+                }
                 {
                     title: 'Preview',
                     content: '・Click [Preview] to capture single frame\n・Convenient for composition check and focus adjustment\n・Image displays on screen after capture'
                 },
                 {
+                    title: 'Loop',
+                    content: '・Click [Loop] to start continuous capture\n・Repeats capture with configured exposure\n・Real-time focus adjustment possible\n・Click [Stop] to end capture'
+                }, 
+                {
                     title: 'Live Stacking',
                     content: '・Click [Start Live Stacking] to auto-combine multiple frames\n・Reduces noise and enhances detail\n・View composite result in real-time\n・Stack count auto-adjusted'
-                },
-                {
-                    title: 'Video Stream',
-                    content: '・Click [Video Stream] to start high-speed streaming\n・Optimal for focusing and guide star selection\n・Low-latency real-time feedback'
                 }
             ]
         },
@@ -411,7 +413,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: 'Local Solver',
-                    content: '・Runs on local computer\n・No internet connection required\n・Fast processing (1-2 seconds)\n・Uses local Astrometry.net version'
+                    content: '・Runs on local computer\n・No internet connection required\n・Fast processing (1-2 seconds)\n・Uses local Astrometry.net + TSPS version'
                 },
                 {
                     title: 'Cloud Solver (Nova Solver)',

@@ -495,16 +495,28 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         
         if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTiles.length > 0) return () => controller.abort();
         
-        const fetchWithTimeout = async (url: string, timeoutMs: number, fetchSignal: AbortSignal): Promise<Response> => {
+        const fetchWithTimeout = async (url: string, timeoutMs: number, fetchSignal: AbortSignal, tryNoCors: boolean = false): Promise<Response> => {
             const timeoutController = new AbortController();
             const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
             // Combine the two signals
             fetchSignal.addEventListener('abort', () => timeoutController.abort());
             try {
+                // Try CORS mode first
                 const response = await fetch(url, { signal: timeoutController.signal, mode: 'cors' });
                 clearTimeout(timeoutId);
                 return response;
             } catch (e) {
+                // If CORS fails and tryNoCors is true, try no-cors mode (for HTTP environments)
+                if (tryNoCors) {
+                    try {
+                        const noCorsResponse = await fetch(url, { signal: timeoutController.signal, mode: 'no-cors' });
+                        clearTimeout(timeoutId);
+                        return noCorsResponse;
+                    } catch (noCorsErr) {
+                        clearTimeout(timeoutId);
+                        throw noCorsErr;
+                    }
+                }
                 clearTimeout(timeoutId);
                 throw e;
             }
@@ -583,9 +595,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             // Try direct img tag loading first (avoids CORS preflight for img elements)
                             img = await loadImageFromUrl(source.url, signal);
                         } else {
-                            // Proxy fetch approach
-                            const response = await fetchWithTimeout(source.url, 10000, signal);
-                            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                            // Proxy fetch approach with no-cors fallback for HTTP environments
+                            const isHttpContext = window.location.protocol === 'http:';
+                            const response = await fetchWithTimeout(source.url, 10000, signal, isHttpContext);
+                            if (!response.ok && response.status !== 0) throw new Error(`HTTP ${response.status}`);
                             const blob = await response.blob();
                             const objectUrl = URL.createObjectURL(blob);
                             img = await loadImageFromUrl(objectUrl, signal);

@@ -78,17 +78,35 @@ export class AlpacaClientService {
             if (directRes.ok || directRes.status < 500) return directRes;
         } catch (directErr: any) {
             // Network error or CORS block — fall through to proxy
-            console.warn(`[AlpacaClient] Direct fetch failed for ${targetUrl}: ${directErr.message}`);
+            console.warn(`[AlpacaClient] Direct fetch (CORS) failed for ${targetUrl}: ${directErr.message}`);
         }
 
-        // --- 2. Try server-side proxy ---
+        
+        // --- 2. For HTTP context, try no-cors mode (GET only) ---
+        if (typeof window !== 'undefined' && window.location.protocol === 'http:' && method === 'GET') {
+            try {
+                const noCorsRes = await fetch(targetUrl, {
+                    ...options,
+                    mode: 'no-cors',
+                    signal: options.signal,
+                });
+                if (noCorsRes.status === 0 || noCorsRes.ok) {
+                    console.log(`[AlpacaClient] Direct fetch (no-cors) succeeded for ${targetUrl}`);
+                    return noCorsRes;
+                }
+            } catch (noCorsErr: any) {
+                console.warn(`[AlpacaClient] Direct fetch (no-cors) failed for ${targetUrl}: ${noCorsErr.message}`);
+            }
+        }
+
+        // --- 3. Try server-side proxy ---
         const useProxy = await checkProxyAvailable();
         if (useProxy) {
             const proxyHeaders: Record<string, string> = {
                 'x-target-url': targetUrl,
             };
             if (method === 'PUT' || method === 'POST') {
-                proxyHeaders['Content-Type'] = 'application/json';
+                proxyHeaders['Content-Type'] = 'application/x-www-form-urlencoded';
             }
             const proxyRes = await fetch('/api/alpaca/proxy', {
                 method,

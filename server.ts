@@ -8,7 +8,7 @@ import dgram from 'dgram';
 import url from 'url';
 import path from 'path';
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 6002;
 const ALPACA_PORT = 11111;
 const WS_PORT = 11112;
 const DISCOVERY_PORT = 32227;

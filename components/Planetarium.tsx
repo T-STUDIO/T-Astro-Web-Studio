@@ -495,6 +495,48 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         
         if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTiles.length > 0) return () => controller.abort();
         
+        const fetchWithTimeout = async (url: string, timeoutMs: number, fetchSignal: AbortSignal, tryNoCors: boolean = false): Promise<Response> => {
+            const timeoutController = new AbortController();
+            const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+            // Combine the two signals
+            fetchSignal.addEventListener('abort', () => timeoutController.abort());
+            try {
+                // Try CORS mode first
+                const response = await fetch(url, { signal: timeoutController.signal, mode: 'cors' });
+                clearTimeout(timeoutId);
+                return response;
+            } catch (e) {
+                // If CORS fails and tryNoCors is true, try no-cors mode (for HTTP environments)
+                if (tryNoCors) {
+                    try {
+                        const noCorsResponse = await fetch(url, { signal: timeoutController.signal, mode: 'no-cors' });
+                        clearTimeout(timeoutId);
+                        return noCorsResponse;
+                    } catch (noCorsErr) {
+                        clearTimeout(timeoutId);
+                        throw noCorsErr;
+                    }
+                }
+                clearTimeout(timeoutId);
+                throw e;
+            }
+        };
+
+        const loadImageFromUrl = (url: string, fetchSignal: AbortSignal): Promise<HTMLImageElement> => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                const timeoutId = setTimeout(() => {
+                    img.src = '';
+                    reject(new Error('Image load timeout'));
+                }, 15000);
+                img.onload = () => { clearTimeout(timeoutId); resolve(img); };
+                img.onerror = () => { clearTimeout(timeoutId); reject(new Error('Image load error')); };
+                fetchSignal.addEventListener('abort', () => { clearTimeout(timeoutId); img.src = ''; reject(new Error('Aborted')); });
+                img.src = url;
+            });
+        };
+
         const updateDss = async () => {
             if (signal.aborted) return;
             setDssLoading(true);
@@ -521,49 +563,46 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
                 const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
-                
+
+                // Build source list: direct CORS-capable endpoints first, proxy as last resort
+                const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`;
+                const skyviewUrl = `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`;
+                const proxiedAladinUrl = `/api/proxy/image?url=${encodeURIComponent(aladinUrl)}`;
+                const proxiedSkyviewUrl = `/api/proxy/image?url=${encodeURIComponent(skyviewUrl)}`;
+
                 const sources = [
-                    {
-                        name: 'NASA SkyView',
-                        url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
-                    },
-                    {
-                        name: 'Aladin',
-                        url: `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`
-                    }
+                    { name: 'Aladin (direct)', url: aladinUrl, direct: true },
+                    { name: 'NASA SkyView (direct)', url: skyviewUrl, direct: true },
+                    { name: 'Aladin (proxy)', url: proxiedAladinUrl, direct: false },
+                    { name: 'NASA SkyView (proxy)', url: proxiedSkyviewUrl, direct: false },
                 ];
 
                 if (offsets.indexOf(offset) > 0) {
                     await new Promise(resolve => {
-                        const t = setTimeout(resolve, 300);
+                        const t = setTimeout(resolve, 200);
                         signal.addEventListener('abort', () => clearTimeout(t));
                     });
                 }
 
                 if (signal.aborted) return;
 
+                let tileLoaded = false;
                 for (const source of sources) {
                     if (signal.aborted) return;
                     try {
-                        const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(source.url)}`;
-                        let response;
-                        try {
-                            response = await fetch(proxiedUrl, { signal });
-                            if (!response.ok) throw new Error(`Proxy error ${response.status}`);
-                        } catch (proxyError) {
-                            console.warn(`[Planetarium] Proxy failed, trying direct access for ${source.name}`);
-                            response = await fetch(source.url, { signal });
-                            if (!response.ok) throw new Error(`Direct access error ${response.status}`);
+                        let img: HTMLImageElement;
+                        if (source.direct) {
+                            // Try direct img tag loading first (avoids CORS preflight for img elements)
+                            img = await loadImageFromUrl(source.url, signal);
+                        } else {
+                            // Proxy fetch approach with no-cors fallback for HTTP environments
+                            const isHttpContext = window.location.protocol === 'http:';
+                            const response = await fetchWithTimeout(source.url, 10000, signal, isHttpContext);
+                            if (!response.ok && response.status !== 0) throw new Error(`HTTP ${response.status}`);
+                            const blob = await response.blob();
+                            const objectUrl = URL.createObjectURL(blob);
+                            img = await loadImageFromUrl(objectUrl, signal);
                         }
-                        
-                        const blob = await response.blob();
-                        const img = new Image();
-                        await new Promise((resolve, reject) => {
-                            img.onload = resolve;
-                            img.onerror = reject;
-                            img.src = URL.createObjectURL(blob);
-                            signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
-                        });
 
                         if (signal.aborted) return;
 
@@ -572,11 +611,15 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
                         });
                         setDssTiles([...newTiles]);
-                        break; 
+                        tileLoaded = true;
+                        break;
                     } catch (e: any) {
-                        if (e.name === 'AbortError') return;
-                        console.warn(`[Planetarium] Tile ${offset.dra},${offset.ddec} failed from ${source.name}`);
+                        if (e.name === 'AbortError' || (e.message && e.message.includes('Aborted'))) return;
+                        console.warn(`[Planetarium] Tile (${offset.dra},${offset.ddec}) failed from ${source.name}: ${e.message}`);
                     }
+                }
+                if (!tileLoaded) {
+                    console.warn(`[Planetarium] All sources failed for tile (${offset.dra},${offset.ddec}), skipping.`);
                 }
             }
 

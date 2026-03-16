@@ -401,7 +401,12 @@ const AppAlpaca: React.FC = () => {
                             setConnectionStatus(ok ? 'Connected' : 'Error');
                             if (ok) { addLog('logs.connectSuccess', {}, 'success'); }
                         }}
+                        onAbortConnection={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                         onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
+                        isDriveConnected={false}
+                        onConnectDrive={async () => {}}
+                        onExportSettings={async () => {}}
+                        onImportSettings={async () => {}}
                         planetariumSettings={planetariumSettings}
                         onPlanetariumSettingsChange={(s: any) => setPlanetariumSettings(prev => ({ ...prev, ...s }))}
                         location={location}
@@ -433,15 +438,19 @@ const AppAlpaca: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
+                        sampSettings={sampSettings}
+                        onSampSettingsChange={(s: any) => setSampSettings((prev: any) => ({ ...prev, ...s }))}
                         onConnectSamp={async () => { 
                           if (sampStatus === 'Connected') {
                             SampService.disconnect();
+                            setSampStatus('Disconnected');
                           } else {
                             setSampStatus('Connecting'); 
                             await SampService.connect(sampSettings);
                           }
                         }}
-                        onDisconnectSamp={() => SampService.disconnect()}
+                        onConnectVirtualSamp={() => { SampService.connectMock((status) => setSampStatus(status as any)); }}
+                        onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}
@@ -455,6 +464,8 @@ const AppAlpaca: React.FC = () => {
                         savedLocalSolvers={savedLocalSolvers} onSaveLocalSolver={(name, settings) => setSavedLocalSolvers(prev => [...prev, { name, settings }])}
                         onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
                         savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
+                        onUpdateSavedSampSettings={(idx: number, settings: any) => setSavedSampSettings(prev => { const n = [...prev]; n[idx].settings = settings; return n; })}
+                        onDeleteSampSettings={(idx: number) => setSavedSampSettings(prev => prev.filter((_: any, i: number) => i !== idx))}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         alpacaDevices={alpacaDevices}

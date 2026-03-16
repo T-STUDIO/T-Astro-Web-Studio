@@ -37,7 +37,8 @@ async function startServer() {
         next();
     });
 
-    apiRouter.get('/proxy/image', async (req, res) => {
+    // Moving image proxy outside of apiRouter.use(JSON) to avoid content-type conflict
+    app.get('/api/proxy/image', async (req, res) => {
         const imageUrl = req.query.url as string;
         if (!imageUrl) return res.status(400).send('Missing url');
 
@@ -48,7 +49,6 @@ async function startServer() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 25000);
             
-            // Link client disconnect to our fetch
             req.on('close', () => controller.abort());
 
             try {
@@ -80,10 +80,7 @@ async function startServer() {
                 res.send(Buffer.from(arrayBuffer));
             } catch (error: any) {
                 clearTimeout(timeoutId);
-                if (error.name === 'AbortError') {
-                    if (!res.headersSent) res.status(504).json({ error: 'Gateway Timeout or Client Abort' });
-                    return;
-                }
+                if (error.name === 'AbortError') return;
 
                 if (retries > 0 && (error.message.includes('socket hang up') || error.message.includes('ECONNRESET') || error.message.includes('ETIMEDOUT'))) {
                     console.log(`[ImageProxy] Retrying ${url} due to network error: ${error.message} (${retries} left)`);
@@ -93,12 +90,13 @@ async function startServer() {
 
                 console.error(`[ImageProxy] Final error for ${url}:`, error.message);
                 if (!res.headersSent) {
+                    res.setHeader('Content-Type', 'application/json');
                     res.status(500).json({ error: error.message, url });
                 }
             }
         };
 
-        fetchWithRetry(imageUrl);
+        await fetchWithRetry(imageUrl);
     });
 
     apiRouter.use((req, res, next) => {

@@ -254,6 +254,18 @@ export class AlpacaClientService {
         }
         return results;
     }
+
+    /**
+     * Get image URL through proxy for binary data.
+     */
+    public async getImageUrl(deviceType: string, deviceNumber: number): Promise<string | null> {
+        if (!this.baseUrl) return null;
+        
+        // Alpaca's ImageArray requires a binary GET request.
+        // We route this through our image proxy to handle the binary response correctly.
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/imagearray?ClientTransactionID=${this.getNextId()}`;
+        return `/api/proxy/image?url=${encodeURIComponent(targetUrl)}`;
+    }
 }
 
 export const alpacaClient = AlpacaClientService.getInstance();

@@ -98,8 +98,43 @@ export const setPark = async (parked: boolean) => {
 };
 
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
-    await alpacaClient.putCommand('Camera', 0, 'StartExposure', { Duration: exp / 1000, Light: true });
-    // Polling for image would be needed here
+    addDebugLog(`[Alpaca] Starting exposure: ${exp}ms, Gain: ${gain}...`);
+    const startRes = await alpacaClient.putCommand('Camera', 0, 'StartExposure', { Duration: exp / 1000, Light: true });
+    
+    if (startRes && startRes.ErrorNumber === 0) {
+        addDebugLog(`[Alpaca] Exposure started. Polling for completion...`);
+        
+        // Poll for ImageReady
+        let ready = false;
+        let attempts = 0;
+        const maxAttempts = Math.ceil(exp / 500) + 20; // Allow for exposure time + 10s overhead
+        
+        while (!ready && attempts < maxAttempts) {
+            await sleep(500);
+            attempts++;
+            const statusRes = await alpacaClient.getCommand('Camera', 0, 'ImageReady');
+            if (statusRes && statusRes.Value === true) {
+                ready = true;
+                addDebugLog(`[Alpaca] Image is ready. Downloading...`);
+                break;
+            }
+        }
+        
+        if (ready) {
+            // Use proxy-aware image download
+            const imageUrl = await alpacaClient.getImageUrl('Camera', 0);
+            if (imageUrl && imageReceivedCallback) {
+                addDebugLog(`[Alpaca] Image downloaded successfully.`);
+                imageReceivedCallback(imageUrl, 'jpg');
+            } else {
+                addDebugLog(`[Alpaca] Failed to get image URL or no callback registered.`);
+            }
+        } else {
+            addDebugLog(`[Alpaca] Exposure timed out or failed.`);
+        }
+    } else {
+        addDebugLog(`[Alpaca] Failed to start exposure: ${startRes?.ErrorMessage || 'Unknown error'}`);
+    }
 };
 
 export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {

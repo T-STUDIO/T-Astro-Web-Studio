@@ -546,8 +546,15 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     if (signal.aborted) return;
                     try {
                         const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(source.url)}`;
-                        const response = await fetch(proxiedUrl, { signal });
-                        if (!response.ok) throw new Error(`Proxy error ${response.status}`);
+                        let response;
+                        try {
+                            response = await fetch(proxiedUrl, { signal });
+                            if (!response.ok) throw new Error(`Proxy error ${response.status}`);
+                        } catch (proxyError) {
+                            console.warn(`[Planetarium] Proxy failed, trying direct access for ${source.name}`);
+                            response = await fetch(source.url, { signal });
+                            if (!response.ok) throw new Error(`Direct access error ${response.status}`);
+                        }
                         
                         const blob = await response.blob();
                         const img = new Image();

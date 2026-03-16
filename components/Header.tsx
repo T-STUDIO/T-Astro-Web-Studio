@@ -1,8 +1,11 @@
 
 import React from 'react';
 import { TelescopeIcon } from './icons/TelescopeIcon';
+import { HelpIcon } from './icons/HelpIcon';
 import { useTranslation } from '../contexts/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { Tooltip } from './Tooltip';
+import { HelpModal } from './HelpModal';
 
 interface HeaderProps {
   currentDriver: 'INDI' | 'Alpaca' | 'Simulator';
@@ -12,6 +15,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentDriver, onToggleTSConect, isTSConectActive, className }) => {
+  const [showHelp, setShowHelp] = React.useState(false);
   const { t } = useTranslation();
   
   return (
@@ -23,6 +27,15 @@ export const Header: React.FC<HeaderProps> = ({ currentDriver, onToggleTSConect,
         </div>
       </div>
       <div className="flex items-center gap-4">
+        <Tooltip title={t('common.help') || 'Help'} position="bottom">
+          <button 
+            onClick={() => setShowHelp(true)}
+            className="p-2 text-slate-400 hover:text-red-400 transition-colors"
+          >
+            <HelpIcon className="w-6 h-6" />
+          </button>
+        </Tooltip>
+        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
         {currentDriver === 'INDI' && onToggleTSConect && (
             <button 
                 onClick={onToggleTSConect}

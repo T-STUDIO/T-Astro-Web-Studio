@@ -14,6 +14,7 @@ import { ListIcon } from './icons/ListIcon';
 import { GoogleDriveIcon } from './icons/GoogleDriveIcon'; 
 import { VideoIcon } from './icons/VideoIcon';
 import { useTranslation } from '../contexts/LanguageContext';
+import { Tooltip } from './Tooltip';
 import { FocuserControlAlpaca } from './FocuserControlAlpaca';
 import * as AstroService from '../services/AstroServiceAlpaca';
 import * as GoogleDriveService from '../services/GoogleDriveService';
@@ -40,8 +41,9 @@ const ConnectionStatusIndicator: React.FC<{ status: ConnectionStatus | SampStatu
 };
 
 const ToggleSwitch = memo(({ id, checked, onChange, label, title }: { id: string, checked: boolean, onChange: (checked: boolean) => void, label: string, title?: string}) => (
-    <label htmlFor={id} className="flex items-center justify-between cursor-pointer w-full p-2 hover:bg-slate-800 rounded-md transition-colors" title={title}>
-      <span className="text-sm font-medium text-slate-300">{label}</span>
+    <Tooltip title={title || ''} position="right">
+      <label htmlFor={id} className="flex items-center justify-between cursor-pointer w-full p-2 hover:bg-slate-800 rounded-md transition-colors">
+        <span className="text-sm font-medium text-slate-300">{label}</span>
       <div className="relative">
         <input
           id={id}
@@ -52,12 +54,14 @@ const ToggleSwitch = memo(({ id, checked, onChange, label, title }: { id: string
         />
         <div className="w-11 h-6 bg-slate-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-red-500 peer-focus:ring-offset-2 peer-focus:ring-offset-slate-900 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-700"></div>
       </div>
-    </label>
+      </label>
+    </Tooltip>
 ));
 
 const RangeSlider = memo(({ id, label, value, min, max, step, onChange, unit, disabled, colorClass = 'bg-slate-700', onAfterChange, title }: { id: string; label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void; unit?: string; disabled?: boolean; colorClass?: string; onAfterChange?: (value: number) => void; title?: string }) => {
     return (
-    <div className="space-y-1" title={title}>
+    <Tooltip title={title || ''} position="right">
+    <div className="space-y-1">
         <label htmlFor={id} className="flex justify-between items-center text-sm font-medium text-slate-300">
             <span>{label}</span>
             <div className="flex items-center gap-1">
@@ -94,6 +98,7 @@ const RangeSlider = memo(({ id, label, value, min, max, step, onChange, unit, di
             disabled={disabled}
         />
     </div>
+    </Tooltip>
     );
 });
 

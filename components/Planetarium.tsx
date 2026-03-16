@@ -253,16 +253,18 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             ctx.restore();
         }
 
-        if (!settings.showDSS && settings.showMilkyWay && milkyWaySprite) {
-            ctx.save(); ctx.globalCompositeOperation = 'screen'; 
-            const opacityVal = settings.milkyWayOpacity ?? 0.5; const baseOpacity = Math.pow(opacityVal, 1.5) * 0.012;
-            if (baseOpacity > 0.000001) {
+        if (settings.showMilkyWay && milkyWaySprite) {
+            ctx.save(); ctx.globalCompositeOperation = 'lighter'; 
+            const opacityVal = settings.milkyWayOpacity ?? 0.5; 
+            const baseOpacity = opacityVal * 0.5; // Direct linear scaling for more predictability
+            if (baseOpacity > 0.01) {
                 MILKY_WAY_POINTS.forEach(pt => {
                     const {az, alt} = raDecToAzAlt(pt.ra, pt.dec, effLocation.latitude, lst);
-                    if (alt > -10) {
+                    if (alt > -20) {
                         const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                        if (p && p.x > -100 && p.x < width + 100 && p.y > -100 && p.y < height + 100) {
-                            const scale = 50 * zoom * (pt.width || 1.0); ctx.globalAlpha = Math.min(1, pt.intensity * baseOpacity);
+                        if (p && p.x > -200 && p.x < width + 200 && p.y > -200 && p.y < height + 200) {
+                            const scale = 80 * zoom * (pt.width || 1.0); 
+                            ctx.globalAlpha = Math.min(1, pt.intensity * baseOpacity);
                             ctx.drawImage(milkyWaySprite, p.x - scale, p.y - scale, scale * 2, scale * 2);
                         }
                     }
@@ -362,6 +364,22 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             }
             if (isSelected) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 6, 0, Math.PI * 2); ctx.stroke(); }
             if (isDSO) {
+                // DSS Background (Beta)
+                if (settings.showDSS && !isMini && zoom > 2.0 && obj.size && obj.size > 5) {
+                    const sizePx = (obj.size / 60) * pixelsPerDegree * (0.8 + 0.2 * zoom);
+                    if (sizePx > 15) {
+                        const dssUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${obj.raDeg}&dec=${obj.decDeg}&fov=${obj.size/60}&width=256&height=256&format=jpg&survey=P%2FDSS2%2Fcolor`;
+                        const img = new Image();
+                        img.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
+                        if (img.complete) {
+                            ctx.save();
+                            ctx.globalAlpha = 0.7;
+                            ctx.translate(p.x, p.y);
+                            ctx.drawImage(img, -sizePx/2, -sizePx/2, sizePx, sizePx);
+                            ctx.restore();
+                        }
+                    }
+                }
                 ctx.strokeStyle = color; ctx.lineWidth = 1.5;
                 if (obj.type === 'Nebula') ctx.strokeRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
                 else { ctx.beginPath(); if(obj.type === 'Star Cluster') ctx.setLineDash([3, 2]); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }

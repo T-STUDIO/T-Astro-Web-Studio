@@ -131,8 +131,6 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                     title: 'ライブスタッキング',
                     content: '・[ライブスタッキング開始]ボタンで複数フレームを自動合成\n・ノイズ低減と詳細表現が向上\n・リアルタイムで合成結果を確認\n・スタック数は自動調整されます'
                 }
-                
-           
             ]
         },
         {
@@ -364,7 +362,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 {
                     title: 'Live View',
                     content: '・Click [Live View] to start high-speed streaming\n・Optimal for focusing and guide star selection\n・Low-latency real-time feedback'
-                }
+                },
                 {
                     title: 'Preview',
                     content: '・Click [Preview] to capture single frame\n・Convenient for composition check and focus adjustment\n・Image displays on screen after capture'

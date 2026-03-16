@@ -366,19 +366,28 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             }
             if (isSelected) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 6, 0, Math.PI * 2); ctx.stroke(); }
             if (isDSO) {
-                // DSS Background (Beta)
+                // DSS Background (Beta) - Fixed async image loading
                 if (settings.showDSS && !isMini && zoom > 2.0 && obj.size && obj.size > 5) {
                     const sizePx = (obj.size / 60) * pixelsPerDegree * (0.8 + 0.2 * zoom);
                     if (sizePx > 15) {
                         const dssUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${obj.raDeg}&dec=${obj.decDeg}&fov=${obj.size/60}&width=256&height=256&format=jpg&survey=P%2FDSS2%2Fcolor`;
-                        const img = new Image();
-                        img.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
-                        if (img.complete) {
+                        const cacheKey = `dss-${obj.id}-${zoom.toFixed(2)}`;
+                        const imgCache = (window as any).__dssImageCache || {};
+                        if (!(window as any).__dssImageCache) (window as any).__dssImageCache = imgCache;
+                        
+                        const cachedImg = imgCache[cacheKey];
+                        if (cachedImg && cachedImg.complete) {
                             ctx.save();
                             ctx.globalAlpha = 0.7;
                             ctx.translate(p.x, p.y);
-                            ctx.drawImage(img, -sizePx/2, -sizePx/2, sizePx, sizePx);
+                            ctx.drawImage(cachedImg, -sizePx/2, -sizePx/2, sizePx, sizePx);
                             ctx.restore();
+                        } else if (!cachedImg) {
+                            const img = new Image();
+                            img.crossOrigin = 'anonymous';
+                            img.onload = () => { imgCache[cacheKey] = img; };
+                            img.onerror = () => { console.warn(`[DSS] Failed to load for ${obj.name}`); };
+                            img.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
                         }
                     }
                 }

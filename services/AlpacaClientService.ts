@@ -25,14 +25,25 @@ let proxyAvailable: boolean | null = null;
 const checkProxyAvailable = async (): Promise<boolean> => {
     if (proxyAvailable !== null) return proxyAvailable;
     try {
-        const res = await fetch('/api/alpaca/status', { method: 'GET' });
+        // Add 2-second timeout for proxy check to prevent hanging on local servers
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        const res = await fetch('/api/alpaca/status', { 
+            method: 'GET',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         if (res.ok) {
             const ct = res.headers.get('content-type') || '';
             proxyAvailable = ct.includes('application/json');
         } else {
             proxyAvailable = false;
         }
-    } catch {
+    } catch (err: any) {
+        // Timeout or network error - assume proxy is not available
+        console.warn('[AlpacaClient] Proxy check failed or timed out:', err.message);
         proxyAvailable = false;
     }
     return proxyAvailable;
@@ -132,7 +143,12 @@ export class AlpacaClientService {
         const targetUrl = `http://${settings.host}:${settings.port}/management/v1/configureddevices`;
         console.log(`[AlpacaClient] Connecting to ${targetUrl}...`);
         try {
-            const response = await this.fetchAlpaca(targetUrl);
+            // Add 10-second timeout for connection attempt to prevent hanging on local servers
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            const response = await this.fetchAlpaca(targetUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
             
             // For no-cors, status is 0 and ok is false, but it means the request was sent.
             if (response.status === 0) {

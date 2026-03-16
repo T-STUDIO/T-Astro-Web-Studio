@@ -544,11 +544,11 @@ const EquipmentPanel = memo((props: any) => {
 
                     // Navigate to the correct page for the driver
                     const pageMap: Record<string, string> = {
-                        'INDI': '/index.html',
-                        'Alpaca': '/alpaca.html',
-                        'Simulator': '/simulator.html'
+                        'INDI': './index.html',
+                        'Alpaca': './alpaca.html',
+                        'Simulator': './simulator.html'
                     };
-                    window.location.href = pageMap[newDriver] || '/index.html';
+                    window.location.href = pageMap[newDriver] || './index.html';
                 }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
                     <option value="Simulator">Simulator</option>
                     <option value="INDI">INDI</option>

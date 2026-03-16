@@ -103,11 +103,10 @@ export class AlpacaClientService {
         const useProxy = await checkProxyAvailable();
         if (useProxy) {
             const proxyHeaders: Record<string, string> = {
+                ...(options.headers as any || {}),
                 'x-target-url': targetUrl,
             };
-            if (method === 'PUT' || method === 'POST') {
-                proxyHeaders['Content-Type'] = 'application/x-www-form-urlencoded';
-            }
+            
             const proxyRes = await fetch('/api/alpaca/proxy', {
                 method,
                 headers: proxyHeaders,
@@ -124,11 +123,24 @@ export class AlpacaClientService {
         // Reset proxy cache so each new connection attempt re-checks
         proxyAvailable = null;
 
+        // Use same protocol as current page if possible, or allow user to specify
+        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        // However, Alpaca devices are almost always HTTP. 
+        // If we are on HTTPS, direct HTTP fetch will fail. 
+        // The proxy server (if available) can handle the HTTP/HTTPS transition.
         this.baseUrl = `http://${settings.host}:${settings.port}/api/v1`;
         const targetUrl = `http://${settings.host}:${settings.port}/management/v1/configureddevices`;
         console.log(`[AlpacaClient] Connecting to ${targetUrl}...`);
         try {
             const response = await this.fetchAlpaca(targetUrl);
+            
+            // For no-cors, status is 0 and ok is false, but it means the request was sent.
+            if (response.status === 0) {
+                console.log("[AlpacaClient] Connected via no-cors (opaque response)");
+                this.devices = []; // We can't know the devices yet
+                return true;
+            }
+
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(`Failed to fetch configured devices: ${response.status} ${text}`);

@@ -192,9 +192,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const starMap = new Map<string, {x: number, y: number}>();
         ctx.clearRect(0, 0, width, height);
         
-        // Only fill background if DSS is NOT being shown via WWT
-        // This prevents the canvas from hiding the WWT layer underneath
-        if (!settings.showDSS || isMini || !wwtInitialized) {
+        // Always fill background initially to avoid transparency issues
+        // If WWT is active, it will be rendered behind this canvas
+        // We only use transparent background if WWT is actually initialized and ready
+        // If DSS is enabled, we only fill if no tiles are loaded yet
+        if (!settings.showDSS || isMini || (!wwtInitialized && dssTiles.length === 0)) {
             ctx.fillStyle = '#020617';
             ctx.fillRect(0, 0, width, height);
         }
@@ -525,7 +527,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const loadImageFromUrl = (url: string, fetchSignal: AbortSignal): Promise<HTMLImageElement> => {
             return new Promise((resolve, reject) => {
                 const img = new Image();
-                img.crossOrigin = 'anonymous';
+                // img.crossOrigin = 'anonymous'; // Removed to allow non-CORS direct images if needed, but note it may limit canvas operations like getImageData
                 const timeoutId = setTimeout(() => {
                     img.src = '';
                     reject(new Error('Image load timeout'));

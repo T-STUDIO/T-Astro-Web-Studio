@@ -61,7 +61,7 @@ const ToggleSwitch = memo(({ id, checked, onChange, label, title }: { id: string
 const RangeSlider = memo(({ id, label, value, min, max, step, onChange, unit, disabled, colorClass = 'bg-slate-700', onAfterChange, title }: { id: string; label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void; unit?: string; disabled?: boolean; colorClass?: string; onAfterChange?: (value: number) => void; title?: string }) => {
     return (
     <Tooltip title={title || ''} position="right">
-    <div className="space-y-1">
+    <div className="space-y-1 w-full">
         <label htmlFor={id} className="flex justify-between items-center text-sm font-medium text-slate-300">
             <span>{label}</span>
             <div className="flex items-center gap-1">
@@ -684,11 +684,11 @@ const EquipmentPanel = memo((props: any) => {
 
                     // Navigate to the correct page for the driver
                     const pageMap: Record<string, string> = {
-                        'INDI': '/index.html',
-                        'Alpaca': '/alpaca.html',
-                        'Simulator': '/simulator.html'
+                        'INDI': './index.html',
+                        'Alpaca': './alpaca.html',
+                        'Simulator': './simulator.html'
                     };
-                    window.location.href = pageMap[newDriver] || '/index.html';
+                    window.location.href = pageMap[newDriver] || './index.html';
                 }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
                     <option value="Simulator">Simulator</option>
                     <option value="INDI">INDI</option>

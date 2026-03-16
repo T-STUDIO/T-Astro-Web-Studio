@@ -55,7 +55,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ children, title, position = 't
     return (
         <div
             ref={containerRef}
-            className={`relative inline-block ${className}`}
+            className={`relative w-full ${className}`}
             onMouseEnter={() => setIsVisible(true)}
             onMouseLeave={() => setIsVisible(false)}
         >

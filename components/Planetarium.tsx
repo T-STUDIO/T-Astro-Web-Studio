@@ -609,7 +609,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const timeoutId = setTimeout(() => {
                     img.src = '';
                     reject(new Error('Image load timeout'));
-                }, 15000);
+                }, 30000);
                 img.onload = () => { clearTimeout(timeoutId); resolve(img); };
                 img.onerror = () => { clearTimeout(timeoutId); reject(new Error('Image load error')); };
                 fetchSignal.addEventListener('abort', () => { clearTimeout(timeoutId); img.src = ''; reject(new Error('Aborted')); });
@@ -673,11 +673,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         let img: HTMLImageElement;
                         if (source.direct) {
                             // Try direct img tag loading first (avoids CORS preflight for img elements)
-                            img = await loadImageFromUrl(source.url, signal);
+                            console.log(`[Planetarium] Loading tile from ${source.name}: ${source.url}`); img = await loadImageFromUrl(source.url, signal);
                         } else {
                             // Proxy fetch approach with no-cors fallback for HTTP environments
                             const isHttpContext = window.location.protocol === 'http:';
-                            const response = await fetchWithTimeout(source.url, 10000, signal, isHttpContext);
+                            const response = await fetchWithTimeout(source.url, 30000, signal, isHttpContext);
                             if (!response.ok && response.status !== 0) throw new Error(`HTTP ${response.status}`);
                             const blob = await response.blob();
                             const objectUrl = URL.createObjectURL(blob);

@@ -250,15 +250,34 @@ export class AlpacaClientService {
         for (let i = 0; i < newDevices.length; i++) {
             const dev = newDevices[i];
             try {
+                console.log(`[AlpacaClient] Polling ${dev.deviceType} #${dev.deviceNumber}...`);
                 const res = await this.getCommand(dev.deviceType, dev.deviceNumber, 'Connected');
-                if (res && res.ErrorNumber === 0) {
-                    const isConnected = !!res.Value;
-                    if ((dev as any).connected !== isConnected) {
-                        (newDevices[i] as any).connected = isConnected;
+                
+                if (res) {
+                    console.log(`[AlpacaClient] Poll response for ${dev.deviceType}:`, res);
+                    if (res.ErrorNumber === 0 && res.Value !== undefined) {
+                        const isConnected = !!res.Value;
+                        if ((dev as any).connected !== isConnected) {
+                            console.log(`[AlpacaClient] ${dev.deviceType} connection state changed: ${isConnected}`);
+                            (newDevices[i] as any).connected = isConnected;
+                            changed = true;
+                        }
+                    } else if (res.ErrorNumber !== 0) {
+                        console.warn(`[AlpacaClient] Poll error for ${dev.deviceType}: ${res.ErrorMessage}`);
+                        if ((newDevices[i] as any).connected !== false) {
+                            (newDevices[i] as any).connected = false;
+                            changed = true;
+                        }
+                    }
+                } else {
+                    console.warn(`[AlpacaClient] No response from ${dev.deviceType}`);
+                    if ((newDevices[i] as any).connected !== false) {
+                        (newDevices[i] as any).connected = false;
                         changed = true;
                     }
                 }
-            } catch (e) {
+            } catch (e: any) {
+                console.error(`[AlpacaClient] Poll exception for ${dev.deviceType}:`, e.message);
                 if ((newDevices[i] as any).connected !== false) {
                     (newDevices[i] as any).connected = false;
                     changed = true;
@@ -267,6 +286,7 @@ export class AlpacaClientService {
         }
 
         if (changed) {
+            console.log(`[AlpacaClient] Device states changed, updating...`);
             this.devices = newDevices;
             if (this.onDeviceListUpdate) this.onDeviceListUpdate(this.devices);
         }
@@ -323,11 +343,15 @@ export class AlpacaClientService {
         const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}${queryString ? '?' + queryString : ''}`;
 
         try {
+            console.log(`[AlpacaClient] GET ${targetUrl}`);
             const response = await this.fetchAlpaca(targetUrl, { method: 'GET' });
 
+            console.log(`[AlpacaClient] Response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
-                return await response.json();
+                const json = await response.json();
+                console.log(`[AlpacaClient] JSON response:`, json);
+                return json;
             } else {
                 const text = await response.text();
                 return { ErrorNumber: response.status, ErrorMessage: text };

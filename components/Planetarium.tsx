@@ -417,6 +417,44 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                                 };
                                 proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
                             };
+                            // Set a timeout for image loading
+                            const loadTimeout = setTimeout(() => {
+                                console.log(`[DSS] Image load timeout for ${obj.name}, trying proxy...`);
+                                // Try proxy fallback on timeout
+                                const proxyImg = new Image();
+                                proxyImg.crossOrigin = 'anonymous';
+                                proxyImg.onload = () => {
+                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
+                                    cache[cacheKey] = { ready: true, img: proxyImg };
+                                };
+                                proxyImg.onerror = () => {
+                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
+                                    cache[cacheKey] = { ready: false, img: null };
+                                };
+                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
+                            }, 5000); // 5 second timeout
+                            
+                            img.onload = () => {
+                                clearTimeout(loadTimeout);
+                                console.log(`[DSS] Image loaded for ${obj.name}`);
+                                cache[cacheKey] = { ready: true, img: img };
+                            };
+                            img.onerror = () => {
+                                clearTimeout(loadTimeout);
+                                console.log(`[DSS] Direct load failed for ${obj.name}, trying proxy...`);
+                                // Try proxy fallback
+                                const proxyImg = new Image();
+                                proxyImg.crossOrigin = 'anonymous';
+                                proxyImg.onload = () => {
+                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
+                                    cache[cacheKey] = { ready: true, img: proxyImg };
+                                };
+                                proxyImg.onerror = () => {
+                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
+                                    cache[cacheKey] = { ready: false, img: null };
+                                };
+                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
+                            };
                             img.src = dssUrl;
                         }
                     }

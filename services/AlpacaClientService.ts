@@ -76,6 +76,28 @@ export class AlpacaClientService {
     /**
      * Fetch helper that tries multiple connection strategies
      */
+    
+    /**
+     * Fetch helper with timeout that tries direct connection first, then proxy.
+     */
+    private async fetchAlpacaWithTimeout(
+        targetUrl: string,
+        timeoutMs: number = 30000,
+        options: RequestInit = {}
+    ): Promise<Response> {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        
+        try {
+            return await this.fetchAlpaca(targetUrl, {
+                ...options,
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
     private async fetchAlpaca(
         targetUrl: string,
         options: RequestInit = {}
@@ -86,7 +108,7 @@ export class AlpacaClientService {
         // --- Strategy 1: Direct CORS fetch (most reliable for local networks) ---
         if (!isHttps) {
             try {
-                console.log(`[AlpacaClient] Attempting direct CORS fetch: ${targetUrl}`);
+                console.log(`[AlpacaClient] Attempting direct CORS fetch (30s timeout): ${targetUrl}`);
                 const directRes = await fetch(targetUrl, {
                     ...options,
                     mode: 'cors',
@@ -100,7 +122,7 @@ export class AlpacaClientService {
                     return directRes;
                 }
             } catch (err: any) {
-                console.log(`[AlpacaClient] Direct CORS failed: ${err.message}`);
+                const errMsg = err.name === 'AbortError' ? 'timeout (30s)' : err.message; console.log(`[AlpacaClient] Direct CORS failed: ${errMsg}`);
             }
         }
 

@@ -102,7 +102,7 @@ const ObservationViewer: React.FC = () => {
     const handleClose = () => {
         window.close();
         setTimeout(() => {
-            window.location.href = '/';
+            window.location.href = '../index.html';
         }, 100);
     };
 

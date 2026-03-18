@@ -415,31 +415,68 @@ class AlpacaDeviceInstance {
     }
 
     private pack(buf: ArrayBuffer | null, cid: number, sid: number, isArray: boolean): any {
-        const iBytes = buf ? new Uint8Array(buf) : new Uint8Array(0);
+        let iBytes = buf ? new Uint8Array(buf) : new Uint8Array(0);
+        
+        // If it's a FITS file, skip the header to get raw pixel data
+        if (iBytes.length > 8 && iBytes[0] === 83 && iBytes[1] === 73 && iBytes[2] === 77 && iBytes[3] === 80 && iBytes[4] === 76 && iBytes[5] === 69) { // "SIMPLE"
+            let offset = 0;
+            const decoder = new TextDecoder();
+            while (offset + 2880 <= iBytes.length) {
+                const block = iBytes.slice(offset, offset + 2880);
+                const blockStr = decoder.decode(block);
+                if (blockStr.includes("END     ")) {
+                    offset += 2880;
+                    break;
+                }
+                offset += 2880;
+            }
+            iBytes = iBytes.slice(offset);
+        }
+
         const dataLen = iBytes.length;
         const w = Number(this.lockedFrameProp ? this.getCached(this.lockedFrameProp, this.lockedWEl) : 0) || 640; 
         const h = Number(this.lockedFrameProp ? this.getCached(this.lockedFrameProp, this.lockedHEl) : 0) || 480;
         const headerLen = 44;
         const buffer = new ArrayBuffer(headerLen + dataLen);
         const view = new DataView(buffer);
+        const bpp = Number(this.getCached('CCD_INFO', 'BitsPerPixel') || 16);
+        const imageElementType = bpp === 8 ? 6 : (bpp === 32 ? 2 : 1); // 1=Int16, 2=Int32, 6=Byte
+        
         view.setUint32(0, 1, true); 
         view.setUint32(4, buf ? 0 : 1024, true); 
         view.setUint32(8, cid, true); 
         view.setUint32(12, sid, true);
         view.setUint32(16, 44, true);
-        view.setInt32(20, 1, true);
-        view.setInt32(24, 1, true);
+        view.setInt32(20, imageElementType, true);
+        view.setInt32(24, imageElementType, true);
         view.setInt32(28, 2, true);
         view.setInt32(32, w, true);
         view.setInt32(36, h, true);
         view.setInt32(40, 0, true);
         
-        if (buf) {
+        if (iBytes.length > 0) {
             const dst = new Uint8Array(buffer, headerLen);
-            // FITS(Big-Endian) to Alpaca(Little-Endian) byte swap for 16-bit
-            for (let i = 0; i < dataLen; i += 2) {
-                dst[i] = iBytes[i + 1];
-                dst[i + 1] = iBytes[i];
+            if (bpp === 16) {
+                // FITS(Big-Endian) to Alpaca(Little-Endian) byte swap for 16-bit
+                for (let i = 0; i < dataLen; i += 2) {
+                    if (i + 1 < dataLen) {
+                        dst[i] = iBytes[i + 1];
+                        dst[i + 1] = iBytes[i];
+                    }
+                }
+            } else if (bpp === 32) {
+                // FITS(Big-Endian) to Alpaca(Little-Endian) byte swap for 32-bit
+                for (let i = 0; i < dataLen; i += 4) {
+                    if (i + 3 < dataLen) {
+                        dst[i] = iBytes[i + 3];
+                        dst[i + 1] = iBytes[i + 2];
+                        dst[i + 2] = iBytes[i + 1];
+                        dst[i + 3] = iBytes[i];
+                    }
+                }
+            } else {
+                // 8-bit or other: direct copy
+                dst.set(iBytes);
             }
         }
         return { isBinary: true, data: new Uint8Array(buffer) };

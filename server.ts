@@ -41,7 +41,6 @@ async function startServer() {
         const imageUrl = req.query.url as string;
         if (!imageUrl) return res.status(400).send('Missing url');
 
-        console.log(`[ImageProxy] Fetching: ${imageUrl}`);
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET');
 
@@ -168,56 +167,80 @@ async function startServer() {
             const options: http.RequestOptions = {
                 method: req.method,
                 headers: {
-                    'Accept': 'application/json'
+                    'Accept': req.headers['accept'] || 'application/json'
                 },
                 timeout: 5000
             };
 
-            let bodyStr = '';
             // Alpaca requires application/x-www-form-urlencoded for PUT/POST
             if (req.method === 'PUT' || req.method === 'POST') {
                 options.headers!['Content-Type'] = 'application/x-www-form-urlencoded';
                 
                 // Reconstruct body ensuring ClientTransactionID is preserved
                 const bodyParams = new URLSearchParams();
+                
                 // Merge query and body params (Alpaca allows both, but body is preferred for PUT)
                 const combinedParams = { ...req.query, ...req.body };
                 for (const [key, value] of Object.entries(combinedParams)) {
                     if (value !== undefined) bodyParams.append(key, String(value));
                 }
-                bodyStr = bodyParams.toString();
+                
+                const bodyStr = bodyParams.toString();
                 options.headers!['Content-Length'] = Buffer.byteLength(bodyStr);
-            }
 
-            const proxyReq = http.request(targetUrl, options, (proxyRes) => {
-                res.status(proxyRes.statusCode || 500);
-                
-                // Copy headers but filter out connection-related ones
-                const headers = { ...proxyRes.headers };
-                delete headers['transfer-encoding'];
-                delete headers['content-length'];
-                delete headers['connection'];
-                res.set(headers);
-                
-                proxyRes.pipe(res);
-            });
-
-            proxyReq.on('error', (e) => {
-                console.error(`[AlpacaProxy] Error: ${e.message}`);
-                res.status(500).json({ 
-                    Value: null,
-                    ClientTransactionID: Number(req.body?.ClientTransactionID || req.query?.ClientTransactionID || 0),
-                    ServerTransactionID: 0,
-                    ErrorNumber: 0x500, 
-                    ErrorMessage: `Proxy Error: ${e.message}` 
+                const proxyReq = http.request(targetUrl, options, (proxyRes) => {
+                    res.status(proxyRes.statusCode || 500);
+                    
+                    // Copy headers but filter out connection-related ones
+                    const headers = { ...proxyRes.headers };
+                    delete headers['transfer-encoding'];
+                    delete headers['content-length'];
+                    delete headers['connection'];
+                    res.set(headers);
+                    
+                    proxyRes.pipe(res);
                 });
-            });
 
-            if (bodyStr) {
+                proxyReq.on('error', (e) => {
+                    console.error(`[AlpacaProxy] Error: ${e.message}`);
+                    res.status(500).json({ 
+                        Value: null,
+                        ClientTransactionID: Number(req.body?.ClientTransactionID || req.query?.ClientTransactionID || 0),
+                        ServerTransactionID: 0,
+                        ErrorNumber: 0x500, 
+                        ErrorMessage: `Proxy Error: ${e.message}` 
+                    });
+                });
+
                 proxyReq.write(bodyStr);
-            }
+                proxyReq.end();
+            } else {
+                const proxyReq = http.request(targetUrl, options, (proxyRes) => {
+                    res.status(proxyRes.statusCode || 500);
+                    
+                    // Copy headers but filter out connection-related ones
+                    const headers = { ...proxyRes.headers };
+                    delete headers['transfer-encoding'];
+                    delete headers['content-length'];
+                    delete headers['connection'];
+                    res.set(headers);
+                    
+                    proxyRes.pipe(res);
+                });
 
-            proxyReq.end();
+                proxyReq.on('error', (e) => {
+                    console.error(`[AlpacaProxy] Error: ${e.message}`);
+                    res.status(500).json({ 
+                        Value: null,
+                        ClientTransactionID: Number(req.body?.ClientTransactionID || req.query?.ClientTransactionID || 0),
+                        ServerTransactionID: 0,
+                        ErrorNumber: 0x500, 
+                        ErrorMessage: `Proxy Error: ${e.message}` 
+                    });
+                });
+
+                proxyReq.end();
+            }
         } catch (e: any) {
             res.status(500).json({ 
                 ErrorNumber: 0x500, 

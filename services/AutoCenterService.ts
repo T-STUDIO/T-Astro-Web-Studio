@@ -1,6 +1,5 @@
 import { CelestialObject, PlateSolverType, LocalSolverSettings, SlewStatus, LogEntry, ConnectionStatus } from '../types';
-// Use AstroServiceAlpaca (Alpaca mode) which exports compatible slewTo/syncToCoordinates/capturePreview/abortSlew
-import * as AstroService from './AstroServiceAlpaca';
+import * as AstroService from './AstroService';
 import { solveImageAstrometryNet, solveImageLocal } from './plateSolvingService';
 import { hmsToDegrees, dmsToDegrees, calculateAngularDistance } from '../utils/coords';
 

@@ -43,8 +43,12 @@ export function getAladinImageUrl(position: TelescopePosition, settings: Simulat
   const fovDeg = Math.max(0.01, Math.min(180, fov.width / 60));
   
   // Use Aladin Lite export API which is generally more stable
-  const url = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${ra}&dec=${dec}&fov=${fovDeg}&width=${width}&height=${height}&format=jpg&survey=P%2FDSS2%2Fcolor`;
-  console.log(`[Simulator] Generated Aladin URL: ${url}`);
+  const aladinUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${ra}&dec=${dec}&fov=${fovDeg}&width=${width}&height=${height}&format=jpg&survey=P%2FDSS2%2Fcolor`;
+  
+  // Use server-side proxy to bypass CORS
+  const url = `/api/proxy/image?url=${encodeURIComponent(aladinUrl)}`;
+  
+  console.log(`[Simulator] Generated Proxied Aladin URL: ${url}`);
   return url;
 }
 

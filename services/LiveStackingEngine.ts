@@ -1,6 +1,5 @@
 
-// Use AstroServiceAlpaca (Alpaca mode) which provides waitForCameraIdle and capturePreview
-import * as AstroService from './AstroServiceAlpaca';
+import * as AstroService from './AstroService';
 
 interface Point { x: number; y: number; }
 

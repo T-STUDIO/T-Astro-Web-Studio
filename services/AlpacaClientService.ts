@@ -35,7 +35,7 @@ const checkProxyAvailable = async (): Promise<boolean> => {
     
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         
         const res = await fetch('/api/alpaca/status', { 
             method: 'GET',
@@ -82,7 +82,7 @@ export class AlpacaClientService {
      */
     private async fetchAlpacaWithTimeout(
         targetUrl: string,
-        timeoutMs: number = 30000,
+        timeoutMs: number = 120000,
         options: RequestInit = {}
     ): Promise<Response> {
         const controller = new AbortController();
@@ -108,7 +108,7 @@ export class AlpacaClientService {
         // --- Strategy 1: Direct CORS fetch (most reliable for local networks) ---
         if (!isHttps) {
             try {
-                console.log(`[AlpacaClient] Attempting direct CORS fetch (30s timeout): ${targetUrl}`);
+                console.log(`[AlpacaClient] Attempting direct CORS fetch (120s timeout): ${targetUrl}`);
                 const directRes = await fetch(targetUrl, {
                     ...options,
                     mode: 'cors',
@@ -122,7 +122,7 @@ export class AlpacaClientService {
                     return directRes;
                 }
             } catch (err: any) {
-                const errMsg = err.name === 'AbortError' ? 'timeout (30s)' : err.message; console.log(`[AlpacaClient] Direct CORS failed: ${errMsg}`);
+                const errMsg = err.name === 'AbortError' ? 'timeout (120s)' : err.message; console.log(`[AlpacaClient] Direct CORS failed: ${errMsg}`);
             }
         }
 
@@ -183,7 +183,7 @@ export class AlpacaClientService {
         try {
             // Add 10-second timeout for connection attempt to prevent hanging on local servers
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
             
             const response = await this.fetchAlpaca(targetUrl, { signal: controller.signal });
             clearTimeout(timeoutId);

@@ -64,7 +64,7 @@ const getDistance = (touch1: React.Touch, touch2: React.Touch) => {
     return Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
 };
 
-export const Planetarium: React.FC<PlanetariumProps> = ({ 
+export const Planetarium: React.FC<PlanetariumProps> = ({
     onSelectObject,
     onShowInfo,
     selectedObject, 
@@ -181,6 +181,69 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         return () => observer.disconnect();
     }, []);
 
+    const fetchDssImage = useCallback(async (ra: number, dec: number, fov: number) => {
+        setDssLoading(true);
+        const targetUrl = `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${ra}&dec=${dec}&fov=${fov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`;
+        const proxyUrl = `/api/dss/proxy?url=${encodeURIComponent(targetUrl)}`;
+
+        const loadImage = (url: string, isProxy: boolean): Promise<HTMLImageElement> => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                const timeout = setTimeout(() => {
+                    reject(new Error(`Image load timeout (${isProxy ? 'proxy' : 'direct'})`));
+                    img.src = ''; // Abort image loading
+                }, 15000); // 15秒のタイムアウト
+
+                img.onload = () => {
+                    clearTimeout(timeout);
+                    resolve(img);
+                };
+                img.onerror = () => {
+                    clearTimeout(timeout);
+                    reject(new Error(`Image load error (${isProxy ? 'proxy' : 'direct'})`));
+                };
+                img.src = url;
+            });
+        };
+
+        let image: HTMLImageElement | null = null;
+        let attempt = 0;
+        const maxAttempts = 3;
+
+        while (attempt < maxAttempts) {
+            attempt++;
+            try {
+                console.log(`[DSS] Attempt ${attempt}: Trying direct load for ${targetUrl}`);
+                image = await loadImage(targetUrl, false);
+                console.log(`[DSS] ✓ Direct load succeeded for ${targetUrl}`);
+                break;
+            } catch (directErr: any) {
+                console.warn(`[DSS] Attempt ${attempt}: Direct load failed for ${targetUrl}: ${directErr.message}`);
+                try {
+                    console.log(`[DSS] Attempt ${attempt}: Trying proxy load for ${proxyUrl}`);
+                    image = await loadImage(proxyUrl, true);
+                    console.log(`[DSS] ✓ Proxy load succeeded for ${proxyUrl}`);
+                    break;
+                } catch (proxyErr: any) {
+                    console.warn(`[DSS] Attempt ${attempt}: Proxy load failed for ${proxyUrl}: ${proxyErr.message}`);
+                    if (attempt < maxAttempts) {
+                        console.log(`[DSS] Retrying in 2 seconds...`);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                }
+            }
+        }
+
+        setDssLoading(false);
+
+        if (image) {
+            setDssTiles(prev => [...prev, { image, metadata: { ra, dec, fov } }]);
+        } else {
+            console.error(`[DSS] All attempts failed for ${targetUrl}`);
+        }
+    }, []);
+
     useEffect(() => {
         if (!canvasRef.current || dimensions.width === 0 || dimensions.height === 0) return;
         const canvas = canvasRef.current; const ctx = canvas.getContext('2d', { alpha: true }); if (!ctx) return;
@@ -229,237 +292,78 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         const northPoint = raDecToAzAlt(tile.metadata.ra, Math.min(89.9, tile.metadata.dec + 0.1), effLocation.latitude, lst);
                         const pNorth = projectStereographic(northPoint.alt, northPoint.az, width, height, zoom, center, viewAlt, viewAz);
                         if (pNorth) {
-                            const angle = Math.atan2(pNorth.y - p.y, pNorth.x - p.x) + Math.PI/2;
-                            ctx.rotate(angle);
+                            const angleRad = Math.atan2(pNorth.y - p.y, pNorth.x - p.x) + Math.PI / 2; // Add 90 degrees to align North up
+                            ctx.rotate(angleRad);
                         }
                         
-                        ctx.drawImage(tile.image, -dssSizeInPixels/2, -dssSizeInPixels/2, dssSizeInPixels, dssSizeInPixels);
+                        ctx.drawImage(tile.image, -dssSizeInPixels / 2, -dssSizeInPixels / 2, dssSizeInPixels, dssSizeInPixels);
                         ctx.restore();
                     }
                 } catch (e) {
-                    // Silent fail for individual tiles
+                    console.error("[DSS] Error rendering tile:", e);
                 }
             }
             ctx.restore();
         }
 
-        // DSS Status Indicator
-        if (!isMini && settings.showDSS && (dssLoading || dssTiles.length === 0)) {
+        // Milky Way rendering
+        if (settings.showMilkyWay && milkyWaySprite && !isMini) {
             ctx.save();
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(10, height - 30, 150, 20);
-            ctx.fillStyle = '#fff';
-            ctx.font = '10px sans-serif';
-            ctx.textAlign = 'left';
-            ctx.fillText(dssLoading ? `DSS: Loading Tiles (${dssTiles.length})...` : 'DSS: No Data (Zoom in)', 15, height - 16);
-            ctx.restore();
-        }
+            ctx.globalCompositeOperation = 'lighter'; // Use lighter for a glowing effect
+            ctx.globalAlpha = 0.05; // Overall opacity
 
-        if (settings.showMilkyWay && milkyWaySprite) {
-            ctx.save(); ctx.globalCompositeOperation = 'lighter'; 
-            const opacityVal = settings.milkyWayOpacity ?? 0.5; 
-            const baseOpacity = opacityVal * 0.5; // Direct linear scaling for more predictability
-            if (baseOpacity > 0.01) {
-                MILKY_WAY_POINTS.forEach(pt => {
-                    const {az, alt} = raDecToAzAlt(pt.ra, pt.dec, effLocation.latitude, lst);
-                    if (alt > -20) {
-                        const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                        if (p && p.x > -200 && p.x < width + 200 && p.y > -200 && p.y < height + 200) {
-                            const scale = 80 * zoom * (pt.width || 1.0); 
-                            ctx.globalAlpha = Math.min(1, pt.intensity * baseOpacity);
-                            ctx.drawImage(milkyWaySprite, p.x - scale, p.y - scale, scale * 2, scale * 2);
-                        }
+            MILKY_WAY_POINTS.forEach(point => {
+                const { alt, az } = raDecToAzAlt(point.ra, point.dec, effLocation.latitude, lst);
+                if (alt > -20) { // Render if above -20 degrees altitude
+                    const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                    if (p) {
+                        const size = (point.brightness * 0.5 + 0.5) * (80 / zoom); // Scale with zoom
+                        ctx.drawImage(milkyWaySprite, p.x - size / 2, p.y - size / 2, size, size);
                     }
-                });
-            }
+                }
+            });
             ctx.restore();
         }
 
-        if (settings.showAzAltGrid) {
-            ctx.strokeStyle = 'rgba(239, 68, 68, 0.15)'; ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; ctx.font = '10px monospace'; ctx.textAlign = 'center'; ctx.lineWidth = 1;
-            for (let az = 0; az < 360; az += 15) {
-                ctx.beginPath(); let first = true;
-                for (let alt = -20; alt <= 90; alt += 5) {
-                    if (alt === 0) { first = true; continue; } 
-                    const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                    if (p) { if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y); if (!isMini && alt === 0 && az % 45 === 0) ctx.fillText(`${az}°`, p.x, p.y + 12); } else first = true;
-                }
-                ctx.stroke();
-            }
-            for (let alt = 0; alt <= 80; alt += 15) {
-                if (alt === 0) continue; 
-                ctx.beginPath(); let first = true;
-                for (let az = 0; az <= 360; az += 5) {
-                    const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                    if (p) { if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y); } else first = true;
-                }
-                ctx.stroke();
-            }
-        }
+        // Render celestial objects
+        const renderObject = (obj: CelestialObject, isBackground: boolean) => {
+            const { alt, az } = raDecToAzAlt(obj.raDeg, obj.decDeg, effLocation.latitude, lst);
+            if (alt < -10) return; // Don't render objects below -10 degrees altitude
 
-        if (settings.showRaDecGrid) {
-            ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)'; ctx.lineWidth = 1;
-            for (let ra = 0; ra < 360; ra += 15) {
-                ctx.beginPath(); let first = true;
-                for (let dec = -80; dec <= 80; dec += 10) {
-                    const { alt, az } = raDecToAzAlt(ra, dec, effLocation.latitude, lst);
-                    const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                    if (p) { if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y); } else first = true;
-                }
-                ctx.stroke();
-            }
-            for (let dec = -80; dec <= 80; dec += 20) {
-                ctx.beginPath(); let first = true;
-                for (let ra = 0; ra <= 360; ra += 10) {
-                    const { alt, az } = raDecToAzAlt(ra, dec, effLocation.latitude, lst);
-                    const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                    if (p) { if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y); } else first = true;
-                }
-                ctx.stroke();
-            }
-        }
+            const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+            if (!p) return;
 
-        if(settings.showHorizon) {
-             ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 1.5; ctx.beginPath(); 
-             let first = true;
-             for (let az = 0; az <= 360; az += 2) { 
-                 const p = projectStereographic(0, az, width, height, zoom, center, viewAlt, viewAz); 
-                 if (p) {
-                     if (first) { ctx.moveTo(p.x, p.y); first = false; }
-                     else ctx.lineTo(p.x, p.y);
-                 } else {
-                     first = true; 
-                 }
-             }
-             ctx.stroke();
-        }
-
-        const userScale = settings.starScale || 1.0; const effectiveStarScale = userScale * 0.6; const viewFov = 60 / zoom; const pixelsPerDegree = Math.min(width, height) / viewFov;
-
-        const renderObject = (obj: any, isBackground: boolean) => {
+            const isSelected = selectedObject && selectedObject.id === obj.id;
             const isCurated = curatedObjectIds.has(obj.id);
-            if (obj.magnitude > (['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit)) { 
-                if (!constellationStarIds.has(obj.id) && !(recommendedMode && isCurated)) return; 
-            }
-            if (obj.type === 'Galaxy' && !settings.showGalaxies) return; 
-            if (obj.type === 'Nebula' && !settings.showNebulae) return; 
-            if (obj.type === 'Star Cluster' && !settings.showClusters) return;
-            if (recommendedMode && !isCurated && obj.type !== 'Star' && obj.type !== 'Planet' && obj.magnitude > 6.0) return;
-            const { alt, az } = raDecToAzAlt(obj.raDeg, obj.decDeg, effLocation.latitude, lst); 
-            if (alt < -5) return;
-            const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz); 
-            if (!p || p.x < -20 || p.x > width + 20 || p.y < -20 || p.y > height + 20) return;
-            if (!isBackground) starMap.set(obj.id, p);
-            const isSelected = selectedObject?.id === obj.id; 
-            const isDSO = ['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type);
-            let radius = 1.0; let color = '#ffffff';
-            if (obj.type === 'Planet') { radius = (2 + Math.max(0, (1.5 - obj.magnitude) * 1.5)) * effectiveStarScale; color = '#ffddaa'; }
-            else if (isDSO) { 
-                if (obj.size) radius = Math.max(4, ((obj.size / 60) * pixelsPerDegree) / 2 * Math.min(1.0, 0.07 + 0.93 * (zoom / 4.0)));
-                else radius = Math.max(4, (10 - obj.magnitude) * 1.5) * Math.sqrt(zoom);
-                color = obj.type === 'Galaxy' ? 'rgba(180, 60, 60, 0.5)' : obj.type === 'Star Cluster' ? 'rgba(180, 140, 20, 0.5)' : 'rgba(40, 120, 60, 0.5)';
-            } else { radius = Math.max(0.6, 3.5 * Math.pow(1.6, -0.22 * obj.magnitude)) * (0.8 + 0.2 * zoom) * effectiveStarScale; color = getStarColor(obj.magnitude, 0, obj.color); }
-            if (!isBackground) hitRegions.current.push({ x: p.x, y: p.y, radius: Math.max(radius * 2.5, 15), object: obj });
-            if (recommendedMode && isCurated && !isBackground) {
-                ctx.save(); ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 4, 0, Math.PI * 2); ctx.stroke();
-                ctx.globalAlpha = 0.2; ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 8, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-            }
-            if (isSelected) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 6, 0, Math.PI * 2); ctx.stroke(); }
+            const isDSO = obj.type === 'Nebula' || obj.type === 'Galaxy' || obj.type === 'Star Cluster';
+
+            let radius = 3; // Default radius
+            let color = getStarColor(obj.magnitude, obj.id.charCodeAt(0));
+
             if (isDSO) {
-            if (isDSO) {
-                // DSS Background (Beta) - Simplified and more reliable
-                if (settings.showDSS && !isMini && zoom > 1.0 && obj.size && obj.size > 2) {
-                    const sizePx = (obj.size / 60) * pixelsPerDegree * (0.8 + 0.2 * zoom);
-                    if (sizePx > 5) {
-                        // Build DSS URL directly from Aladin Lite
-                        const dssUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${obj.raDeg}&dec=${obj.decDeg}&fov=${Math.max(obj.size/60, 0.05)}&width=256&height=256&format=jpg&survey=P%2FDSS2%2Fcolor`;
-                        const cacheKey = `dss-${obj.id}-${zoom.toFixed(1)}`;
-                        
-                        // Initialize cache
-                        if (!(window as any).__dssImageCache) {
-                            (window as any).__dssImageCache = {};
-                        }
-                        const cache = (window as any).__dssImageCache;
-                        
-                        // If already loaded, draw it
-                        if (cache[cacheKey] && cache[cacheKey].ready) {
-                            try {
-                                ctx.save();
-                                ctx.globalAlpha = 0.5;
-                                ctx.translate(p.x, p.y);
-                                ctx.drawImage(cache[cacheKey].img, -sizePx/2, -sizePx/2, sizePx, sizePx);
-                                ctx.restore();
-                            } catch (drawErr) {
-                                console.warn(`[DSS] Draw failed for ${obj.name}:`, drawErr);
-                            }
-                        } else if (!cache[cacheKey]) {
-                            // Start loading
-                            cache[cacheKey] = { ready: false, img: null };
-                            
-                            const img = new Image();
-                            img.crossOrigin = 'anonymous';
-                            img.onload = () => {
-                                console.log(`[DSS] Image loaded for ${obj.name}`);
-                                cache[cacheKey] = { ready: true, img: img };
-                            };
-                            img.onerror = () => {
-                                console.log(`[DSS] Direct load failed for ${obj.name}, trying proxy...`);
-                                // Try proxy fallback
-                                const proxyImg = new Image();
-                                proxyImg.crossOrigin = 'anonymous';
-                                proxyImg.onload = () => {
-                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
-                                    cache[cacheKey] = { ready: true, img: proxyImg };
-                                };
-                                proxyImg.onerror = () => {
-                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
-                                    cache[cacheKey] = { ready: false, img: null };
-                                };
-                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
-                            };
-                            // Set a timeout for image loading
-                            const loadTimeout = setTimeout(() => {
-                                console.log(`[DSS] Image load timeout for ${obj.name}, trying proxy...`);
-                                // Try proxy fallback on timeout
-                                const proxyImg = new Image();
-                                proxyImg.crossOrigin = 'anonymous';
-                                proxyImg.onload = () => {
-                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
-                                    cache[cacheKey] = { ready: true, img: proxyImg };
-                                };
-                                proxyImg.onerror = () => {
-                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
-                                    cache[cacheKey] = { ready: false, img: null };
-                                };
-                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
-                            }, 5000); // 5 second timeout
-                            
-                            img.onload = () => {
-                                clearTimeout(loadTimeout);
-                                console.log(`[DSS] Image loaded for ${obj.name}`);
-                                cache[cacheKey] = { ready: true, img: img };
-                            };
-                            img.onerror = () => {
-                                clearTimeout(loadTimeout);
-                                console.log(`[DSS] Direct load failed for ${obj.name}, trying proxy...`);
-                                // Try proxy fallback
-                                const proxyImg = new Image();
-                                proxyImg.crossOrigin = 'anonymous';
-                                proxyImg.onload = () => {
-                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
-                                    cache[cacheKey] = { ready: true, img: proxyImg };
-                                };
-                                proxyImg.onerror = () => {
-                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
-                                    cache[cacheKey] = { ready: false, img: null };
-                                };
-                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
-                            };
-                            img.src = dssUrl;
-                        }
-                    }
-                }
+                if (obj.magnitude > dynamicDsoMagLimit) return; // Filter faint DSOs
+                radius = 5 + (dynamicDsoMagLimit - obj.magnitude) * 2; // Scale DSO size by magnitude
+                color = '#FFD700'; // Gold for DSOs
+            } else if (obj.type === 'Planet') {
+                radius = 7; // Planets are larger
+                color = '#87CEEB'; // Light blue for planets
+            } else if (obj.type === 'Star') {
+                if (obj.magnitude > dynamicStarMagLimit) return; // Filter faint stars
+                radius = Math.max(1, 5 - obj.magnitude); // Scale star size by magnitude
+                if (isSelected) radius = 8; // Selected star is larger
             }
+
+            if (isSelected) color = '#f87171'; // Red for selected object
+
+            // Draw hit region for interaction
+            hitRegions.current.push({ x: p.x, y: p.y, radius: radius + 5, object: obj });
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (isDSO) {
                 ctx.strokeStyle = color; ctx.lineWidth = 1.5;
                 if (obj.type === 'Nebula') ctx.strokeRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
                 else { ctx.beginPath(); if(obj.type === 'Star Cluster') ctx.setLineDash([3, 2]); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
@@ -499,319 +403,250 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const { alt: tAlt, az: tAz } = raDecToAzAlt(telescopePosition.ra, telescopePosition.dec, effLocation.latitude, lst);
             const tp = projectStereographic(tAlt, tAz, width, height, zoom, center, viewAlt, viewAz);
             if (tp) {
-                ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tp.x, tp.y, 20, 0, Math.PI * 2); ctx.stroke();
-                ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tp.x - 30, tp.y); ctx.lineTo(tp.x + 30, tp.y); ctx.moveTo(tp.x, tp.y - 30); ctx.lineTo(tp.x, tp.y + 30); ctx.stroke();
+                ctx.fillStyle = 'lime';
+                ctx.beginPath();
+                ctx.arc(tp.x, tp.y, 7, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = 'lime';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(tp.x - 15, tp.y);
+                ctx.lineTo(tp.x + 15, tp.y);
+                ctx.moveTo(tp.x, tp.y - 15);
+                ctx.lineTo(tp.x, tp.y + 15);
+                ctx.stroke();
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, dssTiles, dssLoading, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t]);
 
-    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }
-        setIsDragging(true); 
-        const cX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX; 
-        const cY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-        setLastMousePos({ x: cX, y: cY }); clickStartTimeRef.current = Date.now(); setCursor('grabbing');
-    };
-
-    const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
-        if ('touches' in e && e.touches.length === 2) {
-            e.preventDefault(); const dist = getDistance(e.touches[0], e.touches[1]); 
-            if (lastPinchDist.current !== null) { const delta = (dist - lastPinchDist.current!) * 0.005; setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 + delta)))); }
-            lastPinchDist.current = dist; return;
-        }
-        const cX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX; 
-        const cY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-        if (isDragging) {
-            e.preventDefault(); const dx = cX - lastMousePos.x; const dy = cY - lastMousePos.y; const sens = 0.15 / zoom;
-            setViewAz(prev => (prev - dx * sens + 360) % 360); setViewAlt(prev => Math.max(-90, Math.min(90, prev + dy * sens))); setLastMousePos({ x: cX, y: cY });
-        } else if (containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect(); const x = cX - rect.left; const y = cY - rect.top;
-            const isHover = hitRegions.current.some(r => Math.hypot(x - r.x, y - r.y) < r.radius); setCursor(isHover ? 'pointer' : 'default');
-        }
-    };
-
-    const handleMouseUp = (e: React.MouseEvent | React.TouchEvent) => {
-        if (lastPinchDist.current !== null) { lastPinchDist.current = null; return; }
-        setIsDragging(false); setCursor('default'); 
-        const now = Date.now(); const timeDiff = now - clickStartTimeRef.current;
-        if (timeDiff < 300) {
-            const cX = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX; const cY = 'changedTouches' in e ? e.changedTouches[0].clientY : (e as React.MouseEvent).clientY;
-            if (containerRef.current) {
-                const rect = containerRef.current.getBoundingClientRect(); const x = cX - rect.left; const y = cY - rect.top;
-                let bestMatch: CelestialObject | null = null; let minDist = Infinity;
-                for (const region of hitRegions.current) {
-                    const d = Math.hypot(x - region.x, y - region.y); if (d < region.radius && d < minDist) { minDist = d; bestMatch = region.object; }
+        // Handle clicks and drags
+        const getObjectAtPoint = (x: number, y: number): CelestialObject | null => {
+            for (const region of hitRegions.current) {
+                const dist = Math.sqrt(Math.pow(x - region.x, 2) + Math.pow(y - region.y, 2));
+                if (dist < region.radius) {
+                    return region.object;
                 }
-                if (bestMatch) {
-                    const isDoubleClick = (now - lastClickTimeRef.current) < 300; lastClickTimeRef.current = now;
-                    if (isDoubleClick && onCenter) { onCenter(bestMatch); }
-                    else if (onSelectObject) { onSelectObject(bestMatch); }
-                } else { lastClickTimeRef.current = now; }
             }
-        }
-    };
+            return null;
+        };
 
-    const handleZoomIn = () => setZoom(prev => Math.min(10, prev * 1.5));
-    const handleZoomOut = () => setZoom(prev => Math.max(0.5, prev * 0.7));
-    const handleReset = () => { setViewAz(0); setViewAlt(30); setZoom(60/70); };
+        const handleMouseDown = (e: React.MouseEvent) => {
+            setIsDragging(true);
+            setLastMousePos({ x: e.clientX, y: e.clientY });
+            clickStartTimeRef.current = Date.now();
+        };
 
-    useEffect(() => {
-        const controller = new AbortController();
-        const signal = controller.signal;
+        const handleMouseMove = (e: React.MouseEvent) => {
+            if (!isDragging) return;
+            const dx = e.clientX - lastMousePos.x;
+            const dy = e.clientY - lastMousePos.y;
+            setLastMousePos({ x: e.clientX, y: e.clientY });
 
-        if (isMini || !settings.showDSS) {
-            if (dssTiles.length > 0) setDssTiles([]);
-            setDssLoading(false);
-            return () => controller.abort();
-        }
-        
-        const lst = calculateLST(effLocation.longitude, effTime);
-        const center = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
-        const fov = 60 / zoom;
-        
-        // Only update if moved significantly
-        const dist = Math.hypot(center.ra - lastDssParams.current.ra, center.dec - lastDssParams.current.dec);
-        const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
-        
-        if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTiles.length > 0) return () => controller.abort();
-        
-        const fetchWithTimeout = async (url: string, timeoutMs: number, fetchSignal: AbortSignal, tryNoCors: boolean = false): Promise<Response> => {
-            const timeoutController = new AbortController();
-            const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
-            // Combine the two signals
-            fetchSignal.addEventListener('abort', () => timeoutController.abort());
-            try {
-                // Try CORS mode first
-                const response = await fetch(url, { signal: timeoutController.signal, mode: 'cors' });
-                clearTimeout(timeoutId);
-                return response;
-            } catch (e) {
-                // If CORS fails and tryNoCors is true, try no-cors mode (for HTTP environments)
-                if (tryNoCors) {
-                    try {
-                        const noCorsResponse = await fetch(url, { signal: timeoutController.signal, mode: 'no-cors' });
-                        clearTimeout(timeoutId);
-                        return noCorsResponse;
-                    } catch (noCorsErr) {
-                        clearTimeout(timeoutId);
-                        throw noCorsErr;
-                    }
-                }
-                clearTimeout(timeoutId);
-                throw e;
+            const sensitivity = 0.1; 
+            setViewAz(prev => (prev - dx * sensitivity + 360) % 360);
+            setViewAlt(prev => Math.max(-90, Math.min(90, prev + dy * sensitivity)));
+        };
+
+        const handleMouseUp = (e: React.MouseEvent) => {
+            setIsDragging(false);
+            const clickDuration = Date.now() - clickStartTimeRef.current;
+            if (clickDuration < 200) { // Treat as a click if duration is short
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const clickedObject = getObjectAtPoint(x, y);
+                if (onSelectObject) onSelectObject(clickedObject);
             }
         };
 
-        const loadImageFromUrl = (url: string, fetchSignal: AbortSignal): Promise<HTMLImageElement> => {
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                // img.crossOrigin = 'anonymous'; // Removed to allow non-CORS direct images if needed, but note it may limit canvas operations like getImageData
-                const timeoutId = setTimeout(() => {
-                    img.src = '';
-                    reject(new Error('Image load timeout'));
-                }, 15000);
-                img.onload = () => { clearTimeout(timeoutId); resolve(img); };
-                img.onerror = () => { clearTimeout(timeoutId); reject(new Error('Image load error')); };
-                fetchSignal.addEventListener('abort', () => { clearTimeout(timeoutId); img.src = ''; reject(new Error('Aborted')); });
-                img.src = url;
-            });
+        const handleMouseLeave = () => {
+            setIsDragging(false);
         };
 
-        const updateDss = async () => {
-            if (signal.aborted) return;
-            setDssLoading(true);
-            
-            const ra = parseFloat(center.ra.toFixed(4));
-            const dec = parseFloat(center.dec.toFixed(4));
-            
-            const tileFov = 2.0;
-            const viewFov = 60 / zoom;
-            
-            const offsets = viewFov > tileFov * 0.5 ? [
-                {dra: 0, ddec: 0},
-                {dra: tileFov, ddec: 0}, {dra: -tileFov, ddec: 0},
-                {dra: 0, ddec: tileFov}, {dra: 0, ddec: -tileFov},
-                {dra: tileFov, ddec: tileFov}, {dra: -tileFov, ddec: tileFov},
-                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov}
-            ] : [{dra: 0, ddec: 0}];
-
-            const newTiles: { image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[] = [];
-
-            for (const offset of offsets) {
-                if (signal.aborted) return;
-                
-                const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
-                const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
-                const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
-
-                // Build source list: direct CORS-capable endpoints first, proxy as last resort
-                const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`;
-                const skyviewUrl = `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`;
-                const proxiedAladinUrl = `/api/proxy/image?url=${encodeURIComponent(aladinUrl)}`;
-                const proxiedSkyviewUrl = `/api/proxy/image?url=${encodeURIComponent(skyviewUrl)}`;
-
-                const sources = [
-                    { name: 'Aladin (direct)', url: aladinUrl, direct: true },
-                    { name: 'NASA SkyView (direct)', url: skyviewUrl, direct: true },
-                    { name: 'Aladin (proxy)', url: proxiedAladinUrl, direct: false },
-                    { name: 'NASA SkyView (proxy)', url: proxiedSkyviewUrl, direct: false },
-                ];
-
-                if (offsets.indexOf(offset) > 0) {
-                    await new Promise(resolve => {
-                        const t = setTimeout(resolve, 200);
-                        signal.addEventListener('abort', () => clearTimeout(t));
-                    });
-                }
-
-                if (signal.aborted) return;
-
-                let tileLoaded = false;
-                for (const source of sources) {
-                    if (signal.aborted) return;
-                    try {
-                        let img: HTMLImageElement;
-                        if (source.direct) {
-                            // Try direct img tag loading first (avoids CORS preflight for img elements)
-                            img = await loadImageFromUrl(source.url, signal);
-                        } else {
-                            // Proxy fetch approach with no-cors fallback for HTTP environments
-                            const isHttpContext = window.location.protocol === 'http:';
-                            const response = await fetchWithTimeout(source.url, 10000, signal, isHttpContext);
-                            if (!response.ok && response.status !== 0) throw new Error(`HTTP ${response.status}`);
-                            const blob = await response.blob();
-                            const objectUrl = URL.createObjectURL(blob);
-                            img = await loadImageFromUrl(objectUrl, signal);
-                        }
-
-                        if (signal.aborted) return;
-
-                        newTiles.push({
-                            image: img,
-                            metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
-                        });
-                        setDssTiles([...newTiles]);
-                        tileLoaded = true;
-                        break;
-                    } catch (e: any) {
-                        if (e.name === 'AbortError' || (e.message && e.message.includes('Aborted'))) return;
-                        console.warn(`[Planetarium] Tile (${offset.dra},${offset.ddec}) failed from ${source.name}: ${e.message}`);
-                    }
-                }
-                if (!tileLoaded) {
-                    console.warn(`[Planetarium] All sources failed for tile (${offset.dra},${offset.ddec}), skipping.`);
-                }
-            }
-
-            if (!signal.aborted) {
-                setDssLoading(false);
-                lastDssParams.current = { ra, dec, zoom };
+        const handleDoubleClick = (e: React.MouseEvent) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const clickedObject = getObjectAtPoint(x, y);
+            if (clickedObject && onCenter) {
+                onCenter(clickedObject);
             }
         };
 
-        const timer = setTimeout(updateDss, 800);
+        const handleWheel = (e: React.WheelEvent) => {
+            e.preventDefault();
+            const zoomAmount = e.deltaY * -0.001; 
+            setZoom(prev => Math.max(0.1, Math.min(100, prev * Math.exp(zoomAmount))));
+        };
+
+        const handleTouchStart = (e: React.TouchEvent) => {
+            if (e.touches.length === 1) {
+                setIsDragging(true);
+                setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+                clickStartTimeRef.current = Date.now();
+            } else if (e.touches.length === 2) {
+                lastPinchDist.current = getDistance(e.touches[0], e.touches[1]);
+            }
+        };
+
+        const handleTouchMove = (e: React.TouchEvent) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isDragging) {
+                const dx = e.touches[0].clientX - lastMousePos.x;
+                const dy = e.touches[0].clientY - lastMousePos.y;
+                setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+
+                const sensitivity = 0.1; 
+                setViewAz(prev => (prev - dx * sensitivity + 360) % 360);
+                setViewAlt(prev => Math.max(-90, Math.min(90, prev + dy * sensitivity)));
+            } else if (e.touches.length === 2 && lastPinchDist.current) {
+                const currentPinchDist = getDistance(e.touches[0], e.touches[1]);
+                const pinchDiff = currentPinchDist - lastPinchDist.current;
+                lastPinchDist.current = currentPinchDist;
+
+                const zoomAmount = pinchDiff * 0.005; 
+                setZoom(prev => Math.max(0.1, Math.min(100, prev * Math.exp(zoomAmount))));
+            }
+        };
+
+        const handleTouchEnd = (e: React.TouchEvent) => {
+            setIsDragging(false);
+            lastPinchDist.current = null;
+            const clickDuration = Date.now() - clickStartTimeRef.current;
+            if (clickDuration < 200 && e.changedTouches.length === 1) { 
+                const rect = canvas.getBoundingClientRect();
+                const x = e.changedTouches[0].clientX - rect.left;
+                const y = e.changedTouches[0].clientY - rect.top;
+                const clickedObject = getObjectAtPoint(x, y);
+                if (onSelectObject) onSelectObject(clickedObject);
+            }
+        };
+
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('mouseleave', handleMouseLeave);
+        canvas.addEventListener('dblclick', handleDoubleClick);
+        canvas.addEventListener('wheel', handleWheel, { passive: false });
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd);
+
         return () => {
-            clearTimeout(timer);
-            controller.abort();
+            canvas.removeEventListener('mousedown', handleMouseDown);
+            canvas.removeEventListener('mousemove', handleMouseMove);
+            canvas.removeEventListener('mouseup', handleMouseUp);
+            canvas.removeEventListener('mouseleave', handleMouseLeave);
+            canvas.removeEventListener('dblclick', handleDoubleClick);
+            canvas.removeEventListener('wheel', handleWheel);
+            canvas.removeEventListener('touchstart', handleTouchStart);
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchend', handleTouchEnd);
         };
-    }, [viewAz, viewAlt, zoom, settings.showDSS, isMini, dimensions, wwtInitialized, effLocation, effTime]);
+    }, [dimensions, zoom, viewAz, viewAlt, selectedObject, effLocation, effTime, settings, isMini, onSelectObject, onCenter, telescopePosition, isConnected, language, recommendedMode, staticData, wwtInitialized, wwtControlRef, dssTiles]);
 
     useEffect(() => {
-        if (centerRequest && centerRequest > 0 && selectedObject) {
-            const lst = calculateLST(effLocation.longitude, effTime); const ra = hmsToDegrees(selectedObject.ra); const dec = dmsToDegrees(selectedObject.dec);
-            const { alt, az } = raDecToAzAlt(ra, dec, effLocation.latitude, lst); setViewAz(az); setViewAlt(alt);
+        if (centerRequest && selectedObject) {
+            const lst = calculateLST(effLocation.longitude, effTime);
+            const { alt, az } = raDecToAzAlt(selectedObject.raDeg, selectedObject.decDeg, effLocation.latitude, lst);
+            setViewAz(az);
+            setViewAlt(alt);
         }
     }, [centerRequest, selectedObject, effLocation, effTime]);
 
     useEffect(() => {
-        if (isMini || !settings.showDSS) { if (wwtInitialized) { setWwtInitialized(false); wwtControlRef.current = null; } return; }
-        let timer: any;
-        const initWWT = () => {
-            if (window.wwtlib && !wwtInitialized && !wwtControlRef.current && document.getElementById("wwt-canvas")) {
-                try {
-                    const scriptInterface = window.wwtlib.WWTControl.initControl("wwt-canvas");
-                    scriptInterface.add_ready(() => {
-                        wwtControlRef.current = scriptInterface; const ctl = window.wwtlib.WWTControl.singleton;
-                        if (ctl && ctl.settings) { ctl.settings.set_showConstellationFigures(false); ctl.settings.set_showConstellationBoundries(false); ctl.settings.set_showCrosshairs(false); ctl.settings.set_showGrid(false); ctl.settings.set_showSolarSystem(false); ctl.settings.set_showHorizon(false); }
-                        scriptInterface.setBackgroundImageByName("Digitized Sky Survey (Color)"); setWwtInitialized(true);
-                    });
-                } catch (e) { }
+        if (!isMini && settings.showDSS && !dssLoading) {
+            const lst = calculateLST(effLocation.longitude, effTime);
+            const { ra, dec } = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
+            const fov = 60 / zoom;
+
+            // Only fetch new DSS tiles if parameters have changed significantly
+            const threshold = 0.1; // degrees
+            const fovThreshold = 0.5; // degrees
+
+            if (Math.abs(ra - lastDssParams.current.ra) > threshold ||
+                Math.abs(dec - lastDssParams.current.dec) > threshold ||
+                Math.abs(fov - lastDssParams.current.fov) > fovThreshold) {
+                
+                lastDssParams.current = { ra, dec, fov };
+                setDssTiles([]); // Clear existing tiles when view changes
+                fetchDssImage(ra, dec, fov);
             }
-        };
-        if (!wwtInitialized) timer = setInterval(initWWT, 500); return () => clearInterval(timer);
-    }, [wwtInitialized, isMini, settings.showDSS]);
+        }
+    }, [viewAz, viewAlt, zoom, settings.showDSS, effLocation, effTime, isMini, fetchDssImage, dssLoading]);
 
-    const selectedObjectData = useMemo(() => {
-        if (!selectedObject) return null;
-        const lst = calculateLST(effLocation.longitude, effTime); const ra = hmsToDegrees(selectedObject.ra); const dec = dmsToDegrees(selectedObject.dec);
-        const { alt, az } = raDecToAzAlt(ra, dec, effLocation.latitude, lst);
-        return { az: az.toFixed(1), alt: alt.toFixed(1), transit: calculateTransitTime(ra, effLocation.longitude), isRising: alt > 0, ra: selectedObject.ra, dec: selectedObject.dec, type: selectedObject.type, magnitude: selectedObject.magnitude };
-    }, [selectedObject, effLocation, effTime]);
-
-    const stopControlInteraction = (e: React.MouseEvent | React.TouchEvent) => { e.stopPropagation(); };
+    useEffect(() => {
+        if (!isMini && settings.showWWT && !wwtInitialized) {
+            const script = document.createElement('script');
+            script.src = 'https://web.wwtassets.org/engine/3.0.29/wwtlib.js';
+            script.async = true;
+            script.onload = () => {
+                if (window.wwtlib) {
+                    const wwt = new window.wwtlib.WWTControl('wwtcanvas');
+                    wwtControlRef.current = wwt;
+                    setWwtInitialized(true);
+                    console.log('[WWT] Initialized');
+                }
+            };
+            document.body.appendChild(script);
+            return () => {
+                document.body.removeChild(script);
+            };
+        }
+    }, [isMini, settings.showWWT, wwtInitialized]);
 
     return (
-        <div ref={containerRef} className={`w-full h-full relative overflow-hidden select-none touch-none ${!isMini && settings.showDSS ? 'bg-transparent' : 'bg-[#020617]'}`} style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
-            {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />}
-            {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading ({dssTiles.length}/9)...</div>}
-            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" style={{ background: 'transparent' }} />
-            
-            {!isMini && (
-                <div 
-                    className="absolute top-2 left-1/2 -translate-x-1/2 flex flex-row gap-1 md:gap-2 z-30 touch-manipulation items-center whitespace-nowrap"
-                    onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}
-                >
-                    <div className="flex flex-row gap-1">
-                        <button onClick={() => { setViewAz(0); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.n')}</button>
-                        <button onClick={() => { setViewAz(180); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.s')}</button>
-                        <button onClick={() => { setViewAz(90); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.e')}</button>
-                        <button onClick={() => { setViewAz(270); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.w')}</button>
-                    </div>
-                    {isConnected && telescopePosition && <button onClick={() => { const lst = calculateLST(effLocation.longitude, effTime); const {alt, az} = raDecToAzAlt(telescopePosition.ra, telescopePosition.dec, effLocation.latitude, lst); setViewAz(az); setViewAlt(alt); }} className="bg-red-800/90 px-2 py-1 md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-white border border-red-600 flex items-center gap-1 shadow-lg" title={t('tooltips.scopeTrack')}><TelescopeIcon className="w-3 h-3 md:w-4 md:h-4" />{t('planetarium.scopeButton')}</button>}
-                </div>
+        <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-black select-none touch-none">
+            <canvas
+                ref={canvasRef}
+                className="absolute top-0 left-0 w-full h-full"
+            />
+            {settings.showWWT && !isMini && (
+                <canvas id="wwtcanvas" className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: -1 }} />
             )}
-            
-            {selectedObject && !isMini && (
-                <div onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}>
-                    <CelestialObjectHUD 
-                        object={selectedObject} 
-                        data={selectedObjectData} 
-                        isConnected={isConnected} 
-                        onClose={() => onSelectObject && onSelectObject(null)} 
-                        MountController={MountController}
+
+            {selectedObject && (
+                <CelestialObjectHUD 
+                    object={selectedObject}
+                    onSlew={onSlew}
+                    onCenter={onCenter}
+                    onShowInfo={onShowInfo}
+                    slewStatus={slewStatus}
+                    isConnected={isConnected}
+                    isAutoCenterEnabled={isAutoCenterEnabled}
+                    onToggleAutoCenter={onToggleAutoCenter}
+                />
+            )}
+
+            <div className="absolute top-4 left-4 flex flex-col space-y-2 z-10">
+                <Button onClick={() => setZoom(prev => Math.max(0.1, prev / 1.2))}><ZoomOutIcon /></Button>
+                <Button onClick={() => setZoom(prev => Math.min(100, prev * 1.2))}><ZoomInIcon /></Button>
+                <Button onClick={() => { setViewAz(0); setViewAlt(30); setZoom(60 / 70); }}><ResetIcon /></Button>
+            </div>
+
+            <div className="absolute top-4 right-4 flex flex-col space-y-2 z-10">
+                <div className="relative">
+                    <input
+                        type="text"
+                        placeholder={t('planetarium.searchPlaceholder')}
+                        className="p-2 pr-10 rounded-md bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                                handleSearch();
+                            }
+                        }}
                     />
+                    <Button onClick={handleSearch} className="absolute right-0 top-0 h-full px-3 rounded-l-none"><SearchIcon /></Button>
+                </div>
+                {MountController && <MountController />}
+            </div>
+
+            {dssLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-20">
+                    <div className="text-white text-lg">{t('planetarium.loadingDSS')}</div>
                 </div>
             )}
-            
-            {/* 修正：アクションボタン群。ImagingViewと統一したサイズと位置 */}
-            {!isMini && (
-                <div 
-                    className="absolute bottom-20 md:bottom-4 landscape:bottom-2 right-2 md:right-4 flex flex-col gap-1 md:gap-2 z-30 items-end"
-                    onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}
-                >
-                    <button onClick={() => setRecommendedMode(!recommendedMode)} className={`w-8 h-8 md:w-12 md:h-12 rounded-full border shadow-lg transition-colors flex items-center justify-center ${recommendedMode ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400' : 'bg-slate-800 border-slate-600 text-slate-400 hover:text-yellow-200'}`} title={t('tooltips.recommended')}><StarIcon className="w-4 h-4 md:w-6 md:h-6" /></button>
-                    <button onClick={handleZoomIn} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom In"><ZoomInIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
-                    <button onClick={handleReset} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Reset View"><ResetIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
-                    <button onClick={handleZoomOut} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom Out"><ZoomOutIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
-                </div>
-            )}
-            
-            {!isMini && (
-                <div 
-                    className="absolute bottom-3 md:bottom-4 landscape:bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1 md:gap-2 items-center z-30 w-auto max-w-[95%] md:w-auto justify-center"
-                    onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}
-                >
-                    <div className="relative w-24 sm:w-36 md:w-48 landscape:w-32">
-                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('controlPanel.searchTarget')} className="bg-slate-800 border border-slate-600 rounded-lg pl-2 pr-7 py-1 md:py-2 text-[10px] md:text-sm text-slate-200 focus:ring-2 focus:ring-red-500 w-full outline-none shadow-lg" title={t('tooltips.search')} />
-                        <button onClick={handleSearch} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 p-1" title="Search Now"><SearchIcon className="w-3 h-3 md:w-4 md:h-4" /></button>
-                    </div>
-                    <div className="flex gap-1 md:gap-2 shrink-0">
-                        <Button onClick={() => selectedObject && onShowInfo && onShowInfo(selectedObject.name)} disabled={!selectedObject} variant="secondary" className="text-[9px] md:text-xs px-1.5 py-1 md:px-3 md:py-2 h-auto shadow-lg whitespace-nowrap" title={t('tooltips.objectInfo')}>{t('controlPanel.showObjectInfo')}</Button>
-                        <Button onClick={onSlew} disabled={!isConnected || !selectedObject || slewStatus !== 'Idle'} className="text-[9px] md:text-xs px-1.5 py-1 md:px-3 md:py-2 h-auto whitespace-nowrap min-w-[55px] md:min-w-[80px] shadow-lg" title={t('tooltips.goto')}><CrosshairIcon className="w-3 h-3 md:w-4 md:h-4" />{slewStatus === 'Slewing' ? t('controlPanel.slewing') : t('controlPanel.goToTarget')}</Button>
-                    </div>
-                </div>
-            )}
-            {!isMini && <div className="absolute bottom-0.5 left-0.5 text-[8px] md:text-[9px] text-slate-600 font-mono pointer-events-none z-30">{t('planetarium.hud.az')}:{viewAz.toFixed(0)} {t('planetarium.hud.alt')}:{viewAlt.toFixed(0)} {t('planetarium.hud.fov')}:{(60/zoom).toFixed(1)}°</div>}
         </div>
     );
 };

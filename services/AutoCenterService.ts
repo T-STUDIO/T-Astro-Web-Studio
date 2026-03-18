@@ -1,5 +1,5 @@
 import { CelestialObject, PlateSolverType, LocalSolverSettings, SlewStatus, LogEntry, ConnectionStatus } from '../types';
-import * as AstroService from './AstroService';
+import * as AstroService from './AstroService'; // INDIドライバ用
 import { solveImageAstrometryNet, solveImageLocal } from './plateSolvingService';
 import { hmsToDegrees, dmsToDegrees, calculateAngularDistance } from '../utils/coords';
 

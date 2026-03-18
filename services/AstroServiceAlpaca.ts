@@ -1,6 +1,8 @@
 import { CelestialObject, MountSpeed, LocationData, TelescopePosition } from '../types';
 import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import { alpacaClient } from './AlpacaClientService';
+import { rawFitsToDisplay } from './DriverConnection';
+import AlpacaImageService from './AlpacaImageService';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -98,8 +100,64 @@ export const setPark = async (parked: boolean) => {
 };
 
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
-    await alpacaClient.putCommand('Camera', 0, 'StartExposure', { Duration: exp / 1000, Light: true });
-    // Polling for image would be needed here
+    const camId = 0; // Default to first camera for now
+    addDebugLog(`Starting ${exp/1000}s exposure on camera ${camId}...`);
+    
+    try {
+        await alpacaClient.putCommand('Camera', camId, 'StartExposure', { Duration: exp / 1000, Light: true });
+        
+        // Polling for image
+        let ready = false;
+        for (let i = 0; i < 60; i++) {
+            const res = await alpacaClient.getCommand('Camera', camId, 'ImageReady');
+            if (res && res.Value === true) {
+                ready = true;
+                break;
+            }
+            await sleep(1000);
+        }
+        
+        if (!ready) {
+            addDebugLog("Exposure timed out.");
+            return "";
+        }
+        
+        addDebugLog("Image ready, fetching data...");
+        const buffer = await alpacaClient.getImageArray(camId);
+        if (!buffer) {
+            addDebugLog("Failed to fetch image array.");
+            return "";
+        }
+        
+        // Use AlpacaImageService to parse the binary format
+        const { header, data } = AlpacaImageService.parseBinaryImage(buffer);
+        
+        // Extract metadata
+        const w = header.dimension1 || 640;
+        const h = header.dimension2 || 480;
+        const bpp = (header.imageElementType === 1 || header.imageElementType === 5) ? 16 : 
+                    (header.imageElementType === 2 || header.imageElementType === 4) ? 32 : 8;
+        
+        const format = bpp === 16 ? 'RAW16' : (bpp === 32 ? 'RAW32' : 'RAW8');
+        
+        addDebugLog(`Processing ${w}x${h} ${bpp}-bit image...`);
+
+        // Convert to displayable URL using existing logic
+        // We pass the raw data (Uint8Array/Uint16Array/etc) to rawFitsToDisplay
+        // Slicing the buffer to ensure we only pass the image data part
+        const imageDataBuffer = buffer.slice(header.dataStart);
+        const { url } = rawFitsToDisplay(imageDataBuffer, format, 'Auto', { width: w, height: h, bpp, format });
+        
+        if (url && imageReceivedCallback) {
+            imageReceivedCallback(url, format, { width: w, height: h });
+            addDebugLog("Image received and processed.");
+        }
+        
+        return url || "";
+    } catch (e: any) {
+        addDebugLog(`Capture failed: ${e.message}`);
+        return "";
+    }
 };
 
 export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {
@@ -161,7 +219,6 @@ export const moveFocuser = async (steps: number) => {
     }
 };
 export const reprocessRawFITS = (fmt: string) => {};
-export const rawFitsToDisplay = (data: any, fmt: string, debayer: string) => ({ url: '', headers: null });
 export const getDevices = (): any[] => {
     const devices = alpacaClient.getConfiguredDevices();
     return devices.map(d => ({
@@ -218,11 +275,11 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
             results.push(`❌ CRITICAL ERROR: Proxy returned HTML instead of JSON.`);
             results.push(`   Response Preview: ${text.substring(0, 100)}...`);
             results.push(`   --------------------------------------------------`);
-            results.push(`   ⚠️ 原因: APIリクエストがNode.jsサーバー(server.ts)に届いていません。`);
-            results.push(`   ⚠️ 可能性1: 'npm run dev' ではなく 'npx vite' 等でフロントのみ起動している。`);
-            results.push(`   ⚠️ 可能性2: ポート番号が間違っているか、別のサーバーがポート3000を占有している。`);
-            results.push(`   💡 解決策: StellarMateのターミナルで 'npm run dev' を実行してください。`);
-            results.push(`   💡 ログに '[API Request] GET /api/alpaca/status' と表示されるか確認してください。`);
+            results.push(`   ⚠️ 原因: APIリクエストがNode.jsサーバーに届いていません。`);
+            results.push(`   ⚠️ 可能性1: nginx等の別サーバーが静的ファイルのみを返している。`);
+            results.push(`   ⚠️ 可能性2: 'npm run dev' ではなく 'npx vite' 等でフロントのみ起動している。`);
+            results.push(`   💡 解決策: StellarMateのターミナルで 'npm run dev' が動いているか確認してください。`);
+            results.push(`   💡 ログに 'Server running on http://localhost:6002' と出ている必要があります。`);
             results.push(`   --------------------------------------------------`);
             return results;
         }

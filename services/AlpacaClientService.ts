@@ -36,26 +36,29 @@ export class AlpacaClientService {
     }
 
     public async connect(settings: ConnectionSettings): Promise<boolean> {
-        this.baseUrl = `http://${settings.host}:${settings.port}/api/v1`;
-        const targetUrl = `http://${settings.host}:${settings.port}/management/v1/configureddevices`;
+        // Construct base URL for Alpaca API
+        let host = settings.host;
+        let port = settings.port;
         
-        // Diagnostic check for private IP in cloud environment
-        const isPrivateIP = /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(settings.host);
-        const isCloud = window.location.hostname.includes('run.app') || window.location.hostname.includes('aistudio');
-        
-        if (isPrivateIP && isCloud) {
-            console.warn(`[AlpacaClient] Warning: Connecting to private IP ${settings.host} from cloud. This requires a relay (alpaca-relay.js) running locally.`);
+        // Handle cases where host might include protocol or port
+        if (host.includes('://')) {
+            const url = new URL(host);
+            host = url.hostname;
+            if (url.port) port = parseInt(url.port);
         }
 
-        console.log(`[AlpacaClient] Connecting to ${targetUrl}...`);
+        this.baseUrl = `http://${host}:${port}/api/v1`;
+        const targetUrl = `http://${host}:${port}/management/v1/configureddevices`;
+        
+        console.log(`[AlpacaClient] Connecting to ${targetUrl} via proxy...`);
         try {
             const response = await fetch('/api/alpaca/proxy', {
                 headers: { 'x-target-url': targetUrl }
             });
             
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ ErrorMessage: 'Unknown error' }));
-                throw new Error(errorData.ErrorMessage || `HTTP ${response.status}`);
+                const text = await response.text();
+                throw new Error(`Proxy returned ${response.status}: ${text}`);
             }
             
             const data = await response.json();
@@ -71,12 +74,30 @@ export class AlpacaClientService {
                 console.warn(`[AlpacaClient] No devices found in response:`, data);
                 this.devices = [];
             }
-            console.log(`[AlpacaClient] Connected to ${settings.host} via proxy. Found ${this.devices.length} devices.`);
             
+            console.log(`[AlpacaClient] Connected. Found ${this.devices.length} devices.`);
             this.startPolling();
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error('[AlpacaClient] Connection error:', error);
+            // Fallback for local development if proxy fails or is not needed
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log("[AlpacaClient] Retrying direct connection (Local Dev)...");
+                try {
+                    const directRes = await fetch(targetUrl);
+                    if (directRes.ok) {
+                        const data = await directRes.json();
+                        this.devices = data.Value.map((d: any) => ({
+                            deviceName: d.DeviceName || 'Unknown',
+                            deviceType: d.DeviceType || 'Unknown',
+                            deviceNumber: d.DeviceNumber,
+                            uniqueId: d.UniqueID || `${d.DeviceType}-${d.DeviceNumber}`
+                        }));
+                        this.startPolling();
+                        return true;
+                    }
+                } catch (e) {}
+            }
             return false;
         }
     }
@@ -240,13 +261,33 @@ export class AlpacaClientService {
     }
 
     public async getCameraStatus(deviceNumber: number) {
-        const props = ['CameraState', 'CCDTemperature', 'CanAbortExposure', 'CanAsymmetricBin', 'CanGetCCDTemperature', 'CanSetCCDTemperature', 'CanStopExposure', 'CoolerOn', 'ExposureMax', 'ExposureMin', 'ExposureResolution', 'ImageReady', 'PixelSizeX', 'PixelSizeY'];
+        const props = ['CameraState', 'CCDTemperature', 'CanAbortExposure', 'CanAsymmetricBin', 'CanGetCCDTemperature', 'CanSetCCDTemperature', 'CanStopExposure', 'CoolerOn', 'ExposureMax', 'ExposureMin', 'ExposureResolution', 'ImageReady', 'PixelSizeX', 'PixelSizeY', 'CameraXSize', 'CameraYSize'];
         const results: Record<string, any> = {};
         for (const prop of props) {
             const res = await this.getCommand('Camera', deviceNumber, prop);
             if (res && res.ErrorNumber === 0) results[prop] = res.Value;
         }
         return results;
+    }
+
+    public async getImageArray(deviceNumber: number): Promise<ArrayBuffer | null> {
+        if (!this.baseUrl) return null;
+        const targetUrl = `${this.baseUrl}/camera/${deviceNumber}/imagearray`;
+        
+        try {
+            const response = await fetch('/api/alpaca/proxy', {
+                headers: {
+                    'x-target-url': targetUrl,
+                    'Accept': 'application/image-bytes'
+                }
+            });
+            
+            if (!response.ok) return null;
+            return await response.arrayBuffer();
+        } catch (error) {
+            console.error("[AlpacaClient] Failed to fetch image array:", error);
+            return null;
+        }
     }
 }
 

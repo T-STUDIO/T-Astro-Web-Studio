@@ -39,13 +39,13 @@ export const Header: React.FC<HeaderProps> = ({ currentDriver, onToggleTSConect,
         {currentDriver === 'INDI' && onToggleTSConect && (
             <button 
                 onClick={onToggleTSConect}
-                className={`px-3 py-2 rounded-md text-sm font-bold tracking-tight transition-all whitespace-nowrap ${
+                className={`px-4 py-1.5 rounded-md text-xs font-black tracking-tighter transition-all ${
                     isTSConectActive 
                     ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]' 
                     : 'bg-slate-800 text-red-500 border border-red-900/30 hover:bg-red-900/20'
                 }`}
             >
-                TS-CONNECT
+                TS-CONECT
             </button>
         )}
         <LanguageSwitcher />

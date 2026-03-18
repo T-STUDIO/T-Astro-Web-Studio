@@ -24,19 +24,10 @@ let proxyAvailable: boolean | null = null;
 
 const checkProxyAvailable = async (): Promise<boolean> => {
     if (proxyAvailable !== null) return proxyAvailable;
-    
-    // GitHub Pages (HTTPS) cannot connect to HTTP Alpaca devices
-    // Proxy is only available on local Express server
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-        console.warn('[AlpacaClient] Running on HTTPS (GitHub Pages). Proxy not available.');
-        proxyAvailable = false;
-        return false;
-    }
-    
     try {
-        // 1-second timeout for proxy check
+        // Add 2-second timeout for proxy check to prevent hanging on local servers
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         
         const res = await fetch('/api/alpaca/status', { 
             method: 'GET',
@@ -44,10 +35,15 @@ const checkProxyAvailable = async (): Promise<boolean> => {
         });
         clearTimeout(timeoutId);
         
-        proxyAvailable = res.ok;
-        console.log(`[AlpacaClient] Proxy available: ${proxyAvailable}`);
+        if (res.ok) {
+            const ct = res.headers.get('content-type') || '';
+            proxyAvailable = ct.includes('application/json');
+        } else {
+            proxyAvailable = false;
+        }
     } catch (err: any) {
-        console.warn('[AlpacaClient] Proxy check failed:', err.message);
+        // Timeout or network error - assume proxy is not available
+        console.warn('[AlpacaClient] Proxy check failed or timed out:', err.message);
         proxyAvailable = false;
     }
     return proxyAvailable;
@@ -82,9 +78,39 @@ export class AlpacaClientService {
         options: RequestInit = {}
     ): Promise<Response> {
         const method = (options.method || 'GET').toUpperCase();
-        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
-        // --- 1. Try server-side proxy first (most reliable for both HTTP and HTTPS) ---
+        // --- 1. Try direct fetch (works when CORS is allowed or same-origin) ---
+        try {
+            const directRes = await fetch(targetUrl, {
+                ...options,
+                mode: 'cors',
+                signal: options.signal,
+            });
+            if (directRes.ok || directRes.status < 500) return directRes;
+        } catch (directErr: any) {
+            // Network error or CORS block — fall through to proxy
+            console.warn(`[AlpacaClient] Direct fetch (CORS) failed for ${targetUrl}: ${directErr.message}`);
+        }
+
+        
+        // --- 2. For HTTP context, try no-cors mode (GET only) ---
+        if (typeof window !== 'undefined' && window.location.protocol === 'http:' && method === 'GET') {
+            try {
+                const noCorsRes = await fetch(targetUrl, {
+                    ...options,
+                    mode: 'no-cors',
+                    signal: options.signal,
+                });
+                if (noCorsRes.status === 0 || noCorsRes.ok) {
+                    console.log(`[AlpacaClient] Direct fetch (no-cors) succeeded for ${targetUrl}`);
+                    return noCorsRes;
+                }
+            } catch (noCorsErr: any) {
+                console.warn(`[AlpacaClient] Direct fetch (no-cors) failed for ${targetUrl}: ${noCorsErr.message}`);
+            }
+        }
+
+        // --- 3. Try server-side proxy ---
         const useProxy = await checkProxyAvailable();
         if (useProxy) {
             const proxyHeaders: Record<string, string> = {
@@ -92,53 +118,13 @@ export class AlpacaClientService {
                 'x-target-url': targetUrl,
             };
             
-            try {
-                const proxyRes = await fetch('/api/alpaca/proxy', {
-                    method,
-                    headers: proxyHeaders,
-                    body: options.body,
-                    signal: options.signal,
-                });
-                console.log(`[AlpacaClient] Proxy request succeeded for ${targetUrl}`);
-                return proxyRes;
-            } catch (proxyErr: any) {
-                console.warn(`[AlpacaClient] Proxy request failed: ${proxyErr.message}`);
-                // Fall through to direct fetch
-            }
-        }
-
-        // --- 2. Try direct fetch (works when CORS is allowed or same-origin) ---
-        if (!isHttps) {
-            try {
-                const directRes = await fetch(targetUrl, {
-                    ...options,
-                    mode: 'cors',
-                    signal: options.signal,
-                });
-                if (directRes.ok || directRes.status < 500) {
-                    console.log(`[AlpacaClient] Direct fetch (CORS) succeeded for ${targetUrl}`);
-                    return directRes;
-                }
-            } catch (directErr: any) {
-                console.warn(`[AlpacaClient] Direct fetch (CORS) failed for ${targetUrl}: ${directErr.message}`);
-            }
-
-            // --- 3. For HTTP context, try no-cors mode (GET only) ---
-            if (method === 'GET') {
-                try {
-                    const noCorsRes = await fetch(targetUrl, {
-                        ...options,
-                        mode: 'no-cors',
-                        signal: options.signal,
-                    });
-                    if (noCorsRes.status === 0 || noCorsRes.ok) {
-                        console.log(`[AlpacaClient] Direct fetch (no-cors) succeeded for ${targetUrl}`);
-                        return noCorsRes;
-                    }
-                } catch (noCorsErr: any) {
-                    console.warn(`[AlpacaClient] Direct fetch (no-cors) failed for ${targetUrl}: ${noCorsErr.message}`);
-                }
-            }
+            const proxyRes = await fetch('/api/alpaca/proxy', {
+                method,
+                headers: proxyHeaders,
+                body: options.body,
+                signal: options.signal,
+            });
+            return proxyRes;
         }
 
         throw new Error(`[AlpacaClient] All connection methods failed for ${targetUrl}`);

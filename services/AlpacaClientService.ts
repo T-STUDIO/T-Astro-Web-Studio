@@ -23,11 +23,19 @@ export interface AlpacaDevice {
 let proxyAvailable: boolean | null = null;
 
 const checkProxyAvailable = async (): Promise<boolean> => {
+    // Cache result to avoid repeated checks
     if (proxyAvailable !== null) return proxyAvailable;
+    
+    // GitHub Pages (HTTPS) cannot connect to HTTP Alpaca devices
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+        console.log('[AlpacaClient] HTTPS environment detected - proxy unavailable');
+        proxyAvailable = false;
+        return false;
+    }
+    
     try {
-        // Add 2-second timeout for proxy check to prevent hanging on local servers
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         
         const res = await fetch('/api/alpaca/status', { 
             method: 'GET',
@@ -35,18 +43,14 @@ const checkProxyAvailable = async (): Promise<boolean> => {
         });
         clearTimeout(timeoutId);
         
-        if (res.ok) {
-            const ct = res.headers.get('content-type') || '';
-            proxyAvailable = ct.includes('application/json');
-        } else {
-            proxyAvailable = false;
-        }
+        proxyAvailable = res.ok;
+        console.log(`[AlpacaClient] Proxy check result: ${proxyAvailable}`);
+        return proxyAvailable;
     } catch (err: any) {
-        // Timeout or network error - assume proxy is not available
-        console.warn('[AlpacaClient] Proxy check failed or timed out:', err.message);
+        console.log(`[AlpacaClient] Proxy unavailable: ${err.message}`);
         proxyAvailable = false;
+        return false;
     }
-    return proxyAvailable;
 };
 
 export class AlpacaClientService {
@@ -70,61 +74,73 @@ export class AlpacaClientService {
     }
 
     /**
-     * Fetch helper that tries direct connection first, then proxy.
-     * For GET requests, also tries CORS mode with no-cors fallback.
+     * Fetch helper that tries multiple connection strategies
      */
     private async fetchAlpaca(
         targetUrl: string,
         options: RequestInit = {}
     ): Promise<Response> {
         const method = (options.method || 'GET').toUpperCase();
+        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
-        // --- 1. Try direct fetch (works when CORS is allowed or same-origin) ---
-        try {
-            const directRes = await fetch(targetUrl, {
-                ...options,
-                mode: 'cors',
-                signal: options.signal,
-            });
-            if (directRes.ok || directRes.status < 500) return directRes;
-        } catch (directErr: any) {
-            // Network error or CORS block — fall through to proxy
-            console.warn(`[AlpacaClient] Direct fetch (CORS) failed for ${targetUrl}: ${directErr.message}`);
+        // --- Strategy 1: Direct CORS fetch (most reliable for local networks) ---
+        if (!isHttps) {
+            try {
+                console.log(`[AlpacaClient] Attempting direct CORS fetch: ${targetUrl}`);
+                const directRes = await fetch(targetUrl, {
+                    ...options,
+                    mode: 'cors',
+                    signal: options.signal,
+                });
+                if (directRes.ok) {
+                    console.log(`[AlpacaClient] ✓ Direct CORS fetch succeeded`);
+                    return directRes;
+                } else if (directRes.status < 500) {
+                    console.log(`[AlpacaClient] Direct CORS returned status ${directRes.status}`);
+                    return directRes;
+                }
+            } catch (err: any) {
+                console.log(`[AlpacaClient] Direct CORS failed: ${err.message}`);
+            }
         }
 
-        
-        // --- 2. For HTTP context, try no-cors mode (GET only) ---
-        if (typeof window !== 'undefined' && window.location.protocol === 'http:' && method === 'GET') {
+        // --- Strategy 2: no-cors mode for GET requests (HTTP only) ---
+        if (!isHttps && method === 'GET') {
             try {
+                console.log(`[AlpacaClient] Attempting no-cors fetch: ${targetUrl}`);
                 const noCorsRes = await fetch(targetUrl, {
                     ...options,
                     mode: 'no-cors',
                     signal: options.signal,
                 });
-                if (noCorsRes.status === 0 || noCorsRes.ok) {
-                    console.log(`[AlpacaClient] Direct fetch (no-cors) succeeded for ${targetUrl}`);
-                    return noCorsRes;
-                }
-            } catch (noCorsErr: any) {
-                console.warn(`[AlpacaClient] Direct fetch (no-cors) failed for ${targetUrl}: ${noCorsErr.message}`);
+                console.log(`[AlpacaClient] ✓ no-cors fetch returned status ${noCorsRes.status}`);
+                return noCorsRes;
+            } catch (err: any) {
+                console.log(`[AlpacaClient] no-cors fetch failed: ${err.message}`);
             }
         }
 
-        // --- 3. Try server-side proxy ---
+        // --- Strategy 3: Server-side proxy (for HTTPS or when direct fails) ---
         const useProxy = await checkProxyAvailable();
         if (useProxy) {
-            const proxyHeaders: Record<string, string> = {
-                ...(options.headers as any || {}),
-                'x-target-url': targetUrl,
-            };
-            
-            const proxyRes = await fetch('/api/alpaca/proxy', {
-                method,
-                headers: proxyHeaders,
-                body: options.body,
-                signal: options.signal,
-            });
-            return proxyRes;
+            try {
+                console.log(`[AlpacaClient] Attempting proxy fetch: ${targetUrl}`);
+                const proxyHeaders: Record<string, string> = {
+                    ...(options.headers as any || {}),
+                    'x-target-url': targetUrl,
+                };
+                
+                const proxyRes = await fetch('/api/alpaca/proxy', {
+                    method,
+                    headers: proxyHeaders,
+                    body: options.body,
+                    signal: options.signal,
+                });
+                console.log(`[AlpacaClient] ✓ Proxy fetch returned status ${proxyRes.status}`);
+                return proxyRes;
+            } catch (err: any) {
+                console.log(`[AlpacaClient] Proxy fetch failed: ${err.message}`);
+            }
         }
 
         throw new Error(`[AlpacaClient] All connection methods failed for ${targetUrl}`);
@@ -145,7 +161,7 @@ export class AlpacaClientService {
         try {
             // Add 10-second timeout for connection attempt to prevent hanging on local servers
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
             
             const response = await this.fetchAlpaca(targetUrl, { signal: controller.signal });
             clearTimeout(timeoutId);
@@ -234,15 +250,34 @@ export class AlpacaClientService {
         for (let i = 0; i < newDevices.length; i++) {
             const dev = newDevices[i];
             try {
+                console.log(`[AlpacaClient] Polling ${dev.deviceType} #${dev.deviceNumber}...`);
                 const res = await this.getCommand(dev.deviceType, dev.deviceNumber, 'Connected');
-                if (res && res.ErrorNumber === 0) {
-                    const isConnected = !!res.Value;
-                    if ((dev as any).connected !== isConnected) {
-                        (newDevices[i] as any).connected = isConnected;
+                
+                if (res) {
+                    console.log(`[AlpacaClient] Poll response for ${dev.deviceType}:`, res);
+                    if (res.ErrorNumber === 0 && res.Value !== undefined) {
+                        const isConnected = !!res.Value;
+                        if ((dev as any).connected !== isConnected) {
+                            console.log(`[AlpacaClient] ${dev.deviceType} connection state changed: ${isConnected}`);
+                            (newDevices[i] as any).connected = isConnected;
+                            changed = true;
+                        }
+                    } else if (res.ErrorNumber !== 0) {
+                        console.warn(`[AlpacaClient] Poll error for ${dev.deviceType}: ${res.ErrorMessage}`);
+                        if ((newDevices[i] as any).connected !== false) {
+                            (newDevices[i] as any).connected = false;
+                            changed = true;
+                        }
+                    }
+                } else {
+                    console.warn(`[AlpacaClient] No response from ${dev.deviceType}`);
+                    if ((newDevices[i] as any).connected !== false) {
+                        (newDevices[i] as any).connected = false;
                         changed = true;
                     }
                 }
-            } catch (e) {
+            } catch (e: any) {
+                console.error(`[AlpacaClient] Poll exception for ${dev.deviceType}:`, e.message);
                 if ((newDevices[i] as any).connected !== false) {
                     (newDevices[i] as any).connected = false;
                     changed = true;
@@ -251,6 +286,7 @@ export class AlpacaClientService {
         }
 
         if (changed) {
+            console.log(`[AlpacaClient] Device states changed, updating...`);
             this.devices = newDevices;
             if (this.onDeviceListUpdate) this.onDeviceListUpdate(this.devices);
         }
@@ -307,11 +343,15 @@ export class AlpacaClientService {
         const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}${queryString ? '?' + queryString : ''}`;
 
         try {
+            console.log(`[AlpacaClient] GET ${targetUrl}`);
             const response = await this.fetchAlpaca(targetUrl, { method: 'GET' });
 
+            console.log(`[AlpacaClient] Response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
-                return await response.json();
+                const json = await response.json();
+                console.log(`[AlpacaClient] JSON response:`, json);
+                return json;
             } else {
                 const text = await response.text();
                 return { ErrorNumber: response.status, ErrorMessage: text };

@@ -366,55 +366,28 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             }
             if (isSelected) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 6, 0, Math.PI * 2); ctx.stroke(); }
             if (isDSO) {
-                // DSS Background (Beta) - Improved async image loading with direct and proxy fallback
+                // DSS Background (Beta) - Fixed async image loading
                 if (settings.showDSS && !isMini && zoom > 2.0 && obj.size && obj.size > 5) {
                     const sizePx = (obj.size / 60) * pixelsPerDegree * (0.8 + 0.2 * zoom);
                     if (sizePx > 15) {
                         const dssUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${obj.raDeg}&dec=${obj.decDeg}&fov=${obj.size/60}&width=256&height=256&format=jpg&survey=P%2FDSS2%2Fcolor`;
-                        const cacheKey = `dss-${obj.id}`;
+                        const cacheKey = `dss-${obj.id}-${zoom.toFixed(2)}`;
+                        const imgCache = (window as any).__dssImageCache || {};
+                        if (!(window as any).__dssImageCache) (window as any).__dssImageCache = imgCache;
                         
-                        // Initialize global cache
-                        if (!(window as any).__dssImageCache) (window as any).__dssImageCache = {};
-                        const imgCache = (window as any).__dssImageCache;
-                        
-                        // Check if image is already loaded and ready
-                        if (imgCache[cacheKey] && imgCache[cacheKey].loaded) {
+                        const cachedImg = imgCache[cacheKey];
+                        if (cachedImg && cachedImg.complete) {
                             ctx.save();
                             ctx.globalAlpha = 0.7;
                             ctx.translate(p.x, p.y);
-                            ctx.drawImage(imgCache[cacheKey].img, -sizePx/2, -sizePx/2, sizePx, sizePx);
+                            ctx.drawImage(cachedImg, -sizePx/2, -sizePx/2, sizePx, sizePx);
                             ctx.restore();
-                        } else if (!imgCache[cacheKey]) {
-                            // Start loading image
-                            imgCache[cacheKey] = { loaded: false, img: null };
-                            
+                        } else if (!cachedImg) {
                             const img = new Image();
                             img.crossOrigin = 'anonymous';
-                            
-                            img.onload = () => {
-                                imgCache[cacheKey] = { loaded: true, img: img };
-                                console.log(`[DSS] Image loaded for ${obj.name}`);
-                            };
-                            
-                            img.onerror = () => {
-                                console.warn(`[DSS] Failed to load from Aladin for ${obj.name}, trying proxy...`);
-                                // Fallback: try proxy endpoint if direct load fails
-                                const proxyUrl = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
-                                const proxyImg = new Image();
-                                proxyImg.crossOrigin = 'anonymous';
-                                proxyImg.onload = () => {
-                                    imgCache[cacheKey] = { loaded: true, img: proxyImg };
-                                    console.log(`[DSS] Image loaded via proxy for ${obj.name}`);
-                                };
-                                proxyImg.onerror = () => {
-                                    console.warn(`[DSS] Failed to load via proxy for ${obj.name}`);
-                                    imgCache[cacheKey] = { loaded: false, img: null };
-                                };
-                                proxyImg.src = proxyUrl;
-                            };
-                            
-                            // Try direct load first
-                            img.src = dssUrl;
+                            img.onload = () => { imgCache[cacheKey] = img; };
+                            img.onerror = () => { console.warn(`[DSS] Failed to load for ${obj.name}`); };
+                            img.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
                         }
                     }
                 }

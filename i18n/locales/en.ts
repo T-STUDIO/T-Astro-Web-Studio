@@ -17,7 +17,6 @@ export const en = {
     close: 'Close',
     loading: 'Loading...',
     none: '---',
-    help: 'Help',
   },
   tooltips: {
     // Equipment
@@ -85,7 +84,24 @@ export const en = {
     flip: 'Invert the image horizontally or vertically.',
     swapRB: 'Swap Red and Blue channels (useful for BGR sensor data).',
     solveField: 'Perform plate solving on the currently displayed frame.',
-    saveImage: 'Export the current frame to your device in various formats.'
+    saveImage: 'Export the current frame to your device in various formats.',
+    help: 'Open the Online Help Guide for detailed instructions and troubleshooting.',
+    tsConnect: 'Configure and connect to your telescope equipment server (INDI/Alpaca).',
+    zoomIn: 'Zoom in to see more detail.',
+    zoomOut: 'Zoom out for a wider field of view.',
+    resetView: 'Reset the view to default orientation and zoom.',
+    searchNow: 'Search for the entered object name in the catalog.',
+    north: 'Point the view towards the North horizon.',
+    south: 'Point the view towards the South horizon.',
+    east: 'Point the view towards the East horizon.',
+    west: 'Point the view towards the West horizon.',
+    planetariumTab: 'Switch to the interactive star chart and telescope control view.',
+    imagingTab: 'Switch to the camera control and image analysis view.',
+    equipmentTab: 'Switch to the equipment connection and configuration tab.',
+    imagingControlTab: 'Switch to the camera exposure and gain control tab.',
+    settingsTab: 'Switch to the planetarium display and integration settings tab.',
+    debayer: 'Select the Bayer pattern for raw color image reconstruction.',
+    encoder: 'Select hardware or software encoder for native INDI streaming.'
   },
   deviceType: {
     Mount: 'Mount',

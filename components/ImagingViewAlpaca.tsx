@@ -17,6 +17,7 @@ import { exportFITS, exportTIFF, exportJPEG } from '../utils/imageExporter';
 import { MetadataViewer } from './MetadataViewer';
 import { CelestialObjectHUD } from './CelestialObjectHUD';
 import * as AstroService from '../services/AstroServiceAlpaca';
+import { rawFitsToDisplay } from '../services/DriverConnection';
 
 interface ImagingViewProps {
   isCapturing: boolean;
@@ -332,7 +333,7 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
       resetImagingData();
       const reader = new FileReader();
       if (/\.fits?$/i.test(file.name)) {
-          reader.onload = (ev) => { if (ev.target?.result instanceof ArrayBuffer) { const res = AstroService.rawFitsToDisplay(ev.target.result, 'fits', debayerPattern); if (res.url) { setLoadedImage(res.url); setLoadedImageName(file.name); setLocalFitsHeaders(res.headers); } } };
+          reader.onload = (ev) => { if (ev.target?.result instanceof ArrayBuffer) { const res = rawFitsToDisplay(ev.target.result, 'fits', debayerPattern); if (res.url) { setLoadedImage(res.url); setLoadedImageName(file.name); setLocalFitsHeaders(res.headers); } } };
           reader.readAsArrayBuffer(file);
       } else {
           reader.onload = (ev) => { if (typeof ev.target?.result === 'string') { setLoadedImage(ev.target.result); setLoadedImageName(file.name); setLocalFitsHeaders(null); } };

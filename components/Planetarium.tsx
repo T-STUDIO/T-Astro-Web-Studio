@@ -192,17 +192,29 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const starMap = new Map<string, {x: number, y: number}>();
         ctx.clearRect(0, 0, width, height);
         
-        // Only fill background if DSS is NOT being shown via WWT
-        // This prevents the canvas from hiding the WWT layer underneath
-        if (!settings.showDSS || isMini || !wwtInitialized) {
+        // 1. Draw Background (only if DSS is not active or WWT not ready)
+        const shouldShowWWT = !isMini && settings.showDSS && wwtInitialized && wwtControlRef.current;
+        
+        if (!shouldShowWWT) {
             ctx.fillStyle = '#020617';
             ctx.fillRect(0, 0, width, height);
+        } else {
+            // Clear for WWT transparency
+            ctx.clearRect(0, 0, width, height);
         }
 
-        if (!isMini && settings.showDSS && wwtInitialized && wwtControlRef.current) {
+        // 2. Update WWT View
+        if (shouldShowWWT) {
             const wwtCenter = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
             const fov = 60 / zoom;
-            if (!isNaN(wwtCenter.ra) && !isNaN(wwtCenter.dec)) { try { wwtControlRef.current.gotoRaDecZoom(wwtCenter.ra / 15, wwtCenter.dec, fov, false); } catch (e) { } }
+            if (!isNaN(wwtCenter.ra) && !isNaN(wwtCenter.dec)) {
+                try {
+                    // WWT uses RA in hours (0-24)
+                    wwtControlRef.current.gotoRaDecZoom(wwtCenter.ra / 15, wwtCenter.dec, fov, false);
+                } catch (e) {
+                    // Silent fail for view updates
+                }
+            }
         }
 
         // DSS rendering
@@ -579,15 +591,31 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         if (isMini || !settings.showDSS) { if (wwtInitialized) { setWwtInitialized(false); wwtControlRef.current = null; } return; }
         let timer: any;
         const initWWT = () => {
-            if (window.wwtlib && !wwtInitialized && !wwtControlRef.current && document.getElementById("wwt-canvas")) {
+            if (window.wwtlib && !wwtInitialized && !wwtControlRef.current) {
+                const canvas = document.getElementById("wwt-canvas");
+                if (!canvas) return;
+
+                console.log("[Planetarium] Initializing WWT...");
                 try {
                     const scriptInterface = window.wwtlib.WWTControl.initControl("wwt-canvas");
                     scriptInterface.add_ready(() => {
-                        wwtControlRef.current = scriptInterface; const ctl = window.wwtlib.WWTControl.singleton;
-                        if (ctl && ctl.settings) { ctl.settings.set_showConstellationFigures(false); ctl.settings.set_showConstellationBoundries(false); ctl.settings.set_showCrosshairs(false); ctl.settings.set_showGrid(false); ctl.settings.set_showSolarSystem(false); ctl.settings.set_showHorizon(false); }
-                        scriptInterface.setBackgroundImageByName("Digitized Sky Survey (Color)"); setWwtInitialized(true);
+                        console.log("[Planetarium] WWT Ready");
+                        wwtControlRef.current = scriptInterface;
+                        const ctl = window.wwtlib.WWTControl.singleton;
+                        if (ctl && ctl.settings) {
+                            ctl.settings.set_showConstellationFigures(false);
+                            ctl.settings.set_showConstellationBoundries(false);
+                            ctl.settings.set_showCrosshairs(false);
+                            ctl.settings.set_showGrid(false);
+                            ctl.settings.set_showSolarSystem(false);
+                            ctl.settings.set_showHorizon(false);
+                        }
+                        scriptInterface.setBackgroundImageByName("Digitized Sky Survey (Color)");
+                        setWwtInitialized(true);
                     });
-                } catch (e) { }
+                } catch (e) {
+                    console.error("[Planetarium] WWT Init failed:", e);
+                }
             }
         };
         if (!wwtInitialized) timer = setInterval(initWWT, 500); return () => clearInterval(timer);

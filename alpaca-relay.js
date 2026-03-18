@@ -121,10 +121,10 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     if (req.method === 'PUT' || req.method === 'POST') {
         const raw = await new Promise(r => { let c = ''; req.on('data', d => c += d); req.on('end', () => r(c)); });
-        if (raw) { try { const sp = new URLSearchParams(raw); for (const [k, v] of sp.entries()) body[k.toLowerCase()] = v; } catch(e) {} }
+        if (raw) { try { const sp = new URLSearchParams(raw); for (const [k, v] of sp.entries()) body[k] = v; } catch(e) {} }
     }
     const params = { ...parsed.query };
-    for (const k in body) params[k.toLowerCase()] = body[k];
+    for (const k in body) params[k] = body[k];
 
     // ブリッジへ転送
     const result = await new Promise(resolve => {

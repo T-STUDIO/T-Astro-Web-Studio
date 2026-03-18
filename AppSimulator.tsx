@@ -7,6 +7,7 @@ import {
   LocationStatus, SimulatorSettings
 } from './types';
 import { HeaderSimulator as Header } from './components/HeaderSimulator';
+import { HelpModal } from './components/HelpModal';
 import { ControlPanelSimulator as ControlPanel } from './components/ControlPanelSimulator';
 import { MainViewSimulator as MainView } from './components/MainViewSimulator';
 import { StatusBarSimulator as StatusBar } from './components/StatusBarSimulator';
@@ -104,6 +105,7 @@ const AppSimulator: React.FC = () => {
   const [selectedDeviceName, setSelectedDeviceName] = useState<string>('');
 
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
@@ -364,7 +366,10 @@ const AppSimulator: React.FC = () => {
               </p>
           </div>
       )}
-      <Header currentDriver="Simulator" />
+      <Header 
+        currentDriver="Simulator" 
+        onToggleHelp={() => setIsHelpOpen(true)}
+      />
       <div className="flex-1 flex overflow-hidden relative">
           <>
             {showControlPanel && (
@@ -380,12 +385,7 @@ const AppSimulator: React.FC = () => {
                             setConnectionStatus(ok ? 'Connected' : 'Error');
                             if (ok) { addLog('logs.connectSuccess', {}, 'success'); }
                         }}
-                        onAbortConnection={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                         onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
-                        isDriveConnected={isDriveConnected}
-                        onConnectDrive={async () => { await GoogleDriveService.signIn(); setIsDriveConnected(true); }}
-                        onExportSettings={async () => { if(location) await GoogleDriveService.saveSettingsToDrive({ ...initialSettings, location }); }}
-                        onImportSettings={async () => { const s = await GoogleDriveService.loadSettingsFromDrive(); if(s) handleLoadFromDisk(new File([JSON.stringify(s)], 'settings.json')); }}
                         planetariumSettings={planetariumSettings}
                         onPlanetariumSettingsChange={(s: any) => setPlanetariumSettings(prev => ({ ...prev, ...s }))}
                         location={location}
@@ -417,11 +417,7 @@ const AppSimulator: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
-                        sampSettings={sampSettings}
-                        onSampSettingsChange={(s: any) => setSampSettings((prev: any) => ({ ...prev, ...s }))}
                         onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
-                        onConnectVirtualSamp={() => { SampService.connectMock((status) => setSampStatus(status as any)); }}
-                        onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}
@@ -435,8 +431,6 @@ const AppSimulator: React.FC = () => {
                         savedLocalSolvers={savedLocalSolvers} onSaveLocalSolver={(name, settings) => setSavedLocalSolvers(prev => [...prev, { name, settings }])}
                         onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
                         savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
-                        onUpdateSavedSampSettings={(idx: number, settings: any) => setSavedSampSettings(prev => { const n = [...prev]; n[idx].settings = settings; return n; })}
-                        onDeleteSampSettings={(idx: number) => setSavedSampSettings(prev => prev.filter((_: any, i: number) => i !== idx))}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
@@ -494,23 +488,23 @@ const AppSimulator: React.FC = () => {
       
       {!isDesktop && !(isTablet && isLandscape) && (
           <nav className="h-16 bg-slate-900 border-t border-red-900/30 flex items-center justify-around z-40 px-1 shrink-0 pb-safe">
-              <button onClick={() => handleMobileTabChange('planetarium')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'planetarium' ? 'text-red-400' : 'text-slate-500'}`}>
+              <button onClick={() => handleMobileTabChange('planetarium')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'planetarium' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.planetariumTab')}>
                   <StarIcon className="w-5 h-5 shrink-0" />
                   <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">{t('mainView.planetarium')}</span>
               </button>
-              <button onClick={() => handleMobileTabChange('imaging_view')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_view' ? 'text-red-400' : 'text-slate-500'}`}>
+              <button onClick={() => handleMobileTabChange('imaging_view')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_view' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.imagingTab')}>
                   <CameraIcon className="w-5 h-5 shrink-0" />
                   <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">View</span>
               </button>
-              <button onClick={() => handleMobileTabChange('equipment')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'equipment' ? 'text-red-400' : 'text-slate-500'}`}>
+              <button onClick={() => handleMobileTabChange('equipment')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'equipment' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.equipmentTab')}>
                   <TelescopeIcon className="w-5 h-5 shrink-0" />
                   <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Equip</span>
               </button>
-              <button onClick={() => handleMobileTabChange('imaging_control')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_control' ? 'text-red-400' : 'text-slate-500'}`}>
+              <button onClick={() => handleMobileTabChange('imaging_control')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_control' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.imagingControlTab')}>
                   <VideoIcon className="w-5 h-5 shrink-0" />
                   <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Ctrl</span>
               </button>
-              <button onClick={() => handleMobileTabChange('settings')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'settings' ? 'text-red-400' : 'text-slate-500'}`}>
+              <button onClick={() => handleMobileTabChange('settings')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'settings' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.settingsTab')}>
                   <ListIcon className="w-5 h-5 shrink-0" />
                   <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Set</span>
               </button>
@@ -550,6 +544,7 @@ const AppSimulator: React.FC = () => {
         isConnected={connectionStatus === 'Connected'}
       />
       <DiagnosticsModal isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} currentSettings={connectionSettings} />
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 };

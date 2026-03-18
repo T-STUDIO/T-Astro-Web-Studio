@@ -13,7 +13,8 @@ import { StatusBar } from './components/StatusBar';
 import { GeminiInfoModal } from './components/GeminiInfoModal';
 import { DeviceSettingsModal } from './components/DeviceSettingsModal';
 import { DiagnosticsModal } from './components/DiagnosticsModal';
-import { TSConect } from './components/TSConect'; // Import TSConect
+import { TSConnect } from './components/TSConnect'; // Import TSConnect
+import { HelpModal } from './components/HelpModal'; // Import HelpModal
 import { useTranslation } from './contexts/LanguageContext';
 import { StarIcon } from './components/icons/StarIcon';
 import { CameraIcon } from './components/icons/CameraIcon';
@@ -105,7 +106,8 @@ const App: React.FC = () => {
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
 
-  const [isTSConectOpen, setIsTSConectOpen] = useState(false); // State for TS-Conect
+  const [isTSConnectOpen, setIsTSConnectOpen] = useState(false); // State for TS-Connect
+  const [isHelpOpen, setIsHelpOpen] = useState(false); // State for Help Modal
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
 
@@ -369,13 +371,15 @@ const App: React.FC = () => {
       )}
       <Header 
         currentDriver="INDI"
-        onToggleTSConect={() => setIsTSConectOpen(!isTSConectOpen)} 
-        isTSConectActive={isTSConectOpen} 
+        onToggleTSConnect={() => setIsTSConnectOpen(!isTSConnectOpen)} 
+        isTSConnectActive={isTSConnectOpen} 
+        onToggleHelp={() => setIsHelpOpen(true)}
       />
       <div className="flex-1 flex overflow-hidden relative">
-        {isTSConectOpen ? (
-            <TSConect 
-                onClose={() => setIsTSConectOpen(false)}
+        {isTSConnectOpen ? (
+            <TSConnect 
+                onClose={() => setIsTSConnectOpen(false)}
+                onToggleHelp={() => setIsHelpOpen(true)}
                 connectionStatus={connectionStatus}
                 connectionSettings={connectionSettings}
                 onSettingsChange={setConnectionSettings}
@@ -602,6 +606,7 @@ const App: React.FC = () => {
         isConnected={connectionStatus === 'Connected'}
       />
       <DiagnosticsModal isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} currentSettings={connectionSettings} />
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 };

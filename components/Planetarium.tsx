@@ -366,31 +366,100 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             }
             if (isSelected) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 6, 0, Math.PI * 2); ctx.stroke(); }
             if (isDSO) {
-                // DSS Background (Beta) - Fixed async image loading
-                if (settings.showDSS && !isMini && zoom > 2.0 && obj.size && obj.size > 5) {
+            if (isDSO) {
+                // DSS Background (Beta) - Simplified and more reliable
+                if (settings.showDSS && !isMini && zoom > 1.0 && obj.size && obj.size > 2) {
                     const sizePx = (obj.size / 60) * pixelsPerDegree * (0.8 + 0.2 * zoom);
-                    if (sizePx > 15) {
-                        const dssUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${obj.raDeg}&dec=${obj.decDeg}&fov=${obj.size/60}&width=256&height=256&format=jpg&survey=P%2FDSS2%2Fcolor`;
-                        const cacheKey = `dss-${obj.id}-${zoom.toFixed(2)}`;
-                        const imgCache = (window as any).__dssImageCache || {};
-                        if (!(window as any).__dssImageCache) (window as any).__dssImageCache = imgCache;
+                    if (sizePx > 5) {
+                        // Build DSS URL directly from Aladin Lite
+                        const dssUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${obj.raDeg}&dec=${obj.decDeg}&fov=${Math.max(obj.size/60, 0.05)}&width=256&height=256&format=jpg&survey=P%2FDSS2%2Fcolor`;
+                        const cacheKey = `dss-${obj.id}-${zoom.toFixed(1)}`;
                         
-                        const cachedImg = imgCache[cacheKey];
-                        if (cachedImg && cachedImg.complete) {
-                            ctx.save();
-                            ctx.globalAlpha = 0.7;
-                            ctx.translate(p.x, p.y);
-                            ctx.drawImage(cachedImg, -sizePx/2, -sizePx/2, sizePx, sizePx);
-                            ctx.restore();
-                        } else if (!cachedImg) {
+                        // Initialize cache
+                        if (!(window as any).__dssImageCache) {
+                            (window as any).__dssImageCache = {};
+                        }
+                        const cache = (window as any).__dssImageCache;
+                        
+                        // If already loaded, draw it
+                        if (cache[cacheKey] && cache[cacheKey].ready) {
+                            try {
+                                ctx.save();
+                                ctx.globalAlpha = 0.5;
+                                ctx.translate(p.x, p.y);
+                                ctx.drawImage(cache[cacheKey].img, -sizePx/2, -sizePx/2, sizePx, sizePx);
+                                ctx.restore();
+                            } catch (drawErr) {
+                                console.warn(`[DSS] Draw failed for ${obj.name}:`, drawErr);
+                            }
+                        } else if (!cache[cacheKey]) {
+                            // Start loading
+                            cache[cacheKey] = { ready: false, img: null };
+                            
                             const img = new Image();
                             img.crossOrigin = 'anonymous';
-                            img.onload = () => { imgCache[cacheKey] = img; };
-                            img.onerror = () => { console.warn(`[DSS] Failed to load for ${obj.name}`); };
-                            img.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
+                            img.onload = () => {
+                                console.log(`[DSS] Image loaded for ${obj.name}`);
+                                cache[cacheKey] = { ready: true, img: img };
+                            };
+                            img.onerror = () => {
+                                console.log(`[DSS] Direct load failed for ${obj.name}, trying proxy...`);
+                                // Try proxy fallback
+                                const proxyImg = new Image();
+                                proxyImg.crossOrigin = 'anonymous';
+                                proxyImg.onload = () => {
+                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
+                                    cache[cacheKey] = { ready: true, img: proxyImg };
+                                };
+                                proxyImg.onerror = () => {
+                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
+                                    cache[cacheKey] = { ready: false, img: null };
+                                };
+                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
+                            };
+                            // Set a timeout for image loading
+                            const loadTimeout = setTimeout(() => {
+                                console.log(`[DSS] Image load timeout for ${obj.name}, trying proxy...`);
+                                // Try proxy fallback on timeout
+                                const proxyImg = new Image();
+                                proxyImg.crossOrigin = 'anonymous';
+                                proxyImg.onload = () => {
+                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
+                                    cache[cacheKey] = { ready: true, img: proxyImg };
+                                };
+                                proxyImg.onerror = () => {
+                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
+                                    cache[cacheKey] = { ready: false, img: null };
+                                };
+                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
+                            }, 5000); // 5 second timeout
+                            
+                            img.onload = () => {
+                                clearTimeout(loadTimeout);
+                                console.log(`[DSS] Image loaded for ${obj.name}`);
+                                cache[cacheKey] = { ready: true, img: img };
+                            };
+                            img.onerror = () => {
+                                clearTimeout(loadTimeout);
+                                console.log(`[DSS] Direct load failed for ${obj.name}, trying proxy...`);
+                                // Try proxy fallback
+                                const proxyImg = new Image();
+                                proxyImg.crossOrigin = 'anonymous';
+                                proxyImg.onload = () => {
+                                    console.log(`[DSS] Proxy load succeeded for ${obj.name}`);
+                                    cache[cacheKey] = { ready: true, img: proxyImg };
+                                };
+                                proxyImg.onerror = () => {
+                                    console.log(`[DSS] Both direct and proxy failed for ${obj.name}`);
+                                    cache[cacheKey] = { ready: false, img: null };
+                                };
+                                proxyImg.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
+                            };
+                            img.src = dssUrl;
                         }
                     }
                 }
+            }
                 ctx.strokeStyle = color; ctx.lineWidth = 1.5;
                 if (obj.type === 'Nebula') ctx.strokeRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
                 else { ctx.beginPath(); if(obj.type === 'Star Cluster') ctx.setLineDash([3, 2]); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }

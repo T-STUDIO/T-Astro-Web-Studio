@@ -1,0 +1,30 @@
+{
+  "name": "t-astro-web-studio-2026.0210完全動作版追加機能ts-connect",
+  "private": true,
+  "version": "0.0.0",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx server.ts",
+    "lint": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^1.9.0",
+    "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.1",
+    "express": "^5.2.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsx": "^4.21.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

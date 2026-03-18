@@ -563,13 +563,13 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
                         )}
                     </div>
                 )}
-                <button onClick={() => handleZoomStep(1.5)} className="w-9 h-9 md:w-12 md:h-12 flex items-center justify-center bg-slate-800 rounded-full text-white border border-slate-600 hover:bg-slate-700 shadow-lg">
+                <button onClick={() => handleZoomStep(1.5)} className="w-9 h-9 md:w-12 md:h-12 flex items-center justify-center bg-slate-800 rounded-full text-white border border-slate-600 hover:bg-slate-700 shadow-lg" title={t('tooltips.zoomIn')}>
                     <ZoomInIcon className="w-5 h-5 md:w-6 md:h-6"/>
                 </button>
-                <button onClick={() => fitImageToScreen(imageDimensions?.width || 100, imageDimensions?.height || 100)} className="w-9 h-9 md:w-12 md:h-12 flex items-center justify-center bg-slate-800 rounded-full text-white border border-slate-600 hover:bg-slate-700 shadow-lg">
+                <button onClick={() => fitImageToScreen(imageDimensions?.width || 100, imageDimensions?.height || 100)} className="w-9 h-9 md:w-12 md:h-12 flex items-center justify-center bg-slate-800 rounded-full text-white border border-slate-600 hover:bg-slate-700 shadow-lg" title={t('tooltips.resetView')}>
                     <ResetIcon className="w-5 h-5 md:w-6 md:h-6"/>
                 </button>
-                <button onClick={() => handleZoomStep(0.7)} className="w-9 h-9 md:w-12 md:h-12 flex items-center justify-center bg-slate-800 rounded-full text-white border border-slate-600 hover:bg-slate-700 shadow-lg">
+                <button onClick={() => handleZoomStep(0.7)} className="w-9 h-9 md:w-12 md:h-12 flex items-center justify-center bg-slate-800 rounded-full text-white border border-slate-600 hover:bg-slate-700 shadow-lg" title={t('tooltips.zoomOut')}>
                     <ZoomOutIcon className="w-5 h-5 md:w-6 md:h-6"/>
                 </button>
            </div>
@@ -585,16 +585,16 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
                    {!isPanelCollapsed && (
                        <div className="space-y-3">
                            <div className="flex gap-2 justify-between">
-                               <button onClick={() => setFlipH(!flipH)} className={`flex-1 text-[10px] py-1 rounded border transition-colors ${flipH ? 'bg-red-700 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-300'}`}>{t('imagingView.flipH')}</button>
-                               <button onClick={() => setFlipV(!flipV)} className={`flex-1 text-[10px] py-1 rounded border transition-colors ${flipV ? 'bg-red-700 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-300'}`}>{t('imagingView.flipV')}</button>
+                               <button onClick={() => setFlipH(!flipH)} title={t('tooltips.flip')} className={`flex-1 text-[10px] py-1 rounded border transition-colors ${flipH ? 'bg-red-700 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-300'}`}>{t('imagingView.flipH')}</button>
+                               <button onClick={() => setFlipV(!flipV)} title={t('tooltips.flip')} className={`flex-1 text-[10px] py-1 rounded border transition-colors ${flipV ? 'bg-red-700 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-300'}`}>{t('imagingView.flipV')}</button>
                            </div>
                            <div className="flex gap-2">
-                               <button onClick={() => setSwapRB(!swapRB)} className={`flex-1 text-[10px] py-1 rounded border transition-colors ${swapRB ? 'bg-blue-700 border-blue-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-300'}`}>{t('imagingView.swapRB')}</button>
+                               <button onClick={() => setSwapRB(!swapRB)} title={t('tooltips.swapRB')} className={`flex-1 text-[10px] py-1 rounded border transition-colors ${swapRB ? 'bg-blue-700 border-blue-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-300'}`}>{t('imagingView.swapRB')}</button>
                            </div>
                            <div className="flex flex-col gap-1">
                                <label className="text-[10px] text-slate-400">{t('imagingView.debayerPattern')}</label>
                                <select 
-                                   value={debayerPattern} 
+                                   value={debayerPattern} title={t('tooltips.debayer')} 
                                    onChange={(e) => {
                                        setDebayerPattern(e.target.value);
                                        if (loadedImageName?.toLowerCase().endsWith('.fits') || loadedImageName?.toLowerCase().endsWith('.fit')) {
@@ -619,7 +619,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
                            <div className="pt-2 border-t border-slate-700">
                                {plateSolverType === 'Remote' && (<input type="password" value={apiKey} onChange={(e) => onApiKeyChange?.(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 mb-2 select-text" placeholder={t('imagingView.apiKey')} />)}
                                {plateSolverType === 'Local' && (<div className="text-[10px] text-slate-500 mb-2 truncate">Using: {localSolverSettings.host}:{localSolverSettings.port}</div>)}
-                               <Button onClick={handleSolveWCS} disabled={wcsStatus === 'Solving'} className="w-full text-xs py-1 h-8">{t('imagingView.solveField')}</Button>
+                               <Button onClick={handleSolveWCS} disabled={wcsStatus === 'Solving'} title={t('tooltips.solveField')} className="w-full text-xs py-1 h-8">{t('imagingView.solveField')}</Button>
                            </div>
                        </div>
                    )}

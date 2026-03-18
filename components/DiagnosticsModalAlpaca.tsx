@@ -25,13 +25,22 @@ export const DiagnosticsModalAlpaca: React.FC<DiagnosticsModalProps> = ({ isOpen
     }, [isOpen]);
 
     const handleRunDiagnostics = async () => {
+        if (!currentSettings || !currentSettings.host) {
+            setResults(['Error: Invalid connection settings.']);
+            return;
+        }
+
         setIsChecking(true);
-        setResults([t('diagnostics.running')]);
+        setResults([t('diagnostics.running') || 'Running diagnostics...']);
         try {
             const diagResults = await AstroService.diagnoseConnection(currentSettings.host, currentSettings.port, currentSettings.driver);
-            setResults(diagResults);
+            if (Array.isArray(diagResults)) {
+                setResults(diagResults);
+            } else {
+                setResults(['Error: Diagnostics returned invalid format.']);
+            }
         } catch (e) {
-            setResults([t('diagnostics.error') + String(e)]);
+            setResults([(t('diagnostics.error') || 'Error: ') + String(e)]);
         } finally {
             setIsChecking(false);
             setLogs(AstroService.getDebugLogs());
@@ -66,11 +75,14 @@ export const DiagnosticsModalAlpaca: React.FC<DiagnosticsModalProps> = ({ isOpen
                              {(!results || !Array.isArray(results) || results.length === 0) ? (
                                  <span className="text-slate-500 italic">{t('diagnostics.ready')}</span>
                              ) : (
-                                 results.map((line, i) => (
-                                     <div key={i} className={`mb-1 ${String(line).includes('❌') ? 'text-red-400' : String(line).includes('✅') ? 'text-green-400' : 'text-slate-300'}`}>
-                                         {String(line)}
-                                     </div>
-                                 ))
+                                 results.map((line, i) => {
+                                     const lineStr = String(line || '');
+                                     return (
+                                         <div key={i} className={`mb-1 ${lineStr.includes('❌') ? 'text-red-400' : lineStr.includes('✅') ? 'text-green-400' : 'text-slate-300'}`}>
+                                             {lineStr}
+                                         </div>
+                                     );
+                                 })
                              )}
                         </div>
 

@@ -192,11 +192,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const starMap = new Map<string, {x: number, y: number}>();
         ctx.clearRect(0, 0, width, height);
         
-        // Always fill background initially to avoid transparency issues
-        // If WWT is active, it will be rendered behind this canvas
-        // We only use transparent background if WWT is actually initialized and ready
-        // If DSS is enabled, we only fill if no tiles are loaded yet
-        if (!settings.showDSS || isMini || (!wwtInitialized && dssTiles.length === 0)) {
+        // Only fill background if DSS is NOT being shown via WWT
+        // This prevents the canvas from hiding the WWT layer underneath
+        if (!settings.showDSS || isMini || !wwtInitialized) {
             ctx.fillStyle = '#020617';
             ctx.fillRect(0, 0, width, height);
         }
@@ -255,18 +253,16 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             ctx.restore();
         }
 
-        if (settings.showMilkyWay && milkyWaySprite) {
-            ctx.save(); ctx.globalCompositeOperation = 'lighter'; 
-            const opacityVal = settings.milkyWayOpacity ?? 0.5; 
-            const baseOpacity = opacityVal * 0.5; // Direct linear scaling for more predictability
-            if (baseOpacity > 0.01) {
+        if (!settings.showDSS && settings.showMilkyWay && milkyWaySprite) {
+            ctx.save(); ctx.globalCompositeOperation = 'screen'; 
+            const opacityVal = settings.milkyWayOpacity ?? 0.5; const baseOpacity = Math.pow(opacityVal, 1.5) * 0.012;
+            if (baseOpacity > 0.000001) {
                 MILKY_WAY_POINTS.forEach(pt => {
                     const {az, alt} = raDecToAzAlt(pt.ra, pt.dec, effLocation.latitude, lst);
-                    if (alt > -20) {
+                    if (alt > -10) {
                         const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                        if (p && p.x > -200 && p.x < width + 200 && p.y > -200 && p.y < height + 200) {
-                            const scale = 80 * zoom * (pt.width || 1.0); 
-                            ctx.globalAlpha = Math.min(1, pt.intensity * baseOpacity);
+                        if (p && p.x > -100 && p.x < width + 100 && p.y > -100 && p.y < height + 100) {
+                            const scale = 50 * zoom * (pt.width || 1.0); ctx.globalAlpha = Math.min(1, pt.intensity * baseOpacity);
                             ctx.drawImage(milkyWaySprite, p.x - scale, p.y - scale, scale * 2, scale * 2);
                         }
                     }
@@ -366,31 +362,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             }
             if (isSelected) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 6, 0, Math.PI * 2); ctx.stroke(); }
             if (isDSO) {
-                // DSS Background (Beta) - Fixed async image loading
-                if (settings.showDSS && !isMini && zoom > 2.0 && obj.size && obj.size > 5) {
-                    const sizePx = (obj.size / 60) * pixelsPerDegree * (0.8 + 0.2 * zoom);
-                    if (sizePx > 15) {
-                        const dssUrl = `https://aladin.u-strasbg.fr/AladinLite/export/nph-export.cgi?ra=${obj.raDeg}&dec=${obj.decDeg}&fov=${obj.size/60}&width=256&height=256&format=jpg&survey=P%2FDSS2%2Fcolor`;
-                        const cacheKey = `dss-${obj.id}-${zoom.toFixed(2)}`;
-                        const imgCache = (window as any).__dssImageCache || {};
-                        if (!(window as any).__dssImageCache) (window as any).__dssImageCache = imgCache;
-                        
-                        const cachedImg = imgCache[cacheKey];
-                        if (cachedImg && cachedImg.complete) {
-                            ctx.save();
-                            ctx.globalAlpha = 0.7;
-                            ctx.translate(p.x, p.y);
-                            ctx.drawImage(cachedImg, -sizePx/2, -sizePx/2, sizePx, sizePx);
-                            ctx.restore();
-                        } else if (!cachedImg) {
-                            const img = new Image();
-                            img.crossOrigin = 'anonymous';
-                            img.onload = () => { imgCache[cacheKey] = img; };
-                            img.onerror = () => { console.warn(`[DSS] Failed to load for ${obj.name}`); };
-                            img.src = `/api/proxy/image?url=${encodeURIComponent(dssUrl)}`;
-                        }
-                    }
-                }
                 ctx.strokeStyle = color; ctx.lineWidth = 1.5;
                 if (obj.type === 'Nebula') ctx.strokeRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
                 else { ctx.beginPath(); if(obj.type === 'Star Cluster') ctx.setLineDash([3, 2]); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
@@ -434,7 +405,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tp.x - 30, tp.y); ctx.lineTo(tp.x + 30, tp.y); ctx.moveTo(tp.x, tp.y - 30); ctx.lineTo(tp.x, tp.y + 30); ctx.stroke();
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, dssTiles, dssLoading, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t]);
+    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }
@@ -506,48 +477,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         
         if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTiles.length > 0) return () => controller.abort();
         
-        const fetchWithTimeout = async (url: string, timeoutMs: number, fetchSignal: AbortSignal, tryNoCors: boolean = false): Promise<Response> => {
-            const timeoutController = new AbortController();
-            const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
-            // Combine the two signals
-            fetchSignal.addEventListener('abort', () => timeoutController.abort());
-            try {
-                // Try CORS mode first
-                const response = await fetch(url, { signal: timeoutController.signal, mode: 'cors' });
-                clearTimeout(timeoutId);
-                return response;
-            } catch (e) {
-                // If CORS fails and tryNoCors is true, try no-cors mode (for HTTP environments)
-                if (tryNoCors) {
-                    try {
-                        const noCorsResponse = await fetch(url, { signal: timeoutController.signal, mode: 'no-cors' });
-                        clearTimeout(timeoutId);
-                        return noCorsResponse;
-                    } catch (noCorsErr) {
-                        clearTimeout(timeoutId);
-                        throw noCorsErr;
-                    }
-                }
-                clearTimeout(timeoutId);
-                throw e;
-            }
-        };
-
-        const loadImageFromUrl = (url: string, fetchSignal: AbortSignal): Promise<HTMLImageElement> => {
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                // img.crossOrigin = 'anonymous'; // Removed to allow non-CORS direct images if needed, but note it may limit canvas operations like getImageData
-                const timeoutId = setTimeout(() => {
-                    img.src = '';
-                    reject(new Error('Image load timeout'));
-                }, 15000);
-                img.onload = () => { clearTimeout(timeoutId); resolve(img); };
-                img.onerror = () => { clearTimeout(timeoutId); reject(new Error('Image load error')); };
-                fetchSignal.addEventListener('abort', () => { clearTimeout(timeoutId); img.src = ''; reject(new Error('Aborted')); });
-                img.src = url;
-            });
-        };
-
         const updateDss = async () => {
             if (signal.aborted) return;
             setDssLoading(true);
@@ -574,46 +503,42 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
                 const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
-
-                // Build source list: direct CORS-capable endpoints first, proxy as last resort
-                const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`;
-                const skyviewUrl = `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`;
-                const proxiedAladinUrl = `/api/proxy/image?url=${encodeURIComponent(aladinUrl)}`;
-                const proxiedSkyviewUrl = `/api/proxy/image?url=${encodeURIComponent(skyviewUrl)}`;
-
+                
                 const sources = [
-                    { name: 'Aladin (direct)', url: aladinUrl, direct: true },
-                    { name: 'NASA SkyView (direct)', url: skyviewUrl, direct: true },
-                    { name: 'Aladin (proxy)', url: proxiedAladinUrl, direct: false },
-                    { name: 'NASA SkyView (proxy)', url: proxiedSkyviewUrl, direct: false },
+                    {
+                        name: 'NASA SkyView',
+                        url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
+                    },
+                    {
+                        name: 'Aladin',
+                        url: `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`
+                    }
                 ];
 
                 if (offsets.indexOf(offset) > 0) {
                     await new Promise(resolve => {
-                        const t = setTimeout(resolve, 200);
+                        const t = setTimeout(resolve, 300);
                         signal.addEventListener('abort', () => clearTimeout(t));
                     });
                 }
 
                 if (signal.aborted) return;
 
-                let tileLoaded = false;
                 for (const source of sources) {
                     if (signal.aborted) return;
                     try {
-                        let img: HTMLImageElement;
-                        if (source.direct) {
-                            // Try direct img tag loading first (avoids CORS preflight for img elements)
-                            img = await loadImageFromUrl(source.url, signal);
-                        } else {
-                            // Proxy fetch approach with no-cors fallback for HTTP environments
-                            const isHttpContext = window.location.protocol === 'http:';
-                            const response = await fetchWithTimeout(source.url, 10000, signal, isHttpContext);
-                            if (!response.ok && response.status !== 0) throw new Error(`HTTP ${response.status}`);
-                            const blob = await response.blob();
-                            const objectUrl = URL.createObjectURL(blob);
-                            img = await loadImageFromUrl(objectUrl, signal);
-                        }
+                        const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(source.url)}`;
+                        const response = await fetch(proxiedUrl, { signal });
+                        if (!response.ok) throw new Error(`Proxy error ${response.status}`);
+                        
+                        const blob = await response.blob();
+                        const img = new Image();
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                            img.src = URL.createObjectURL(blob);
+                            signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
+                        });
 
                         if (signal.aborted) return;
 
@@ -622,15 +547,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
                         });
                         setDssTiles([...newTiles]);
-                        tileLoaded = true;
-                        break;
+                        break; 
                     } catch (e: any) {
-                        if (e.name === 'AbortError' || (e.message && e.message.includes('Aborted'))) return;
-                        console.warn(`[Planetarium] Tile (${offset.dra},${offset.ddec}) failed from ${source.name}: ${e.message}`);
+                        if (e.name === 'AbortError') return;
+                        console.warn(`[Planetarium] Tile ${offset.dra},${offset.ddec} failed from ${source.name}`);
                     }
-                }
-                if (!tileLoaded) {
-                    console.warn(`[Planetarium] All sources failed for tile (${offset.dra},${offset.ddec}), skipping.`);
                 }
             }
 
@@ -693,10 +614,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}
                 >
                     <div className="flex flex-row gap-1">
-                        <button onClick={() => { setViewAz(0); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.n')}</button>
-                        <button onClick={() => { setViewAz(180); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.s')}</button>
-                        <button onClick={() => { setViewAz(90); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.e')}</button>
-                        <button onClick={() => { setViewAz(270); setViewAlt(30); }} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.w')}</button>
+                        <button onClick={() => { setViewAz(0); setViewAlt(30); }} title={t('tooltips.north')} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.n')}</button>
+                        <button onClick={() => { setViewAz(180); setViewAlt(30); }} title={t('tooltips.south')} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.s')}</button>
+                        <button onClick={() => { setViewAz(90); setViewAlt(30); }} title={t('tooltips.east')} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.e')}</button>
+                        <button onClick={() => { setViewAz(270); setViewAlt(30); }} title={t('tooltips.west')} className="bg-slate-800/80 w-9 h-7 md:w-auto md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-red-400 border border-slate-700">{t('planetarium.directions.w')}</button>
                     </div>
                     {isConnected && telescopePosition && <button onClick={() => { const lst = calculateLST(effLocation.longitude, effTime); const {alt, az} = raDecToAzAlt(telescopePosition.ra, telescopePosition.dec, effLocation.latitude, lst); setViewAz(az); setViewAlt(alt); }} className="bg-red-800/90 px-2 py-1 md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold text-white border border-red-600 flex items-center gap-1 shadow-lg" title={t('tooltips.scopeTrack')}><TelescopeIcon className="w-3 h-3 md:w-4 md:h-4" />{t('planetarium.scopeButton')}</button>}
                 </div>
@@ -721,9 +642,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     onMouseDown={stopControlInteraction} onMouseUp={stopControlInteraction} onTouchStart={stopControlInteraction}
                 >
                     <button onClick={() => setRecommendedMode(!recommendedMode)} className={`w-8 h-8 md:w-12 md:h-12 rounded-full border shadow-lg transition-colors flex items-center justify-center ${recommendedMode ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400' : 'bg-slate-800 border-slate-600 text-slate-400 hover:text-yellow-200'}`} title={t('tooltips.recommended')}><StarIcon className="w-4 h-4 md:w-6 md:h-6" /></button>
-                    <button onClick={handleZoomIn} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom In"><ZoomInIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
-                    <button onClick={handleReset} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Reset View"><ResetIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
-                    <button onClick={handleZoomOut} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title="Zoom Out"><ZoomOutIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
+                    <button onClick={handleZoomIn} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title={t('tooltips.zoomIn')}><ZoomInIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
+                    <button onClick={handleReset} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title={t('tooltips.resetView')}><ResetIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
+                    <button onClick={handleZoomOut} className="bg-slate-800 w-8 h-8 md:w-12 md:h-12 rounded-full text-white border border-slate-600 shadow-lg flex items-center justify-center" title={t('tooltips.zoomOut')}><ZoomOutIcon className="w-4 h-4 md:w-6 md:h-6"/></button>
                 </div>
             )}
             
@@ -734,7 +655,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 >
                     <div className="relative w-24 sm:w-36 md:w-48 landscape:w-32">
                         <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('controlPanel.searchTarget')} className="bg-slate-800 border border-slate-600 rounded-lg pl-2 pr-7 py-1 md:py-2 text-[10px] md:text-sm text-slate-200 focus:ring-2 focus:ring-red-500 w-full outline-none shadow-lg" title={t('tooltips.search')} />
-                        <button onClick={handleSearch} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 p-1" title="Search Now"><SearchIcon className="w-3 h-3 md:w-4 md:h-4" /></button>
+                        <button onClick={handleSearch} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 p-1" title={t('tooltips.searchNow')}><SearchIcon className="w-3 h-3 md:w-4 md:h-4" /></button>
                     </div>
                     <div className="flex gap-1 md:gap-2 shrink-0">
                         <Button onClick={() => selectedObject && onShowInfo && onShowInfo(selectedObject.name)} disabled={!selectedObject} variant="secondary" className="text-[9px] md:text-xs px-1.5 py-1 md:px-3 md:py-2 h-auto shadow-lg whitespace-nowrap" title={t('tooltips.objectInfo')}>{t('controlPanel.showObjectInfo')}</Button>

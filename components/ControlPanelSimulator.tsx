@@ -544,11 +544,11 @@ const EquipmentPanel = memo((props: any) => {
 
                     // Navigate to the correct page for the driver
                     const pageMap: Record<string, string> = {
-                        'INDI': './index.html',
-                        'Alpaca': './alpaca.html',
-                        'Simulator': './simulator.html'
+                        'INDI': '/index.html',
+                        'Alpaca': '/alpaca.html',
+                        'Simulator': '/simulator.html'
                     };
-                    window.location.href = pageMap[newDriver] || './index.html';
+                    window.location.href = pageMap[newDriver] || '/index.html';
                 }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
                     <option value="Simulator">Simulator</option>
                     <option value="INDI">INDI</option>
@@ -657,9 +657,9 @@ export const ControlPanelSimulator: React.FC<any> = (props) => {
         <div className="flex flex-col h-full bg-slate-900 border-r border-red-900/30 w-full lg:w-96 shrink-0 text-slate-200">
             {showTabs && (
                 <div className="flex border-b border-red-900/30 shrink-0">
-                    <button onClick={() => setActiveTab('equipment')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'equipment' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`}>{t('controlPanel.tabs.equipment')}</button>
-                    <button onClick={() => setActiveTab('imaging' as any)} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'imaging' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`}>{t('controlPanel.tabs.imaging')}</button>
-                    <button onClick={() => setActiveTab('settings')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'settings' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`}>{t('controlPanel.tabs.settings')}</button>
+                    <button onClick={() => setActiveTab('equipment')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'equipment' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`} title={t('tooltips.equipmentTab')}>{t('controlPanel.tabs.equipment')}</button>
+                    <button onClick={() => setActiveTab('imaging' as any)} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'imaging' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`} title={t('tooltips.imagingControlTab')}>{t('controlPanel.tabs.imaging')}</button>
+                    <button onClick={() => setActiveTab('settings')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'settings' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`} title={t('tooltips.settingsTab')}>{t('controlPanel.tabs.settings')}</button>
                 </div>
             )}
             <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>

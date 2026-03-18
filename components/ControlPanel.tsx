@@ -368,6 +368,7 @@ const ImagingPanel = memo((props: any) => {
                 {activeCameraName && (
                     <button 
                         onClick={() => onOpenDeviceSettings('Camera', activeCameraName)}
+                        title={t('tooltips.deviceSettings')}
                         className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-red-900/40 text-slate-300 border border-slate-700 rounded transition-colors"
                     >
                         カメラ
@@ -376,6 +377,7 @@ const ImagingPanel = memo((props: any) => {
                 {activeFocuserName && (
                     <button 
                         onClick={() => onOpenDeviceSettings('Focuser', activeFocuserName)}
+                        title={t('tooltips.deviceSettings')}
                         className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-red-900/40 text-slate-300 border border-slate-700 rounded transition-colors"
                     >
                         フォーカサー
@@ -384,6 +386,7 @@ const ImagingPanel = memo((props: any) => {
                 {activeMountName && (
                     <button 
                         onClick={() => onOpenDeviceSettings('Mount', activeMountName)}
+                        title={t('tooltips.deviceSettings')}
                         className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-red-900/40 text-slate-300 border border-slate-700 rounded transition-colors"
                     >
                         マウント
@@ -408,6 +411,7 @@ const ImagingPanel = memo((props: any) => {
                                 <button
                                     key={el.name}
                                     onClick={() => AstroService.toggleVideoStreamEncoder(el.name)}
+                                    title={t('tooltips.encoder')}
                                     className={`px-3 py-1 text-[10px] rounded transition-colors ${isOn ? 'bg-red-700 text-white font-bold shadow-sm' : 'bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600'}`}
                                 >{el.label || el.name}</button>
                             );
@@ -439,9 +443,9 @@ const ImagingPanel = memo((props: any) => {
         <div className="space-y-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
             <h3 className="text-sm font-semibold text-slate-300">{t('controlPanel.colorBalance')}</h3>
             <p className="text-[10px] text-slate-500 leading-tight">{t('tooltips.colorBalance')}</p>
-             <RangeSlider id="cb-r" label={t('controlPanel.colorBalanceR')} value={colorBalance.r} min={0} max={255} step={1} onChange={(v) => onSetColorBalance({...colorBalance, r: v})} colorClass="bg-red-900/50" />
-             <RangeSlider id="cb-g" label={t('controlPanel.colorBalanceG')} value={colorBalance.g} min={0} max={255} step={1} onChange={(v) => onSetColorBalance({...colorBalance, g: v})} colorClass="bg-green-900/50" />
-             <RangeSlider id="cb-b" label={t('controlPanel.colorBalanceB')} value={colorBalance.b} min={0} max={255} step={1} onChange={(v) => onSetColorBalance({...colorBalance, b: v})} colorClass="bg-blue-900/50" />
+             <RangeSlider id="cb-r" label={t('controlPanel.colorBalanceR')} title={t('tooltips.colorBalance')} value={colorBalance.r} min={0} max={255} step={1} onChange={(v) => onSetColorBalance({...colorBalance, r: v})} colorClass="bg-red-900/50" />
+             <RangeSlider id="cb-g" label={t('controlPanel.colorBalanceG')} title={t('tooltips.colorBalance')} value={colorBalance.g} min={0} max={255} step={1} onChange={(v) => onSetColorBalance({...colorBalance, g: v})} colorClass="bg-green-900/50" />
+             <RangeSlider id="cb-b" label={t('controlPanel.colorBalanceB')} title={t('tooltips.colorBalance')} value={colorBalance.b} min={0} max={255} step={1} onChange={(v) => onSetColorBalance({...colorBalance, b: v})} colorClass="bg-blue-900/50" />
         </div>
 
         <div className="w-full space-y-2 bg-slate-800/20 p-2 rounded-lg border border-slate-700/50">
@@ -718,11 +722,11 @@ const EquipmentPanel = memo((props: any) => {
 
                     // Navigate to the correct page for the driver
                     const pageMap: Record<string, string> = {
-                        'INDI': './index.html',
-                        'Alpaca': './alpaca.html',
-                        'Simulator': './simulator.html'
+                        'INDI': '/index.html',
+                        'Alpaca': '/alpaca.html',
+                        'Simulator': '/simulator.html'
                     };
-                    window.location.href = pageMap[newDriver] || './index.html';
+                    window.location.href = pageMap[newDriver] || '/index.html';
                 }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
                     <option value="Simulator">Simulator</option>
                     <option value="INDI">INDI</option>

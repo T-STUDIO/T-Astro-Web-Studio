@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
@@ -6,6 +5,7 @@ import { ChevronUpIcon } from './icons/ChevronUpIcon';
 import { useTranslation } from '../contexts/LanguageContext';
 
 interface HelpModalProps {
+    isOpen: boolean;
     onClose: () => void;
 }
 
@@ -14,9 +14,11 @@ interface HelpSection {
     subsections: { title: string; content: string }[];
 }
 
-export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
+export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
     const { language } = useTranslation();
     const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set([0]));
+
+    if (!isOpen) return null;
 
     const toggleSection = (index: number) => {
         const newExpanded = new Set(expandedSections);
@@ -445,7 +447,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
                 },
                 {
                     title: 'Connection Status',
-                    content: '・Status bar displays connection state\n・Green: Connected\n・Yellow: Connecting\n・Red: Disconnected/Error\n・Check [Diagnostics] for details'
+                    content: '・Status bar displays connection state\n・Green: Connected\n・Yellow: Connecting\n・Red: Disconnected/Error\n・Check logs for detailed error messages.'
                 }
             ]
         },
@@ -454,23 +456,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
             subsections: [
                 {
                     title: 'Histogram',
-                    content: '・Display brightness distribution of captured image\n・Visually confirm under/over exposure\n・Use for optimizing capture parameters'
-                },
-                {
-                    title: 'Auto Stretch',
-                    content: '・Auto-optimize contrast based on histogram\n・Faint object details become more visible\n・Temporary display adjustment (doesn\'t affect saved image)'
-                },
-                {
-                    title: 'Image Flip',
-                    content: '・Horizontal flip: Mirror left/right\n・Vertical flip: Mirror top/bottom\n・Correct optical system mirror image'
-                },
-                {
-                    title: 'Swap RB',
-                    content: '・Exchange red and blue channels\n・Correct BGR sensor color\n・Adjust color balance'
-                },
-                {
-                    title: 'Save Image',
-                    content: '・JPEG: Compressed format, small file size\n・PNG: Lossless compression, quality priority\n・TIFF: High quality, large file size\n・RAW: Raw data, highest quality'
+                    content: '・Display brightness distribution of captured image\n・Visually confirm under/over exposure\n・Adjust contrast and stretch to reveal details.'
                 }
             ]
         },
@@ -479,15 +465,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
             subsections: [
                 {
                     title: 'SAMP (Simple Application Messaging Protocol)',
-                    content: '・Integrate with external applications (Aladin, Stellarium, etc.)\n・Share celestial coordinates\n・Share observation plans\n・Enable via [Connect SAMP]'
-                },
-                {
-                    title: 'Google Drive Integration',
-                    content: '・Cloud backup of settings\n・Sync settings across multiple devices\n・Obtain Client ID from Google Cloud Console\n・Privacy and security conscious'
-                },
-                {
-                    title: 'AI Object Information',
-                    content: '・Generate object information using Gemini AI\n・Object history, characteristics, observation tips\n・Multi-language support\n・Internet connection required'
+                    content: '・Integrate with external applications (Aladin, Stellarium, etc.)\n・Synchronize target coordinates across software.'
                 }
             ]
         },
@@ -496,23 +474,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
             subsections: [
                 {
                     title: 'Cannot Connect',
-                    content: '・Verify host/port are correct\n・Check firewall settings\n・Check router settings\n・Run [Diagnostics] tool\n・Review server logs'
-                },
-                {
-                    title: 'Milky Way Not Displaying',
-                    content: '・Verify "Show Milky Way" is enabled in [Settings]\n・Move "Milky Way Brightness" slider right\n・Adjust zoom level\n・Clear browser cache'
-                },
-                {
-                    title: 'DSS Images Not Displaying',
-                    content: '・Verify internet connection\n・Verify "Show DSS" is enabled in [Settings]\n・Zoom to 2.0x or more\n・Verify object size is 5 arcmin or larger\n・Check browser console for errors'
-                },
-                {
-                    title: 'Plate Solving Fails',
-                    content: '・Verify image contains sufficient stars\n・Verify local solver installation\n・For cloud solver, verify internet connection\n・Verify image orientation is correct'
-                },
-                {
-                    title: 'Low Performance',
-                    content: '・Reduce number of displayed stars (increase magnitude limit)\n・Temporarily disable DSO display\n・Reduce browser tab count\n・Check computer resource usage\n・Restart browser'
+                    content: '・Verify host/port are correct\n・Check network connectivity\n・Ensure INDI/Alpaca server is running.'
                 }
             ]
         }

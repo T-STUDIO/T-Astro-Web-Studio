@@ -1,21 +1,24 @@
 
 import React from 'react';
 import { TelescopeIcon } from './icons/TelescopeIcon';
-import { HelpIcon } from './icons/HelpIcon';
 import { useTranslation } from '../contexts/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
-import { Tooltip } from './Tooltip';
-import { HelpModal } from './HelpModal';
 
 interface HeaderProps {
   currentDriver: 'INDI' | 'Alpaca' | 'Simulator';
-  onToggleTSConect?: () => void;
-  isTSConectActive?: boolean;
+  onToggleTSConnect?: () => void;
+  isTSConnectActive?: boolean;
+  onToggleHelp?: () => void;
   className?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentDriver, onToggleTSConect, isTSConectActive, className }) => {
-  const [showHelp, setShowHelp] = React.useState(false);
+export const Header: React.FC<HeaderProps> = ({ 
+  currentDriver, 
+  onToggleTSConnect, 
+  isTSConnectActive, 
+  onToggleHelp,
+  className 
+}) => {
   const { t } = useTranslation();
   
   return (
@@ -26,27 +29,28 @@ export const Header: React.FC<HeaderProps> = ({ currentDriver, onToggleTSConect,
           <h1 className="text-xl font-bold text-slate-100 tracking-wider font-mono leading-none">{t('header.title')}</h1>
         </div>
       </div>
-      <div className="flex items-center gap-4">
-        <Tooltip title={t('common.help') || 'Help'} position="bottom">
-          <button 
-            onClick={() => setShowHelp(true)}
-            className="p-2 text-slate-400 hover:text-red-400 transition-colors"
-          >
-            <HelpIcon className="w-6 h-6" />
-          </button>
-        </Tooltip>
-        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
-        {currentDriver === 'INDI' && onToggleTSConect && (
+      <div className="flex items-center gap-2">
+        {currentDriver === 'INDI' && onToggleTSConnect && (
             <button 
-                onClick={onToggleTSConect}
+                onClick={onToggleTSConnect}
+                title={t('tooltips.tsConnect') || 'Open Connection & System Settings'}
                 className={`px-4 py-1.5 rounded-md text-xs font-black tracking-tighter transition-all ${
-                    isTSConectActive 
+                    isTSConnectActive 
                     ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]' 
                     : 'bg-slate-800 text-red-500 border border-red-900/30 hover:bg-red-900/20'
                 }`}
             >
-                TS-CONECT
+                TS-CONNECT
             </button>
+        )}
+        {onToggleHelp && (
+          <button
+            onClick={onToggleHelp}
+            title={t('tooltips.help') || 'Open Online Help Guide'}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white transition-all"
+          >
+            <span className="text-lg font-bold">?</span>
+          </button>
         )}
         <LanguageSwitcher />
       </div>

@@ -156,6 +156,7 @@ export const MainView: React.FC<MainViewProps> = ({
           <button
             onClick={() => setActiveView('Planetarium')}
             disabled={isCapturing}
+            title={t('tooltips.planetariumTab')}
             className={`flex-1 px-4 py-3 text-sm font-medium rounded-md transition-colors touch-manipulation ${
               activeView === 'Planetarium' ? 'bg-red-700 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-red-300'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -164,6 +165,7 @@ export const MainView: React.FC<MainViewProps> = ({
           </button>
           <button
             onClick={() => setActiveView('Imaging')}
+            title={t('tooltips.imagingTab')}
             className={`flex-1 px-4 py-3 text-sm font-medium rounded-md transition-colors touch-manipulation ${
               activeView === 'Imaging' ? 'bg-red-700 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-red-300'
             }`}

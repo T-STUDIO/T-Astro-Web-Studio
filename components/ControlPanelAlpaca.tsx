@@ -14,7 +14,6 @@ import { ListIcon } from './icons/ListIcon';
 import { GoogleDriveIcon } from './icons/GoogleDriveIcon'; 
 import { VideoIcon } from './icons/VideoIcon';
 import { useTranslation } from '../contexts/LanguageContext';
-import { Tooltip } from './Tooltip';
 import { FocuserControlAlpaca } from './FocuserControlAlpaca';
 import * as AstroService from '../services/AstroServiceAlpaca';
 import * as GoogleDriveService from '../services/GoogleDriveService';
@@ -41,9 +40,8 @@ const ConnectionStatusIndicator: React.FC<{ status: ConnectionStatus | SampStatu
 };
 
 const ToggleSwitch = memo(({ id, checked, onChange, label, title }: { id: string, checked: boolean, onChange: (checked: boolean) => void, label: string, title?: string}) => (
-    <Tooltip title={title || ''} position="right">
-      <label htmlFor={id} className="flex items-center justify-between cursor-pointer w-full p-2 hover:bg-slate-800 rounded-md transition-colors">
-        <span className="text-sm font-medium text-slate-300">{label}</span>
+    <label htmlFor={id} className="flex items-center justify-between cursor-pointer w-full p-2 hover:bg-slate-800 rounded-md transition-colors" title={title}>
+      <span className="text-sm font-medium text-slate-300">{label}</span>
       <div className="relative">
         <input
           id={id}
@@ -54,14 +52,12 @@ const ToggleSwitch = memo(({ id, checked, onChange, label, title }: { id: string
         />
         <div className="w-11 h-6 bg-slate-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-red-500 peer-focus:ring-offset-2 peer-focus:ring-offset-slate-900 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-700"></div>
       </div>
-      </label>
-    </Tooltip>
+    </label>
 ));
 
 const RangeSlider = memo(({ id, label, value, min, max, step, onChange, unit, disabled, colorClass = 'bg-slate-700', onAfterChange, title }: { id: string; label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void; unit?: string; disabled?: boolean; colorClass?: string; onAfterChange?: (value: number) => void; title?: string }) => {
     return (
-    <Tooltip title={title || ''} position="right">
-    <div className="space-y-1 w-full">
+    <div className="space-y-1" title={title}>
         <label htmlFor={id} className="flex justify-between items-center text-sm font-medium text-slate-300">
             <span>{label}</span>
             <div className="flex items-center gap-1">
@@ -98,7 +94,6 @@ const RangeSlider = memo(({ id, label, value, min, max, step, onChange, unit, di
             disabled={disabled}
         />
     </div>
-    </Tooltip>
     );
 });
 
@@ -684,11 +679,11 @@ const EquipmentPanel = memo((props: any) => {
 
                     // Navigate to the correct page for the driver
                     const pageMap: Record<string, string> = {
-                        'INDI': './index.html',
-                        'Alpaca': './alpaca.html',
-                        'Simulator': './simulator.html'
+                        'INDI': '/index.html',
+                        'Alpaca': '/alpaca.html',
+                        'Simulator': '/simulator.html'
                     };
-                    window.location.href = pageMap[newDriver] || './index.html';
+                    window.location.href = pageMap[newDriver] || '/index.html';
                 }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none text-slate-200" title={t('tooltips.connectionDriver')}>
                     <option value="Simulator">Simulator</option>
                     <option value="INDI">INDI</option>
@@ -798,9 +793,9 @@ export const ControlPanelAlpaca: React.FC<any> = (props) => {
         <div className="flex flex-col h-full bg-slate-900 border-r border-red-900/30 w-full lg:w-96 shrink-0 text-slate-200">
             {showTabs && (
                 <div className="flex border-b border-red-900/30 shrink-0">
-                    <button onClick={() => setActiveTab('equipment')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'equipment' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`}>{t('controlPanel.tabs.equipment')}</button>
-                    <button onClick={() => setActiveTab('imaging' as any)} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'imaging' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`}>{t('controlPanel.tabs.imaging')}</button>
-                    <button onClick={() => setActiveTab('settings')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'settings' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`}>{t('controlPanel.tabs.settings')}</button>
+                    <button onClick={() => setActiveTab('equipment')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'equipment' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`} title={t('tooltips.equipmentTab')}>{t('controlPanel.tabs.equipment')}</button>
+                    <button onClick={() => setActiveTab('imaging' as any)} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'imaging' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`} title={t('tooltips.imagingControlTab')}>{t('controlPanel.tabs.imaging')}</button>
+                    <button onClick={() => setActiveTab('settings')} className={`flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors ${currentTab === 'settings' ? 'bg-red-900/20 text-red-400 border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`} title={t('tooltips.settingsTab')}>{t('controlPanel.tabs.settings')}</button>
                 </div>
             )}
             <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>

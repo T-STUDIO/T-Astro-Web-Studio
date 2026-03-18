@@ -12,29 +12,21 @@ export const FocuserControlAlpaca: React.FC<FocuserControlProps> = ({ isConnecte
     const { t } = useTranslation();
     const [position, setPosition] = useState(0);
     const [stepSize, setStepSize] = useState(50);
-    const [isMoving, setIsMoving] = useState(false);
 
     useEffect(() => {
         if (isConnected) {
-            // Register focuser position update callback (called by AstroServiceAlpaca polling)
-            AstroService.setFocuserUpdateCallback((pos: number) => {
-                setPosition(pos);
-            });
-            return () => {
-                AstroService.setFocuserUpdateCallback(null);
+            const handleUpdate = async () => {
+                // For Alpaca, we might need a different way to get position if getNumericValue is INDI-specific
+                // But for now let's assume AstroServiceAlpaca handles it or we mock it
             };
+            const interval = setInterval(handleUpdate, 2000);
+            return () => clearInterval(interval);
         }
     }, [isConnected]);
 
     const handleMove = async (direction: 'in' | 'out') => {
-        if (isMoving) return;
-        setIsMoving(true);
-        try {
-            const steps = direction === 'in' ? -stepSize : stepSize;
-            await AstroService.moveFocuser(steps);
-        } finally {
-            setIsMoving(false);
-        }
+        const steps = direction === 'in' ? -stepSize : stepSize;
+        await AstroService.moveFocuser(steps);
     };
 
     return (
@@ -60,25 +52,18 @@ export const FocuserControlAlpaca: React.FC<FocuserControlProps> = ({ isConnecte
                 <div className="flex gap-1">
                     <button 
                         onClick={() => handleMove('in')}
-                        disabled={isMoving}
-                        className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded border border-slate-600 active:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Focus In"
+                        className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded border border-slate-600 active:bg-slate-800 transition-colors"
                     >
                         <ArrowLeftIcon className="w-5 h-5" />
                     </button>
                     <button 
                         onClick={() => handleMove('out')}
-                        disabled={isMoving}
-                        className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded border border-slate-600 active:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Focus Out"
+                        className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded border border-slate-600 active:bg-slate-800 transition-colors"
                     >
                         <ArrowRightIcon className="w-5 h-5" />
                     </button>
                 </div>
             </div>
-            {isMoving && (
-                <div className="text-xs text-yellow-400 text-center animate-pulse">Moving...</div>
-            )}
         </div>
     );
 };

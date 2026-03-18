@@ -35,7 +35,7 @@ const checkProxyAvailable = async (): Promise<boolean> => {
     
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         
         const res = await fetch('/api/alpaca/status', { 
             method: 'GET',
@@ -161,7 +161,7 @@ export class AlpacaClientService {
         try {
             // Add 10-second timeout for connection attempt to prevent hanging on local servers
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
             
             const response = await this.fetchAlpaca(targetUrl, { signal: controller.signal });
             clearTimeout(timeoutId);

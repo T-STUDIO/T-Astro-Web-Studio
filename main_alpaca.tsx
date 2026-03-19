@@ -17,12 +17,20 @@ if (settings.connectionSettings.driver !== 'Alpaca') {
   });
 }
 
+console.log('[main_alpaca] Script starting...');
+
 const rootElement = document.getElementById('root');
+console.log('[main_alpaca] Root element:', rootElement);
+
 if (rootElement) {
+  console.log('[main_alpaca] Rendering AppAlpaca...');
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <LanguageProvider>
       <AppAlpaca />
     </LanguageProvider>
   );
+  console.log('[main_alpaca] Render call completed.');
+} else {
+  console.error('[main_alpaca] Root element not found!');
 }

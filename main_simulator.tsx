@@ -7,6 +7,7 @@ import * as SettingsService from './services/SettingsService';
 
 // Ensure settings are set to Simulator when loading this page
 const settings = SettingsService.loadSettings();
+
 if (settings.connectionSettings.driver !== 'Simulator') {
   SettingsService.saveSettings({
     ...settings,

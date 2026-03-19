@@ -417,7 +417,15 @@ const AppSimulator: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
-                        onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
+                        sampSettings={sampSettings}
+                        onSampSettingsChange={setSampSettings}
+                        onConnectSamp={async (settings) => { setSampStatus('Connecting'); await SampService.connect(settings); }}
+                        onConnectVirtualSamp={async (settings) => { setSampStatus('Connecting'); await SampService.connectVirtual(settings); }}
+                        onDisconnectSamp={() => SampService.disconnect()}
+                        savedSampSettings={savedSampSettings}
+                        onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
+                        onUpdateSavedSampSettings={(idx, settings) => setSavedSampSettings(prev => { const n = [...prev]; n[idx].settings = settings; return n; })}
+                        onDeleteSampSettings={(idx) => setSavedSampSettings(prev => prev.filter((_, i) => i !== idx))}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}
@@ -430,7 +438,6 @@ const AppSimulator: React.FC = () => {
                         onDeleteApiKey={(idx) => setSavedApiKeys(prev => prev.filter((_, i) => i !== idx))}
                         savedLocalSolvers={savedLocalSolvers} onSaveLocalSolver={(name, settings) => setSavedLocalSolvers(prev => [...prev, { name, settings }])}
                         onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
-                        savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}

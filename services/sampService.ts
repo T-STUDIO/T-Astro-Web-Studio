@@ -44,9 +44,6 @@ export const connect = async (settings: SampSettings) => {
         init(statusCallback!);
     }
 
-    const host = settings.host || 'localhost';
-    const port = settings.port || 21013;
-
     if (statusCallback) statusCallback('Connecting');
 
     try {
@@ -58,32 +55,12 @@ export const connect = async (settings: SampSettings) => {
             }
         };
 
-        console.log(`[SAMP] Attempting to register with hub at ${host}:${port}`);
-        
-        // For Web Profile, Aladin listens on 21012 (HTTPS) or 21013 (HTTP)
-        // Standard XML-RPC is 12121.
-        
-        const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
-        let hubUrl = '';
-
-        if (port === 12121) {
-            hubUrl = `${protocol}://${host}:${port}/samp/xmlrpc`;
-        } else {
-            hubUrl = `${protocol}://${host}:${port}/`;
-        }
-        
-        console.log(`[SAMP] Using hub URL: ${hubUrl}`);
-        
-        // Manually set the hub finder to ensure the specified port is used
-        if (window.samp.XmlRpcHubFinder && port === 12121) {
-            connector.hubFinder = new window.samp.XmlRpcHubFinder(hubUrl);
-        } else if (window.samp.WebHubFinder) {
-            connector.hubFinder = new window.samp.WebHubFinder([hubUrl]);
-        }
-
+        // Register with the hub
+        // Note: This might trigger a browser popup for authorization in some hubs
+        // Aladin must have "Web Profile" activated.
         connector.register();
         
-        // Check if already connected
+        // Check if already connected (sometimes it's synchronous if already authorized)
         if (connector.connection && statusCallback) {
             statusCallback('Connected');
         }
@@ -122,12 +99,10 @@ export const isConnected = (): boolean => {
 };
 
 // Simulation
-export const connectVirtual = async (settings: SampSettings) => {
-    console.log("[SAMP Simulator] Connecting to Virtual Hub...", settings);
-    if (statusCallback) {
-        statusCallback('Connecting');
-        setTimeout(() => {
-            if (statusCallback) statusCallback('Connected', { clientName: "T-Astro (Simulated)" });
-        }, 1000);
-    }
+export const connectMock = (cb: (status: SampStatus, metadata?: any) => void) => {
+    console.log("[SAMP Simulator] Connecting to Virtual Hub...");
+    setCallback(cb);
+    setTimeout(() => {
+        if (statusCallback) statusCallback('Connected', { clientName: "T-Astro (Simulated)" });
+    }, 1000);
 }

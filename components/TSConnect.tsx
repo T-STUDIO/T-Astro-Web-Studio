@@ -16,6 +16,7 @@ import { TrashIcon } from './icons/TrashIcon';
 import { CloseIcon } from './icons/CloseIcon';
 import { SaveIcon } from './icons/SaveIcon'; 
 import { ListIcon } from './icons/ListIcon'; 
+import { SampSettingsSection } from './SampSettingsSection';
 import { TelescopeIcon } from './icons/TelescopeIcon';
 import * as AstroService from '../services/AstroService';
 import { decimalToSexagesimal, sexagesimalToDecimal } from '../utils/coords';
@@ -105,9 +106,14 @@ interface TSConnectProps {
     onToggleAutoSyncLocation?: (enabled: boolean) => void;
     sampStatus: SampStatus;
     sampSettings: SampSettings;
-    onSampSettingsChange: (s: Partial<SampSettings>) => void;
+    onSampSettingsChange: (settings: Partial<SampSettings>) => void;
     onConnectSamp: () => void;
+    onConnectVirtualSamp?: () => void;
     onDisconnectSamp: () => void;
+    savedSampSettings: SavedSampSettings[];
+    onSaveSampSettings: (name: string, settings: SampSettings) => void;
+    onUpdateSavedSampSettings?: (index: number, settings: SampSettings) => void;
+    onDeleteSampSettings: (index: number) => void;
     
     // Imaging & System Sync Props (Interface only, not for UI)
     isCapturing: boolean;
@@ -297,7 +303,7 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                                             Awaiting connection...
                                         </div>
                                     ) : (
-                                        <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin">
+                                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 scrollbar-thin">
                                             {indiDevices.map(dev => (
                                                 <div key={dev.name} className="bg-slate-900/80 p-4 rounded-xl border border-slate-800 flex items-center justify-between hover:border-red-900/30 transition-colors">
                                                     <div className="flex items-center gap-3 overflow-hidden">
@@ -326,6 +332,24 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                                             ))}
                                         </div>
                                     )}
+
+                                    <div className="pt-4 border-t border-slate-800">
+                                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-2 mb-2">SAMP Hub</h3>
+                                        <SampSettingsSection 
+                                            sampStatus={props.sampStatus}
+                                            sampSettings={props.sampSettings}
+                                            onSampSettingsChange={props.onSampSettingsChange}
+                                            onConnectSamp={props.onConnectSamp}
+                                            onConnectVirtualSamp={props.onConnectVirtualSamp}
+                                            onDisconnectSamp={props.onDisconnectSamp}
+                                            savedSampSettings={props.savedSampSettings}
+                                            onSaveSampSettings={props.onSaveSampSettings}
+                                            onUpdateSavedSampSettings={props.onUpdateSavedSampSettings}
+                                            onDeleteSampSettings={props.onDeleteSampSettings}
+                                            showTitle={false}
+                                            compact={true}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -380,7 +404,7 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                         )}
 
                         {activeTab === 'system' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="max-w-2xl mx-auto">
                                 <div className="p-6 bg-slate-900/60 rounded-2xl border border-slate-800 shadow-md space-y-4">
                                     <h3 className="text-sm font-black text-white uppercase tracking-tighter border-b border-slate-800 pb-2">Configuration</h3>
                                     <div className="grid grid-cols-1 gap-3">
@@ -390,18 +414,6 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                                         </Button>
                                         <Button onClick={() => fileInputRef.current?.click()} variant="secondary" title={t('tooltips.loadFromDevice')} className="py-3 text-sm font-black bg-slate-800">
                                             <ListIcon className="w-5 h-5" /> {t('controlPanel.loadFromDevice')}
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div className="p-6 bg-slate-900/60 rounded-2xl border border-slate-800 shadow-md space-y-4">
-                                    <h3 className="text-sm font-black text-white uppercase tracking-tighter border-b border-slate-800 pb-2">SAMP Hub</h3>
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <LargeInput label="Host" value={props.sampSettings.host} onChange={(v: string) => props.onSampSettingsChange({ host: v })} />
-                                            <LargeInput label="Port" type="number" value={props.sampSettings.port} onChange={(v: string) => props.onSampSettingsChange({ port: Number(v) })} />
-                                        </div>
-                                        <Button onClick={props.onConnectSamp} disabled={props.sampStatus === 'Connecting'} title={t('tooltips.samp')} className="w-full py-3 text-sm font-black bg-blue-700">
-                                            {props.sampStatus === 'Connected' ? 'SAMP: CONNECTED' : 'CONNECT SAMP HUB'}
                                         </Button>
                                     </div>
                                 </div>

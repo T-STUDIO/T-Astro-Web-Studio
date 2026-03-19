@@ -127,9 +127,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const c = document.createElement('canvas'); c.width = size; c.height = size;
         const ctx = c.getContext('2d'); if (!ctx) return null;
         const grad = ctx.createRadialGradient(half, half, 0, half, half, half);
-        grad.addColorStop(0, 'rgba(210, 210, 230, 0.01)'); 
-        grad.addColorStop(0.3, 'rgba(200, 200, 220, 0.005)');
-        grad.addColorStop(0.7, 'rgba(190, 190, 210, 0.001)');
+        grad.addColorStop(0, 'rgba(210, 210, 230, 0.4)'); 
+        grad.addColorStop(0.3, 'rgba(200, 200, 220, 0.2)');
+        grad.addColorStop(0.7, 'rgba(190, 190, 210, 0.05)');
         grad.addColorStop(1, 'rgba(180, 180, 200, 0)');
         ctx.fillStyle = grad; ctx.fillRect(0, 0, size, size);
         return c;
@@ -202,6 +202,25 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             // Clear for WWT transparency
             ctx.clearRect(0, 0, width, height);
         }
+        
+        // 1.5 Milky Way
+        if (settings.showMilkyWay && milkyWaySprite) {
+            ctx.save(); ctx.globalCompositeOperation = 'screen'; 
+            const opacityVal = settings.milkyWayOpacity ?? 0.5; const baseOpacity = Math.pow(opacityVal, 1.5) * 0.8;
+            if (baseOpacity > 0.000001) {
+                MILKY_WAY_POINTS.forEach(pt => {
+                    const {az, alt} = raDecToAzAlt(pt.ra, pt.dec, effLocation.latitude, lst);
+                    if (alt > -10) {
+                        const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                        if (p && p.x > -100 && p.x < width + 100 && p.y > -100 && p.y < height + 100) {
+                            const scale = 50 * zoom * (pt.width || 1.0); ctx.globalAlpha = Math.min(1, pt.intensity * baseOpacity);
+                            ctx.drawImage(milkyWaySprite, p.x - scale, p.y - scale, scale * 2, scale * 2);
+                        }
+                    }
+                });
+            }
+            ctx.restore();
+        }
 
         // 2. Update WWT View
         if (shouldShowWWT) {
@@ -265,23 +284,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             ctx.restore();
         }
 
-        if (!settings.showDSS && settings.showMilkyWay && milkyWaySprite) {
-            ctx.save(); ctx.globalCompositeOperation = 'screen'; 
-            const opacityVal = settings.milkyWayOpacity ?? 0.5; const baseOpacity = Math.pow(opacityVal, 1.5) * 0.012;
-            if (baseOpacity > 0.000001) {
-                MILKY_WAY_POINTS.forEach(pt => {
-                    const {az, alt} = raDecToAzAlt(pt.ra, pt.dec, effLocation.latitude, lst);
-                    if (alt > -10) {
-                        const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
-                        if (p && p.x > -100 && p.x < width + 100 && p.y > -100 && p.y < height + 100) {
-                            const scale = 50 * zoom * (pt.width || 1.0); ctx.globalAlpha = Math.min(1, pt.intensity * baseOpacity);
-                            ctx.drawImage(milkyWaySprite, p.x - scale, p.y - scale, scale * 2, scale * 2);
-                        }
-                    }
-                });
-            }
-            ctx.restore();
-        }
 
         if (settings.showAzAltGrid) {
             ctx.strokeStyle = 'rgba(239, 68, 68, 0.15)'; ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; ctx.font = '10px monospace'; ctx.textAlign = 'center'; ctx.lineWidth = 1;

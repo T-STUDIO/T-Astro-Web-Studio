@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { AstroService } from '../services/AstroService';
-import { INDIDevice } from '../services/AstroService';
+import { INDIDevice } from '../types';
 import { Button, SexagesimalInput, Switch } from './CommonUI';
 import { DisconnectIcon, GpsIcon, ListIcon } from './icons';
 

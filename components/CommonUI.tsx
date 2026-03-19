@@ -81,18 +81,42 @@ export const RangeSlider = memo(({ id, label, value, min, max, step, onChange, u
     );
 });
 
+export const Button = memo(({ children, onClick, variant = 'primary', className = '', disabled, type = 'button', title }: { children: React.ReactNode, onClick?: () => void, variant?: 'primary' | 'secondary' | 'danger' | 'success', className?: string, disabled?: boolean, type?: 'button' | 'submit' | 'reset', title?: string }) => {
+  const baseClasses = "flex items-center justify-center gap-2 px-4 py-2 rounded-md font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95";
+  const variants = {
+    primary: "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/20",
+    secondary: "bg-slate-700 hover:bg-slate-600 text-slate-100 border border-slate-600",
+    danger: "bg-red-900/40 hover:bg-red-900/60 text-red-200 border border-red-800/50",
+    success: "bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20"
+  };
+
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`${baseClasses} ${variants[variant]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+});
+
 export const SexagesimalInput: React.FC<{
+    label?: string;
     value: number;
     onChange: (val: number) => void;
     unit?: string;
     onAction?: () => void;
     title?: string;
-}> = memo(({ value, onChange, unit, onAction, title }) => {
+    isRA?: boolean;
+}> = memo(({ label, value, onChange, unit, onAction, title, isRA }) => {
     const [text, setText] = useState('');
     
     useEffect(() => {
-        setText(decimalToSexagesimal(value));
-    }, [value]);
+        setText(decimalToSexagesimal(value, isRA));
+    }, [value, isRA]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setText(e.target.value);
@@ -101,26 +125,29 @@ export const SexagesimalInput: React.FC<{
     const handleBlur = () => {
         const val = sexagesimalToDecimal(text);
         onChange(val); 
-        setText(decimalToSexagesimal(val)); 
+        setText(decimalToSexagesimal(val, isRA)); 
         if (onAction) onAction();
     };
 
     return (
-        <div className="flex items-center gap-1 w-full" title={title}>
-            <input 
-                type="text"
-                value={text}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                        (e.currentTarget as HTMLInputElement).blur();
-                    }
-                }}
-                className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm font-mono text-slate-200 text-right focus:border-red-500 outline-none select-text"
-                placeholder="dd:mm:ss.s"
-            />
-            {unit && <span className="text-xs text-slate-500 w-4">{unit}</span>}
+        <div className="space-y-1" title={title}>
+            {label && <label className="text-xs font-medium text-slate-400 block">{label}</label>}
+            <div className="flex items-center gap-1 w-full">
+                <input 
+                    type="text"
+                    value={text}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            (e.currentTarget as HTMLInputElement).blur();
+                        }
+                    }}
+                    className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm font-mono text-slate-200 text-right focus:border-red-500 outline-none select-text"
+                    placeholder={isRA ? "hh:mm:ss.s" : "dd:mm:ss.s"}
+                />
+                {unit && <span className="text-xs text-slate-500 w-4">{unit}</span>}
+            </div>
         </div>
     );
 });

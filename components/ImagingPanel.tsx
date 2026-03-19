@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { AstroService } from '../services/AstroService';
-import { INDIDevice, INDIVector, INDIElement } from '../services/AstroService';
+import { INDIDevice, INDIVector, INDIElement } from '../types';
 import { Button, RangeSlider } from './CommonUI';
 import { CameraIcon, StopIcon, VideoIcon } from './icons';
 import { FocuserControl } from './FocuserControl';

@@ -438,34 +438,10 @@ const AppAlpaca: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
-                        onConnectSamp={async () => { 
-                          if (sampStatus === 'Connected') {
-                            SampService.disconnect();
-                          } else {
-                            setSampStatus('Connecting'); 
-                            await SampService.connect(sampSettings);
-                          }
-                        }}
-                        onDisconnectSamp={() => SampService.disconnect()}
-                        onSaveToDisk={handleSaveToDisk}
-                        onLoadFromDisk={handleLoadFromDisk}
-                        savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}
-                        onUpdateSavedLocation={(idx, data) => setSavedLocations(prev => { const n = [...prev]; n[idx].data = data; return n; })}
-                        onDeleteLocation={(idx) => setSavedLocations(prev => prev.filter((_, i) => i !== idx))}
-                        savedConnections={savedConnections} onSaveConnection={(name, settings) => setSavedConnections(prev => [...prev, { name, settings }])}
-                        onUpdateSavedConnection={(idx, settings) => setSavedConnections(prev => { const n = [...prev]; n[idx].settings = settings; return n; })}
-                        onDeleteConnection={(idx) => setSavedConnections(prev => prev.filter((_, i) => i !== idx))}
-                        savedApiKeys={savedApiKeys} onSaveApiKey={(name, key) => setSavedApiKeys(prev => [...prev, { name, key }])}
-                        onDeleteApiKey={(idx) => setSavedApiKeys(prev => prev.filter((_, i) => i !== idx))}
-                        savedLocalSolvers={savedLocalSolvers} onSaveLocalSolver={(name, settings) => setSavedLocalSolvers(prev => [...prev, { name, settings }])}
-                        onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
-                        savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
-                        onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
-                        onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
-                        alpacaDevices={alpacaDevices}
-                        alpacaMessageCount={alpacaMessageCount}
-                        isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                        onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
+                        sampSettings={sampSettings}
+                        onSampSettingsChange={(s: any) => setSampSettings(prev => ({ ...prev, ...s }))}
+                        onConnectSamp={async (settings) => { setSampStatus('Connecting'); await SampService.connect(settings); }}
+                        onConnectVirtualSamp={async (settings) => { setSampStatus('Connecting'); await SampService.connectVirtual(settings); }}
                         onSendLocationToMount={onSendLocationToMount}
                         mountSyncStatus={mountSyncStatus}
                         activeView={activeView}

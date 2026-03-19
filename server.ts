@@ -159,28 +159,27 @@ async function startServer() {
         const targetUrl = req.headers['x-target-url'] as string;
         
         if (!targetUrl) {
-            console.warn('[AlpacaProxy] Missing x-target-url header');
             return res.status(400).json({ ErrorNumber: 0x400, ErrorMessage: 'Missing x-target-url header' });
         }
-
-        console.log(`[AlpacaProxy] ${req.method} -> ${targetUrl}`);
 
         try {
             const parsedUrl = new URL(targetUrl);
             const options: http.RequestOptions = {
                 method: req.method,
                 headers: {
-                    'Accept': req.headers['accept'] || 'application/json',
-                    'User-Agent': 'T-Astro/1.0 AlpacaProxy'
+                    'Accept': req.headers['accept'] || 'application/json'
                 },
-                timeout: 10000 // Increased timeout for slow remote connections
+                timeout: 5000
             };
 
             // Alpaca requires application/x-www-form-urlencoded for PUT/POST
             if (req.method === 'PUT' || req.method === 'POST') {
                 options.headers!['Content-Type'] = 'application/x-www-form-urlencoded';
                 
+                // Reconstruct body ensuring ClientTransactionID is preserved
                 const bodyParams = new URLSearchParams();
+                
+                // Merge query and body params (Alpaca allows both, but body is preferred for PUT)
                 const combinedParams = { ...req.query, ...req.body };
                 for (const [key, value] of Object.entries(combinedParams)) {
                     if (value !== undefined) bodyParams.append(key, String(value));
@@ -190,9 +189,9 @@ async function startServer() {
                 options.headers!['Content-Length'] = Buffer.byteLength(bodyStr);
 
                 const proxyReq = http.request(targetUrl, options, (proxyRes) => {
-                    console.log(`[AlpacaProxy] Response from ${targetUrl}: ${proxyRes.statusCode}`);
                     res.status(proxyRes.statusCode || 500);
                     
+                    // Copy headers but filter out connection-related ones
                     const headers = { ...proxyRes.headers };
                     delete headers['transfer-encoding'];
                     delete headers['content-length'];
@@ -203,7 +202,7 @@ async function startServer() {
                 });
 
                 proxyReq.on('error', (e) => {
-                    console.error(`[AlpacaProxy] Request Error to ${targetUrl}: ${e.message}`);
+                    console.error(`[AlpacaProxy] Error: ${e.message}`);
                     res.status(500).json({ 
                         Value: null,
                         ClientTransactionID: Number(req.body?.ClientTransactionID || req.query?.ClientTransactionID || 0),
@@ -217,9 +216,9 @@ async function startServer() {
                 proxyReq.end();
             } else {
                 const proxyReq = http.request(targetUrl, options, (proxyRes) => {
-                    console.log(`[AlpacaProxy] Response from ${targetUrl}: ${proxyRes.statusCode}`);
                     res.status(proxyRes.statusCode || 500);
                     
+                    // Copy headers but filter out connection-related ones
                     const headers = { ...proxyRes.headers };
                     delete headers['transfer-encoding'];
                     delete headers['content-length'];
@@ -230,7 +229,7 @@ async function startServer() {
                 });
 
                 proxyReq.on('error', (e) => {
-                    console.error(`[AlpacaProxy] Request Error to ${targetUrl}: ${e.message}`);
+                    console.error(`[AlpacaProxy] Error: ${e.message}`);
                     res.status(500).json({ 
                         Value: null,
                         ClientTransactionID: Number(req.body?.ClientTransactionID || req.query?.ClientTransactionID || 0),
@@ -243,7 +242,6 @@ async function startServer() {
                 proxyReq.end();
             }
         } catch (e: any) {
-            console.error(`[AlpacaProxy] Setup Error: ${e.message}`);
             res.status(500).json({ 
                 ErrorNumber: 0x500, 
                 ErrorMessage: `Setup Error: ${e.message}` 

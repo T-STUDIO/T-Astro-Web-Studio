@@ -4,6 +4,34 @@ import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import * as DriverConnection from './DriverConnection';
 import { BlobTransportService } from './BlobTransportService';
 
+// Import everything from DriverConnection to use in the namespace object
+const {
+    diagnoseConnection,
+    setLogCallback,
+    getDebugLogs,
+    setImageReceivedCallback,
+    setTelescopePositionCallback,
+    setIndiDeviceCallback,
+    setIndiMessageCountCallback,
+    setFocuserUpdateCallback,
+    setMountLocationCallback,
+    setMountTimeCallback,
+    updateDeviceSetting,
+    getActiveCamera,
+    getActiveFocuser,
+    getDeviceProperties,
+    getNumericValue,
+    connectIndiDevice,
+    disconnectIndiDevice,
+    refreshIndiDevices,
+    moveFocuser,
+    reprocessRawFITS,
+    rawFitsToDisplay,
+    getIndiDevices,
+    sendRaw,
+    getActiveMount
+} = DriverConnection;
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const setAppData = (loc: LocationData | null, time: Date | null) => {
@@ -386,4 +414,54 @@ export interface FitsConversionResult {
 
 export const reprocessLastFITS = (fmt: string) => {
     DriverConnection.reprocessRawFITS(fmt);
+};
+
+// --- AstroService Namespace for Compatibility ---
+export const AstroService = {
+    connect,
+    disconnect,
+    waitForCameraIdle,
+    slewTo,
+    syncTo,
+    syncToCoordinates,
+    getTelescopePosition,
+    startMotion,
+    stopMotion,
+    setTracking,
+    setPark,
+    capturePreview,
+    startCapture,
+    stopCapture,
+    startStream,
+    stopStream,
+    setVideoStream,
+    toggleVideoStreamEncoder,
+    abortSlew,
+    sendLocation,
+    reprocessLastFITS,
+    diagnoseConnection: DriverConnection.diagnoseConnection,
+    setLogCallback: DriverConnection.setLogCallback,
+    getDebugLogs: DriverConnection.getDebugLogs,
+    setImageReceivedCallback: DriverConnection.setImageReceivedCallback,
+    setTelescopePositionCallback: DriverConnection.setTelescopePositionCallback,
+    setIndiDeviceCallback: DriverConnection.setIndiDeviceCallback,
+    setIndiMessageCountCallback: DriverConnection.setIndiMessageCountCallback,
+    setFocuserUpdateCallback: DriverConnection.setFocuserUpdateCallback,
+    setMountLocationCallback: DriverConnection.setMountLocationCallback,
+    setMountTimeCallback: DriverConnection.setMountTimeCallback,
+    updateDeviceSetting: DriverConnection.updateDeviceSetting,
+    getActiveCamera: DriverConnection.getActiveCamera,
+    getActiveFocuser: DriverConnection.getActiveFocuser,
+    getDeviceProperties: DriverConnection.getDeviceProperties,
+    getNumericValue: DriverConnection.getNumericValue,
+    connectIndiDevice: DriverConnection.connectIndiDevice,
+    disconnectIndiDevice: DriverConnection.disconnectIndiDevice,
+    refreshIndiDevices: DriverConnection.refreshIndiDevices,
+    moveFocuser: DriverConnection.moveFocuser,
+    reprocessRawFITS: DriverConnection.reprocessRawFITS,
+    rawFitsToDisplay: DriverConnection.rawFitsToDisplay,
+    getIndiDevices: DriverConnection.getIndiDevices,
+    getCameraParams: DriverConnection.getActiveCameraParams,
+    sendRaw: DriverConnection.sendRaw,
+    getActiveMount: DriverConnection.getActiveMount
 };

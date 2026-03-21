@@ -45,6 +45,11 @@ const addDebugLog = (msg: string) => {
     if (debugLogs.length > 500) debugLogs.shift();
 };
 
+const getDeviceNumber = (type: string): number => {
+    const device = alpacaClient.devices.find(d => d.deviceType.toLowerCase() === type.toLowerCase());
+    return device !== undefined ? device.deviceNumber : 0;
+};
+
 export const connect = async (settings: any): Promise<boolean> => {
     addDebugLog(`Connecting to Alpaca at ${settings.host}:${settings.port}...`);
     const ok = await alpacaClient.connect(settings);
@@ -60,22 +65,22 @@ export const disconnect = async () => {
 export const slewTo = async (obj: CelestialObject) => {
     const ra = hmsToDegrees(obj.ra) / 15;
     const dec = dmsToDegrees(obj.dec);
-    await alpacaClient.putCommand('Telescope', 0, 'SlewToCoordinates', { RightAscension: ra, Declination: dec });
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SlewToCoordinates', { RightAscension: ra, Declination: dec });
 };
 
 export const syncTo = async (obj: CelestialObject) => {
     const ra = hmsToDegrees(obj.ra) / 15;
     const dec = dmsToDegrees(obj.dec);
-    await alpacaClient.putCommand('Telescope', 0, 'SyncToCoordinates', { RightAscension: ra, Declination: dec });
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SyncToCoordinates', { RightAscension: ra, Declination: dec });
 };
 
 export const syncToCoordinates = async (ra: number, dec: number) => {
-    await alpacaClient.putCommand('Telescope', 0, 'SyncToCoordinates', { RightAscension: ra / 15, Declination: dec });
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SyncToCoordinates', { RightAscension: ra / 15, Declination: dec });
 };
 
 export const getTelescopePosition = async (): Promise<TelescopePosition | null> => {
-    const raRes = await alpacaClient.getCommand('Telescope', 0, 'RightAscension');
-    const decRes = await alpacaClient.getCommand('Telescope', 0, 'Declination');
+    const raRes = await alpacaClient.getCommand('Telescope', getDeviceNumber('Telescope'), 'RightAscension');
+    const decRes = await alpacaClient.getCommand('Telescope', getDeviceNumber('Telescope'), 'Declination');
     if (raRes && decRes) {
         return { ra: raRes.Value * 15, dec: decRes.Value };
     }
@@ -91,16 +96,16 @@ export const stopMotion = async (dir: string) => {
 };
 
 export const setTracking = async (enabled: boolean) => {
-    await alpacaClient.putCommand('Telescope', 0, 'Tracking', { Tracking: enabled });
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'Tracking', { Tracking: enabled });
 };
 
 export const setPark = async (parked: boolean) => {
-    if (parked) await alpacaClient.putCommand('Telescope', 0, 'Park');
-    else await alpacaClient.putCommand('Telescope', 0, 'Unpark');
+    if (parked) await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'Park');
+    else await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'Unpark');
 };
 
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
-    const camId = 0; // Default to first camera for now
+    const camId = getDeviceNumber('Camera');
     addDebugLog(`Starting ${exp/1000}s exposure on camera ${camId}...`);
     
     try {
@@ -165,7 +170,7 @@ export const startCapture = async (exp: number, gain: number, offset: number, co
 };
 
 export const stopCapture = async () => {
-    await alpacaClient.putCommand('Camera', 0, 'AbortExposure');
+    await alpacaClient.putCommand('Camera', getDeviceNumber('Camera'), 'AbortExposure');
 };
 
 export const startStream = () => {
@@ -179,12 +184,12 @@ export const setVideoStream = async (enabled: boolean) => {
 };
 
 export const abortSlew = async () => {
-    await alpacaClient.putCommand('Telescope', 0, 'AbortSlew');
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'AbortSlew');
 };
 
 export const sendLocation = async (loc: LocationData, time: Date) => {
-    await alpacaClient.putCommand('Telescope', 0, 'SiteLatitude', { SiteLatitude: loc.latitude });
-    await alpacaClient.putCommand('Telescope', 0, 'SiteLongitude', { SiteLongitude: loc.longitude });
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SiteLatitude', { SiteLatitude: loc.latitude });
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SiteLongitude', { SiteLongitude: loc.longitude });
 };
 
 // Mock other functions for compatibility
@@ -212,10 +217,11 @@ export const refreshDevices = async () => {
 };
 export const moveFocuser = async (steps: number) => {
     // Get current position first
-    const posRes = await alpacaClient.getCommand('Focuser', 0, 'Position');
+    const focId = getDeviceNumber('Focuser');
+    const posRes = await alpacaClient.getCommand('Focuser', focId, 'Position');
     if (posRes) {
         const target = posRes.Value + steps;
-        await alpacaClient.putCommand('Focuser', 0, 'Move', { Position: target });
+        await alpacaClient.putCommand('Focuser', focId, 'Move', { Position: target });
     }
 };
 export const reprocessRawFITS = (fmt: string) => {};

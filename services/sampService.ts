@@ -40,13 +40,36 @@ export const connect = async (settings: SampSettings) => {
         return;
     }
 
-    if (!connector) {
-        init(statusCallback!);
+    // Unregister existing connector if any
+    if (connector) {
+        try {
+            console.log("[SAMP] Unregistering previous connector...");
+            connector.unregister();
+        } catch (e) {
+            console.warn("[SAMP] Unregister failed (normal if already disconnected):", e);
+        }
     }
 
-    if (statusCallback) statusCallback('Connecting');
+    const host = settings.host || 'localhost';
+    const port = settings.port || 8202;
+    const hubUrl = `http://${host}:${port}/samp/`;
+    console.log(`[SAMP] Connecting to hub at: ${hubUrl}`);
+
+    const meta = {
+        "samp.name": "T-Astro Web Studio",
+        "samp.description.text": "Web-based Astronomy Control Center",
+        "samp.icon.url": window.location.origin + "/favicon.ico"
+    };
 
     try {
+        // Connector handles the Web Profile (CORS, etc.)
+        // We create a new connector to ensure the hubUrl is applied
+        // Some versions of samp.js use hubUrl, others use hub_url
+        connector = new window.samp.Connector(meta, { 
+            hubUrl: hubUrl,
+            hub_url: hubUrl 
+        });
+
         // Set up connection change listener
         connector.onConnectionChange = (isConnected: boolean) => {
             console.log(`[SAMP] Connection changed: ${isConnected}`);
@@ -56,11 +79,9 @@ export const connect = async (settings: SampSettings) => {
         };
 
         // Register with the hub
-        // Note: This might trigger a browser popup for authorization in some hubs
-        // Aladin must have "Web Profile" activated.
         connector.register();
         
-        // Check if already connected (sometimes it's synchronous if already authorized)
+        // Check if already connected (sometimes register is synchronous)
         if (connector.connection && statusCallback) {
             statusCallback('Connected');
         }

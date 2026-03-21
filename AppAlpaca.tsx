@@ -438,6 +438,8 @@ const AppAlpaca: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
+                        sampSettings={sampSettings}
+                        onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
                         onConnectSamp={async () => { 
                           if (sampStatus === 'Connected') {
                             SampService.disconnect();

@@ -419,8 +419,6 @@ const App: React.FC = () => {
                 isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
                 onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                 sampStatus={sampStatus}
-                sampSettings={sampSettings}
-                onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
                 onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); setSampStatus('Connected'); }}
                 onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
                 isCapturing={isCapturing}
@@ -482,6 +480,8 @@ const App: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
+                        sampSettings={sampSettings}
+                        onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
                         onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}

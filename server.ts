@@ -33,7 +33,10 @@ async function startServer() {
 
     // Ensure API errors return JSON, not HTML
     apiRouter.use((req, res, next) => {
-        res.setHeader('Content-Type', 'application/json');
+        // Default to JSON for most API routes, but allow overrides for proxy routes
+        if (!req.path.includes('/proxy/image') && !req.path.includes('/alpaca/proxy')) {
+            res.setHeader('Content-Type', 'application/json');
+        }
         next();
     });
 
@@ -41,6 +44,7 @@ async function startServer() {
         const imageUrl = req.query.url as string;
         if (!imageUrl) return res.status(400).send('Missing url');
 
+        console.log(`[ImageProxy] Fetching: ${imageUrl}`);
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET');
 
@@ -98,7 +102,7 @@ async function startServer() {
             }
         };
 
-        fetchWithRetry(imageUrl);
+        await fetchWithRetry(imageUrl);
     });
 
     apiRouter.use((req, res, next) => {
@@ -162,14 +166,20 @@ async function startServer() {
             return res.status(400).json({ ErrorNumber: 0x400, ErrorMessage: 'Missing x-target-url header' });
         }
 
+        console.log(`[AlpacaProxy] ${req.method} -> ${targetUrl}`);
+
         try {
             const parsedUrl = new URL(targetUrl);
+            const isHttps = parsedUrl.protocol === 'https:';
+            const requester = isHttps ? https : http;
+
             const options: http.RequestOptions = {
                 method: req.method,
                 headers: {
-                    'Accept': req.headers['accept'] || 'application/json'
+                    'Accept': req.headers['accept'] || 'application/json',
+                    'User-Agent': 'T-Astro-Web-Studio/1.0'
                 },
-                timeout: 5000
+                timeout: 10000
             };
 
             // Alpaca requires application/x-www-form-urlencoded for PUT/POST
@@ -188,7 +198,7 @@ async function startServer() {
                 const bodyStr = bodyParams.toString();
                 options.headers!['Content-Length'] = Buffer.byteLength(bodyStr);
 
-                const proxyReq = http.request(targetUrl, options, (proxyRes) => {
+                const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
                     res.status(proxyRes.statusCode || 500);
                     
                     // Copy headers but filter out connection-related ones
@@ -215,7 +225,7 @@ async function startServer() {
                 proxyReq.write(bodyStr);
                 proxyReq.end();
             } else {
-                const proxyReq = http.request(targetUrl, options, (proxyRes) => {
+                const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
                     res.status(proxyRes.statusCode || 500);
                     
                     // Copy headers but filter out connection-related ones

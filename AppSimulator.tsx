@@ -417,6 +417,8 @@ const AppSimulator: React.FC = () => {
                         localSolverSettings={localSolverSettings} onSetLocalSolverSettings={setLocalSolverSettings}
                         isAutoCenterEnabled={isAutoCenterEnabled} onToggleAutoCenter={setIsAutoCenterEnabled}
                         sampStatus={sampStatus}
+                        sampSettings={sampSettings}
+                        onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
                         onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}

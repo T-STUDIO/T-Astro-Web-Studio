@@ -263,6 +263,16 @@ const AppSimulator: React.FC = () => {
     } catch (e: any) { addLog('logs.settingsImportError', { message: e.message }, 'error'); }
   };
 
+  const handleSetGain = (val: number) => {
+    setGain(val);
+    AstroService.updateGain(val);
+  };
+
+  const handleSetOffset = (val: number) => {
+    setOffset(val);
+    AstroService.updateOffset(val);
+  };
+
   const handleToggleLiveView = () => {
       const targetState = !isLiveViewActive;
       stopAllImaging();
@@ -400,8 +410,8 @@ const AppSimulator: React.FC = () => {
                         onUpdateLocation={handleUpdateLocation}
                         onUpdateLocationIP={handleUpdateLocationIP}
                         exposure={exposure} onSetExposure={setExposure}
-                        gain={gain} onSetGain={setGain}
-                        offset={offset} onSetOffset={setOffset}
+                        gain={gain} onSetGain={handleSetGain}
+                        offset={offset} onSetOffset={handleSetOffset}
                         binning={binning} onSetBinning={setBinning}
                         colorBalance={colorBalance} onSetColorBalance={setColorBalance}
                         isLiveViewActive={isLiveViewActive} onToggleLiveView={handleToggleLiveView}

@@ -8,7 +8,14 @@ import dgram from 'dgram';
 import url from 'url';
 import path from 'path';
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const args = process.argv.slice(2);
+const portArg = args.indexOf('--port');
+const cmdPort = portArg !== -1 ? parseInt(args[portArg + 1]) : null;
+const hostArg = args.indexOf('--host');
+const cmdHost = hostArg !== -1 ? args[hostArg + 1] : null;
+const BIND_HOST = cmdHost || '0.0.0.0';
+
+const PORT = cmdPort || (process.env.PORT ? parseInt(process.env.PORT) : 3000);
 const ALPACA_PORT = 11111;
 const WS_PORT = 11112;
 const DISCOVERY_PORT = 32227;
@@ -296,8 +303,8 @@ async function startServer() {
         });
     }
 
-    server.listen(PORT, '0.0.0.0', () => {
-        console.log(`Server running on http://localhost:${PORT}`);
+    server.listen(PORT, BIND_HOST, () => {
+        console.log(`Server running on http://${BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST}:${PORT}`);
     });
 }
 

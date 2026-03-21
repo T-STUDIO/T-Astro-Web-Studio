@@ -838,7 +838,7 @@ function scanForFitsHeader(u8: Uint8Array): number {
 }
 
 const STANDARD_RESOLUTIONS = [
-    { w: 640, h: 480 }, { w: 320, h: 240 }, { w: 800, h: 600 }, { w: 1024, h: 768 }, { w: 1280, h: 720 }, { w: 1280, h: 960 }, { w: 1920, h: 1080 }, { w: 128, h: 96 }, { w: 2592, h: 1944 }, { w: 3840, h: 2160 }, { w: 3096, h: 2080 }, { w: 4144, h: 2822 }, { w: 1936, h: 1216 }, { w: 1936, h: 1096 }, { w: 1296, h: 976 }, { w: 1280, h: 1024 }, { w: 1600, h: 1200 }, { w: 960, h: 540 }
+    { w: 1304, h: 976 }, { w: 640, h: 480 }, { w: 320, h: 240 }, { w: 800, h: 600 }, { w: 1024, h: 768 }, { w: 1280, h: 720 }, { w: 1280, h: 960 }, { w: 1920, h: 1080 }, { w: 128, h: 96 }, { w: 2592, h: 1944 }, { w: 3840, h: 2160 }, { w: 3096, h: 2080 }, { w: 4144, h: 2822 }, { w: 1936, h: 1216 }, { w: 1936, h: 1096 }, { w: 1296, h: 976 }, { w: 1280, h: 1024 }, { w: 1600, h: 1200 }, { w: 960, h: 540 }
 ];
 
 export const rawFitsToDisplay = (
@@ -851,7 +851,11 @@ export const rawFitsToDisplay = (
         let u8 = new Uint8Array(buffer);
         const formatLower = format.toLowerCase();
         let jpegStart = -1;
-        let expectedRawSize = (deviceParams && deviceParams.width > 0) ? deviceParams.width * deviceParams.height : 0;
+        
+        // Prioritize dimensions from deviceParams (INDI properties)
+        let localParams = deviceParams ? { ...deviceParams } : { width: 0, height: 0, bpp: 8, format: '', pixelSize: 0 };
+        
+        let expectedRawSize = (localParams.width > 0) ? localParams.width * localParams.height : 0;
         let scanLimit = 2048; 
         if (expectedRawSize > 0) {
             if (buffer.byteLength < expectedRawSize * 0.8) scanLimit = Math.min(u8.length, 131072);
@@ -891,7 +895,6 @@ export const rawFitsToDisplay = (
                 }
             } catch (e) { }
         }
-        let localParams = deviceParams ? { ...deviceParams } : { width: 0, height: 0, bpp: 8, format: '', pixelSize: 0 };
         let isFits = formatLower.includes('fits') || formatLower.includes('fit') || formatLower.includes('.bin') || formatLower.includes('.stream');
         let fitsOffset = scanForFitsHeader(u8);
         if (fitsOffset >= 0) {

@@ -186,6 +186,7 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     }
     
     if (!isStream) {
+        await setVideoStream(false);
         await waitForCameraIdle(5000);
     }
 
@@ -253,13 +254,16 @@ export const stopCapture = () => {
     setTimeout(() => DriverConnection.clearBuffer(), 100); 
 };
 
-let isStreaming = false;
-let streamTimeout: ReturnType<typeof setTimeout> | null = null;
+let isLooping = false;
+let loopTimeout: ReturnType<typeof setTimeout> | null = null;
 
-export const startStream = () => {
+export const startLoop = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
-        isStreaming = true;
+        // Ensure Video Stream is OFF when starting LOOP
+        setVideoStream(false);
+        
+        isLooping = true;
         if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
              const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
              if (!isCompressed) {
@@ -267,34 +271,30 @@ export const startStream = () => {
              }
         }
 
-        if (DriverConnection.hasProperty(cam, 'CCD_VIDEO_STREAM')) {
-            const isStreamOn = DriverConnection.getSwitchValue(cam, 'CCD_VIDEO_STREAM', 'STREAM_ON');
-            if (isStreamOn) {
-                DriverConnection.updateDeviceSetting(cam, 'CCD_VIDEO_STREAM', { 'STREAM_OFF': true });
-            }
-        }
-
         const loop = async () => {
-            if (!isStreaming) return;
+            if (!isLooping) return;
             const ready = await waitForCameraIdle(5000);
             if (ready) {
                 try {
-                    await capturePreview(200, 300, 0, true); 
-                } catch (e) {}
+                    // Use actual parameters instead of hardcoded 200, 300, 0
+                    await capturePreview(exp, gain, offset, true); 
+                } catch (e) {
+                    console.error("[AstroService] Loop capture error:", e);
+                }
             }
-            if (isStreaming) {
-                streamTimeout = setTimeout(loop, 500); 
+            if (isLooping) {
+                loopTimeout = setTimeout(loop, 500); 
             }
         };
         loop();
     }
 };
 
-export const stopStream = () => {
-    isStreaming = false;
-    if (streamTimeout) {
-        clearTimeout(streamTimeout);
-        streamTimeout = null;
+export const stopLoop = () => {
+    isLooping = false;
+    if (loopTimeout) {
+        clearTimeout(loopTimeout);
+        loopTimeout = null;
     }
     stopCapture();
     setTimeout(() => DriverConnection.clearBuffer(), 100); 
@@ -305,6 +305,9 @@ export const setVideoStream = async (enabled: boolean) => {
     if (cam) {
         DriverConnection.refreshIndiDevices();
         if (enabled) {
+             // Ensure LOOP is OFF when starting Video Stream
+             stopLoop();
+             
              DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
                  const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');

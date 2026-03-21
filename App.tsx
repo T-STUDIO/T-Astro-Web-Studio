@@ -192,7 +192,7 @@ const App: React.FC = () => {
   }, [connectionSettings, planetariumSettings, exposure, gain, offset, binning, colorBalance, astrometryApiKey, plateSolverType, localSolverSettings, isAutoCenterEnabled, isAutoSyncLocationEnabled, sampSettings, location, savedLocations, savedConnections, savedApiKeys, savedLocalSolvers, savedSampSettings]);
 
   const stopAllImaging = useCallback(() => {
-    if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopStream(); }
+    if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
     if (isVideoStreamActive) { setIsVideoStreamActive(false); AstroService.setVideoStream(false); }
     if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
     setIsPreviewLoading(false);
@@ -266,14 +266,19 @@ const App: React.FC = () => {
   const handleToggleLiveView = () => {
       const targetState = !isLiveViewActive;
       stopAllImaging();
-      if (targetState) { setIsLiveViewActive(true); AstroService.startStream(); setActiveView('Imaging'); setMobileActiveTab('imaging_view'); }
+      if (targetState) { 
+          setIsLiveViewActive(true); 
+          AstroService.startLoop(exposure, gain, offset); 
+          setActiveView('Imaging'); 
+          setMobileActiveTab('imaging_view'); 
+      }
   };
 
   const handleToggleVideoStream = () => {
       const targetState = !isVideoStreamActive;
       if (targetState) {
           // 他の撮影モードのみ停止し、動画を開始する「動作版」ロジック
-          if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopStream(); }
+          if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
           if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
           setIsPreviewLoading(false);
           setIsVideoStreamActive(true); 

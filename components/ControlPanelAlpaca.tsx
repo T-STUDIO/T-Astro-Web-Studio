@@ -716,6 +716,22 @@ const EquipmentPanel = memo((props: any) => {
                             <label htmlFor="port-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.port')}</label>
                             <input type="number" id="port-input" value={connectionSettings?.port || 11111} onChange={(e) => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, port: Number(e.target.value), driver: 'Alpaca' }); }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none font-mono text-slate-200 select-text" title={t('tooltips.port')} />
                         </div>
+                        <button 
+                            onClick={() => {
+                                const settings = SettingsService.loadSettings();
+                                SettingsService.saveSettings({
+                                    ...settings,
+                                    connectionSettings: { ...connectionSettings, driver: 'Alpaca' }
+                                });
+                                // Show a small feedback if possible, but for now just save
+                                console.log("[ControlPanelAlpaca] Settings saved manually");
+                            }}
+                            className="bg-blue-800 hover:bg-blue-700 text-white p-2 rounded border border-blue-700 h-[38px]"
+                            title={t('controlPanel.connectionProfiles.saveCurrent')}
+                            type="button"
+                        >
+                            <SaveIcon className="w-5 h-5" />
+                        </button>
                     </div>
 
                     <div className="flex gap-2 items-end border-t border-slate-700 pt-3">

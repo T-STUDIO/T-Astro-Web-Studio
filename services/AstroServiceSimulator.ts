@@ -108,7 +108,17 @@ export const setPark = (parked: boolean) => {
     AstroSimulatorService.setPark(parked);
 };
 
+export const updateGain = (gain: number) => {
+    AstroSimulatorService.setCameraGain(gain);
+};
+
+export const updateOffset = (offset: number) => {
+    AstroSimulatorService.setCameraOffset(offset);
+};
+
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
+    updateGain(gain);
+    updateOffset(offset);
     AstroSimulatorService.startExposure(exp / 1000);
 };
 

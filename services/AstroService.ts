@@ -174,6 +174,44 @@ const fetchAladinImage = async (ra: number, dec: number): Promise<string> => {
     return images[0];
 };
 
+const setCameraGain = (cam: string, gain: number) => {
+    const props = ['CCD_GAIN', 'Gain', 'GAIN'];
+    for (const prop of props) {
+        if (DriverConnection.hasProperty(cam, prop)) {
+            const el = prop === 'CCD_GAIN' ? 'GAIN' : (prop === 'Gain' ? 'Gain' : 'GAIN');
+            const current = DriverConnection.getNumericValue(cam, prop, el);
+            if (current !== null && current !== gain) {
+                DriverConnection.updateDeviceSetting(cam, prop, { [el]: gain });
+            }
+            return;
+        }
+    }
+};
+
+const setCameraOffset = (cam: string, offset: number) => {
+    const props = ['CCD_OFFSET', 'Offset', 'OFFSET'];
+    for (const prop of props) {
+        if (DriverConnection.hasProperty(cam, prop)) {
+            const el = prop === 'CCD_OFFSET' ? 'OFFSET' : (prop === 'Offset' ? 'Offset' : 'OFFSET');
+            const current = DriverConnection.getNumericValue(cam, prop, el);
+            if (current !== null && current !== offset) {
+                DriverConnection.updateDeviceSetting(cam, prop, { [el]: offset });
+            }
+            return;
+        }
+    }
+};
+
+export const updateGain = (gain: number) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) setCameraGain(cam, gain);
+};
+
+export const updateOffset = (offset: number) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) setCameraOffset(cam, offset);
+};
+
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
     const cam = DriverConnection.getActiveCamera();
     if (!cam) {
@@ -206,15 +244,8 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
          }
     }
 
-    const currentGain = DriverConnection.getNumericValue(cam, 'CCD_GAIN', 'GAIN');
-    if (currentGain !== null && currentGain !== gain) {
-        DriverConnection.updateDeviceSetting(cam, 'CCD_GAIN', {'GAIN': gain});
-    }
-
-    const currentOffset = DriverConnection.getNumericValue(cam, 'CCD_OFFSET', 'OFFSET');
-    if (currentOffset !== null && currentOffset !== offset) {
-        DriverConnection.updateDeviceSetting(cam, 'CCD_OFFSET', {'OFFSET': offset});
-    }
+    setCameraGain(cam, gain);
+    setCameraOffset(cam, offset);
     
     DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
 };

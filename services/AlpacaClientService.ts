@@ -35,6 +35,10 @@ export class AlpacaClientService {
         return id;
     }
 
+    public getDevices(): AlpacaDevice[] {
+        return this.devices;
+    }
+
     public async connect(settings: ConnectionSettings): Promise<boolean> {
         // Construct base URL for Alpaca API
         let host = settings.host;

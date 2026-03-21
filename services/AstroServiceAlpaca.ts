@@ -46,7 +46,7 @@ const addDebugLog = (msg: string) => {
 };
 
 const getDeviceNumber = (type: string): number => {
-    const device = alpacaClient.devices.find(d => d.deviceType.toLowerCase() === type.toLowerCase());
+    const device = alpacaClient.getDevices().find(d => d.deviceType.toLowerCase() === type.toLowerCase());
     return device !== undefined ? device.deviceNumber : 0;
 };
 
@@ -104,11 +104,23 @@ export const setPark = async (parked: boolean) => {
     else await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'Unpark');
 };
 
+export const updateGain = async (gain: number) => {
+    const camId = getDeviceNumber('Camera');
+    if (camId !== -1) await alpacaClient.putCommand('Camera', camId, 'Gain', { Gain: gain });
+};
+
+export const updateOffset = async (offset: number) => {
+    const camId = getDeviceNumber('Camera');
+    if (camId !== -1) await alpacaClient.putCommand('Camera', camId, 'Offset', { Offset: offset });
+};
+
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
     const camId = getDeviceNumber('Camera');
     addDebugLog(`Starting ${exp/1000}s exposure on camera ${camId}...`);
     
     try {
+        await updateGain(gain);
+        await updateOffset(offset);
         await alpacaClient.putCommand('Camera', camId, 'StartExposure', { Duration: exp / 1000, Light: true });
         
         // Polling for image

@@ -81,10 +81,13 @@ export const connect = async (settings: SampSettings) => {
         // Register with the hub
         connector.register();
         
-        // Check if already connected (sometimes register is synchronous)
-        if (connector.connection && statusCallback) {
-            statusCallback('Connected');
-        }
+        // Timeout for connection
+        setTimeout(() => {
+            if (connector && !connector.connection && statusCallback) {
+                console.warn("[SAMP] Connection timeout");
+                statusCallback('Error', { error: 'Connection timeout. Is Aladin/SAMP Hub running with Web Profile enabled?' });
+            }
+        }, 5000);
     } catch (e: any) {
         console.error("[SAMP] Connection error:", e);
         if (statusCallback) statusCallback('Error', { error: e.message });

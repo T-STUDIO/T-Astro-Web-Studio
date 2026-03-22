@@ -165,6 +165,12 @@ export const ja = {
         imaging: '撮影制御',
         settings: '設定'
     },
+    sidebar: {
+        view: '表示',
+        equip: '機材',
+        ctrl: '制御',
+        set: '設定'
+    },
     locationAndTime: '観測地と時刻',
     location: {
       latitude: '緯度',
@@ -294,6 +300,10 @@ export const ja = {
     importConfirm: '現在の設定が上書きされます。よろしいですか？',
     forceRefresh: '強制更新',
     refreshDeviceList: 'デバイスリスト更新',
+    discoveryPort: '検索ポート',
+    scanning: 'スキャン中...',
+    discover: 'デバイス検索',
+    foundServers: '見つかったサーバー:',
     searchingDevices: 'デバイスを検索中...',
     receivedPackets: '受信: {{count}} パケット',
     enterKeyName: 'キー名を入力:',

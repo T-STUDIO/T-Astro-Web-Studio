@@ -523,19 +523,19 @@ const AppAlpaca: React.FC = () => {
               </button>
               <button onClick={() => handleMobileTabChange('imaging_view')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_view' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.imagingTab')}>
                   <CameraIcon className="w-5 h-5 shrink-0" />
-                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">View</span>
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">{t('sidebar.view') || 'View'}</span>
               </button>
               <button onClick={() => handleMobileTabChange('equipment')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'equipment' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.equipmentTab')}>
                   <TelescopeIcon className="w-5 h-5 shrink-0" />
-                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Equip</span>
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">{t('sidebar.equip') || 'Equip'}</span>
               </button>
               <button onClick={() => handleMobileTabChange('imaging_control')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'imaging_control' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.imagingControlTab')}>
                   <VideoIcon className="w-5 h-5 shrink-0" />
-                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Ctrl</span>
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">{t('sidebar.ctrl') || 'Ctrl'}</span>
               </button>
               <button onClick={() => handleMobileTabChange('settings')} className={`flex-1 min-w-0 flex flex-col items-center gap-1 transition-colors ${mobileActiveTab === 'settings' ? 'text-red-400' : 'text-slate-500'}`} title={t('tooltips.settingsTab')}>
                   <ListIcon className="w-5 h-5 shrink-0" />
-                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">Set</span>
+                  <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5">{t('sidebar.set') || 'Set'}</span>
               </button>
           </nav>
       )}

@@ -303,7 +303,11 @@ const App: React.FC = () => {
 
   const handlePreview = async () => {
       stopAllImaging(); setIsPreviewLoading(true); setActiveView('Imaging'); setMobileActiveTab('imaging_view');
-      await AstroService.capturePreview(exposure, gain, offset);
+      try {
+          await AstroService.capturePreview(exposure, gain, offset);
+      } finally {
+          setIsPreviewLoading(false);
+      }
   };
 
   const handleStartCapture = async () => {

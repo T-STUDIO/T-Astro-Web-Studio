@@ -375,7 +375,7 @@ const ImagingPanel = memo((props: any) => {
                         onClick={() => onOpenDeviceSettings('Camera', activeCameraName)}
                         className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-red-900/40 text-slate-300 border border-slate-700 rounded transition-colors"
                     >
-                        カメラ
+                        {t('deviceType.Camera') || 'カメラ'}
                     </button>
                 )}
                 {activeFocuserName && (
@@ -383,7 +383,7 @@ const ImagingPanel = memo((props: any) => {
                         onClick={() => onOpenDeviceSettings('Focuser', activeFocuserName)}
                         className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-red-900/40 text-slate-300 border border-slate-700 rounded transition-colors"
                     >
-                        フォーカサー
+                        {t('deviceType.Focuser') || 'フォーカサー'}
                     </button>
                 )}
                 {activeMountName && (
@@ -391,7 +391,7 @@ const ImagingPanel = memo((props: any) => {
                         onClick={() => onOpenDeviceSettings('Mount', activeMountName)}
                         className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-red-900/40 text-slate-300 border border-slate-700 rounded transition-colors"
                     >
-                        マウント
+                        {t('deviceType.Mount') || 'マウント'}
                     </button>
                 )}
             </div>
@@ -436,8 +436,8 @@ const ImagingPanel = memo((props: any) => {
             <h3 className="text-xs font-bold text-slate-500 uppercase">{t('controlPanel.staticCapture')}</h3>
             <div className="grid grid-cols-2 gap-2">
                 <Button onClick={onPreview} disabled={isCapturing || isPreviewLoading || isVideoStreamActive} variant="secondary" className="w-full text-xs" type="button" title={t('tooltips.preview')}>
-                    {isPreviewLoading ? <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></div> : <CameraIcon className="w-5 h-5" />} 
-                    {isPreviewLoading ? ` ${t('controlPanel.loading')}` : t('controlPanel.preview')}
+                    {isPreviewLoading ? <div className="w-4 h-4 bg-white rounded-sm"></div> : <CameraIcon className="w-5 h-5" />} 
+                    {isPreviewLoading ? ` ${t('controlPanel.loading') || '読込中...'}` : t('controlPanel.preview')}
                 </Button>
                 <Button onClick={onToggleLiveView} disabled={isVideoStreamActive} variant={isLiveViewActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.liveView')}>
                     {isLiveViewActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopLiveView')}</> : <><CameraIcon className="w-4 h-4" /> {t('controlPanel.liveView')}</>}
@@ -659,7 +659,7 @@ const EquipmentPanel = memo((props: any) => {
         </div>
 
         <div className="space-y-3 mt-6">
-            <div className="flex justify-between items-center border-b border-red-900/50 pb-2"><h2 className="text-lg font-semibold text-red-400">{t('controlPanel.equipment')}</h2><button onClick={onShowDiagnostics} className="text-[10px] text-slate-400 underline hover:text-red-400">Diagnosis</button></div>
+            <div className="flex justify-between items-center border-b border-red-900/50 pb-2"><h2 className="text-lg font-semibold text-red-400">{t('controlPanel.equipment')}</h2><button onClick={onShowDiagnostics} className="text-[10px] text-slate-400 underline hover:text-red-400">{t('controlPanel.diagnostics')}</button></div>
             <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700"><ConnectionStatusIndicator status={connectionStatus} labels={equipmentStatusLabels} />{isConnected && (<p className="text-xs text-slate-400 mt-1 font-mono">{t('status.connectedTo', { driver: 'Alpaca', host: connectionSettings?.host, port: connectionSettings?.port })}</p>)}</div>
             
             <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700">
@@ -749,17 +749,17 @@ const EquipmentPanel = memo((props: any) => {
 
                     <div className="flex gap-2 items-end border-t border-slate-700 pt-3">
                         <div className="flex-1">
-                            <label className="block text-xs font-medium mb-1 text-slate-500">Discovery Port</label>
+                            <label className="block text-xs font-medium mb-1 text-slate-500">{t('controlPanel.discoveryPort') || 'Discovery Port'}</label>
                             <input type="number" value={discoveryPort} onChange={(e) => setDiscoveryPort(Number(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300" />
                         </div>
                         <Button onClick={handleDiscover} disabled={isDiscovering} variant="secondary" className="text-xs h-7 px-3">
-                            {isDiscovering ? 'Scanning...' : 'Discover'}
+                            {isDiscovering ? t('controlPanel.scanning') || 'Scanning...' : t('controlPanel.discover') || 'Discover'}
                         </Button>
                     </div>
 
                     {discoveryResults.length > 0 && (
                         <div className="bg-black/30 rounded p-2 max-h-32 overflow-y-auto border border-slate-800">
-                            <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Found Servers:</p>
+                            <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">{t('controlPanel.foundServers') || 'Found Servers:'}</p>
                             {discoveryResults.map((res, i) => (
                                 <div key={i} onClick={() => onSettingsChange({ ...connectionSettings, host: res.host, port: res.port })} className="text-xs p-1 hover:bg-red-900/20 cursor-pointer rounded flex justify-between border-b border-slate-800 last:border-0">
                                     <span>{res.serverName}</span>

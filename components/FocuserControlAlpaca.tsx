@@ -28,6 +28,9 @@ export const FocuserControlAlpaca: React.FC<FocuserControlProps> = ({ isConnecte
     const handleMove = async (direction: 'in' | 'out') => {
         const steps = direction === 'in' ? -stepSize : stepSize;
         await AstroService.moveFocuser(steps);
+        // Fetch position immediately after move
+        const pos = await AstroService.getFocuserPosition();
+        if (pos !== null) setPosition(pos);
     };
 
     return (

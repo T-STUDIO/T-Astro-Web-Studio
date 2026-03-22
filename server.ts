@@ -21,6 +21,103 @@ const DISCOVERY_PORT = 32227;
 
 async function startServer() {
     const app = express();
+
+    // Proxy routes BEFORE body parsers to allow piping raw streams (crucial for SAMP and Alpaca PUT/POST)
+    app.all('/api/alpaca/proxy', async (req, res) => {
+        const targetUrl = (req.query.target as string) || (req.headers['x-target-url'] as string);
+        if (!targetUrl) {
+            return res.status(400).json({ error: 'Missing target URL' });
+        }
+
+        try {
+            const parsedUrl = new URL(targetUrl);
+            const isHttps = parsedUrl.protocol === 'https:';
+            const transport = isHttps ? https : http;
+
+            const options: any = {
+                method: req.method,
+                headers: { ...req.headers },
+                timeout: 30000
+            };
+
+            // Clean up headers for proxying
+            delete options.headers.host;
+            delete options.headers['x-target-url'];
+            delete options.headers['content-length']; // Let http.request recalculate if needed, or pipe will handle it
+            options.headers.host = parsedUrl.host;
+            options.headers.connection = 'keep-alive';
+
+            const proxyReq = transport.request(targetUrl, options, (proxyRes) => {
+                // Forward status and headers
+                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                proxyRes.pipe(res);
+            });
+
+            proxyReq.on('error', (err) => {
+                console.error(`[Alpaca Proxy Error] ${err.message} for ${targetUrl}`);
+                if (!res.headersSent) {
+                    res.status(502).json({ 
+                        ErrorNumber: 0x400, 
+                        ErrorMessage: `Proxy Error: ${err.message}`,
+                        DriverException: err.stack
+                    });
+                }
+            });
+
+            // Pipe the original request body to the proxy request
+            req.pipe(proxyReq);
+        } catch (err: any) {
+            console.error(`[Alpaca Proxy Fatal] ${err.message}`);
+            if (!res.headersSent) res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.all('/api/samp/proxy', async (req, res) => {
+        const targetUrl = (req.query.target as string) || (req.headers['x-target-url'] as string);
+        if (!targetUrl) {
+            return res.status(400).json({ error: 'Missing target URL' });
+        }
+
+        try {
+            const parsedUrl = new URL(targetUrl);
+            const transport = parsedUrl.protocol === 'https:' ? https : http;
+
+            const options: any = {
+                method: req.method,
+                headers: {
+                    ...req.headers,
+                },
+                timeout: 15000
+            };
+            
+            // Clean up headers for proxying
+            delete options.headers.host;
+            delete options.headers['x-target-url'];
+            delete options.headers['content-length'];
+            options.headers.host = parsedUrl.host;
+            options.headers.connection = 'keep-alive';
+
+            const proxyReq = transport.request(targetUrl, options, (proxyRes) => {
+                // Forward status and headers
+                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                proxyRes.pipe(res);
+            });
+
+            proxyReq.on('error', (err) => {
+                console.error(`[SAMP Proxy Error] ${err.message} for ${targetUrl}`);
+                if (!res.headersSent) {
+                    res.status(502).json({ error: `SAMP Proxy Error: ${err.message}` });
+                }
+            });
+
+            // Pipe the original request body to the proxy request
+            req.pipe(proxyReq);
+        } catch (err: any) {
+            console.error(`[SAMP Proxy Fatal] ${err.message}`);
+            if (!res.headersSent) res.status(500).json({ error: err.message });
+        }
+    });
+
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
@@ -163,155 +260,6 @@ async function startServer() {
             nodeVersion: process.version,
             timestamp: new Date().toISOString()
         });
-    });
-
-    apiRouter.all('/alpaca/proxy', async (req, res) => {
-        const targetUrl = req.headers['x-target-url'] as string;
-        
-        if (!targetUrl) {
-            return res.status(400).json({ ErrorNumber: 0x400, ErrorMessage: 'Missing x-target-url header' });
-        }
-
-        // Log only non-polling requests to avoid cluttering
-        if (!targetUrl.toLowerCase().includes('connected') && !targetUrl.toLowerCase().includes('imageready')) {
-            console.log(`[AlpacaProxy] ${req.method} -> ${targetUrl}`);
-        }
-
-        try {
-            const parsedUrl = new URL(targetUrl);
-            const isHttps = parsedUrl.protocol === 'https:';
-            const requester = isHttps ? https : http;
-
-            const options: http.RequestOptions = {
-                method: req.method,
-                headers: {
-                    'Accept': req.headers['accept'] || 'application/json',
-                    'User-Agent': 'T-Astro-Web-Studio/1.0'
-                },
-                timeout: 15000 // Increased timeout for slow devices
-            };
-
-            // Alpaca requires application/x-www-form-urlencoded for PUT/POST
-            if (req.method === 'PUT' || req.method === 'POST') {
-                options.headers!['Content-Type'] = 'application/x-www-form-urlencoded';
-                
-                // Reconstruct body ensuring ClientTransactionID is preserved
-                const bodyParams = new URLSearchParams();
-                
-                // Merge query and body params (Alpaca allows both, but body is preferred for PUT)
-                const combinedParams = { ...req.query, ...req.body };
-                for (const [key, value] of Object.entries(combinedParams)) {
-                    if (value !== undefined) bodyParams.append(key, String(value));
-                }
-                
-                const bodyStr = bodyParams.toString();
-                options.headers!['Content-Length'] = Buffer.byteLength(bodyStr);
-
-                const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
-                    res.status(proxyRes.statusCode || 500);
-                    
-                    // Copy headers but filter out connection-related ones
-                    const headers = { ...proxyRes.headers };
-                    delete headers['transfer-encoding'];
-                    delete headers['content-length'];
-                    delete headers['connection'];
-                    res.set(headers);
-                    
-                    proxyRes.pipe(res);
-                });
-
-                proxyReq.on('error', (e) => {
-                    console.error(`[AlpacaProxy] Error: ${e.message}`);
-                    res.status(500).json({ 
-                        Value: null,
-                        ClientTransactionID: Number(req.body?.ClientTransactionID || req.query?.ClientTransactionID || 0),
-                        ServerTransactionID: 0,
-                        ErrorNumber: 0x500, 
-                        ErrorMessage: `Proxy Error: ${e.message}` 
-                    });
-                });
-
-                proxyReq.write(bodyStr);
-                proxyReq.end();
-            } else {
-                const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
-                    res.status(proxyRes.statusCode || 500);
-                    
-                    // Copy headers but filter out connection-related ones
-                    const headers = { ...proxyRes.headers };
-                    delete headers['transfer-encoding'];
-                    delete headers['content-length'];
-                    delete headers['connection'];
-                    res.set(headers);
-                    
-                    proxyRes.pipe(res);
-                });
-
-                proxyReq.on('error', (e) => {
-                    console.error(`[AlpacaProxy] Error: ${e.message}`);
-                    res.status(500).json({ 
-                        Value: null,
-                        ClientTransactionID: Number(req.body?.ClientTransactionID || req.query?.ClientTransactionID || 0),
-                        ServerTransactionID: 0,
-                        ErrorNumber: 0x500, 
-                        ErrorMessage: `Proxy Error: ${e.message}` 
-                    });
-                });
-
-                proxyReq.end();
-            }
-        } catch (e: any) {
-            res.status(500).json({ 
-                ErrorNumber: 0x500, 
-                ErrorMessage: `Setup Error: ${e.message}` 
-            });
-        }
-    });
-
-    apiRouter.all('/samp/proxy', async (req, res) => {
-        let targetUrl = req.headers['x-target-url'] as string;
-        
-        // Fallback to query parameter for libraries that don't support custom headers
-        if (!targetUrl && req.query.target) {
-            targetUrl = req.query.target as string;
-        }
-
-        if (!targetUrl) return res.status(400).json({ error: 'Missing x-target-url header or target query param' });
-
-        console.log(`[SAMPProxy] ${req.method} -> ${targetUrl}`);
-
-        try {
-            const parsedUrl = new URL(targetUrl);
-            const requester = parsedUrl.protocol === 'https:' ? https : http;
-
-            const options: http.RequestOptions = {
-                method: req.method,
-                headers: {
-                    'Content-Type': req.headers['content-type'] || 'text/xml',
-                    'Accept': req.headers['accept'] || '*/*',
-                },
-                timeout: 5000
-            };
-
-            const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
-                res.status(proxyRes.statusCode || 500);
-                res.set(proxyRes.headers);
-                proxyRes.pipe(res);
-            });
-
-            proxyReq.on('error', (e) => {
-                console.error(`[SAMPProxy] Error: ${e.message}`);
-                res.status(500).json({ error: e.message });
-            });
-
-            if (req.method !== 'GET' && req.method !== 'HEAD') {
-                req.pipe(proxyReq);
-            } else {
-                proxyReq.end();
-            }
-        } catch (e: any) {
-            res.status(500).json({ error: e.message });
-        }
     });
 
     // API 404 Handler (Ensures no HTML fallback for /api/*)

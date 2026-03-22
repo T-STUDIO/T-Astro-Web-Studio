@@ -93,63 +93,77 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
     };
 
     return (
-        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-red-900/50 rounded-xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-                <div className="p-4 border-b border-red-900/30 flex justify-between items-center bg-slate-800/50">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-xl font-bold text-red-400">Alpaca Control Panel</h2>
-                        <span className="text-xs text-slate-500 font-mono">{host}:{port}</span>
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-slate-900 border border-red-900/50 rounded-xl w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                <div className="p-3 border-b border-red-900/30 flex justify-between items-center bg-slate-800/50">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-base sm:text-lg font-bold text-red-400">Alpaca Control Panel</h2>
+                        <span className="hidden sm:inline text-[10px] text-slate-500 font-mono">{host}:{port}</span>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-red-900/20 rounded-full transition-colors">
-                        <CloseIcon className="w-6 h-6 text-slate-400" />
+                    <button onClick={onClose} className="p-1.5 hover:bg-red-900/20 rounded-full transition-colors">
+                        <CloseIcon className="w-5 h-5 text-slate-400" />
                     </button>
                 </div>
                 
-                <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 flex flex-col sm:flex-row overflow-hidden">
                     {/* Device List */}
-                    <div className="w-64 border-r border-red-900/20 bg-slate-900/50 overflow-y-auto p-2">
-                        <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-2 px-2">Devices</h3>
-                        {devices.map((dev, i) => (
-                            <button 
-                                key={i}
-                                onClick={() => setSelectedDevice(dev)}
-                                className={`w-full text-left px-3 py-2 rounded mb-1 text-sm transition-colors ${selectedDevice?.uniqueId === dev.uniqueId ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 'text-slate-400 hover:bg-slate-800'}`}
-                            >
-                                <div className="font-bold truncate">{dev.deviceName}</div>
-                                <div className="text-[10px] opacity-60">{dev.deviceType} #{dev.deviceNumber}</div>
+                    <div className="w-full sm:w-56 border-b sm:border-b-0 sm:border-r border-red-900/20 bg-slate-900/50 overflow-y-auto p-2 max-h-[150px] sm:max-h-none">
+                        <div className="flex items-center justify-between mb-2 px-2">
+                            <h3 className="text-[9px] font-bold text-slate-500 uppercase">Devices</h3>
+                            <button onClick={() => setDevices(alpacaClient.getConfiguredDevices())} className="text-slate-500 hover:text-slate-300">
+                                <RefreshCw className="w-3 h-3" />
                             </button>
-                        ))}
+                        </div>
+                        <div className="space-y-1">
+                            {devices.map((dev, i) => (
+                                <button 
+                                    key={i}
+                                    onClick={() => setSelectedDevice(dev)}
+                                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${selectedDevice?.uniqueId === dev.uniqueId ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 'text-slate-400 hover:bg-slate-800'}`}
+                                >
+                                    <div className="font-bold truncate">{dev.deviceName}</div>
+                                    <div className="text-[9px] opacity-60">{dev.deviceType} #{dev.deviceNumber}</div>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Properties List */}
-                    <div className="flex-1 overflow-y-auto p-6 bg-slate-900">
+                    <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-900 flex flex-col">
                         {selectedDevice ? (
-                            <div className="space-y-6">
-                                <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-slate-200">{selectedDevice.deviceName}</h3>
-                                        <p className="text-xs text-slate-500">{selectedDevice.uniqueId}</p>
+                            <div className="flex flex-col h-full">
+                                <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4 shrink-0">
+                                    <div className="min-w-0">
+                                        <h3 className="text-base font-bold text-slate-200 truncate">{selectedDevice.deviceName}</h3>
+                                        <p className="text-[10px] text-slate-500 truncate">{selectedDevice.uniqueId}</p>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 shrink-0">
                                         <Button 
                                             onClick={() => handleUpdateProperty('Connected', !properties.Connected)} 
                                             variant={properties.Connected === true ? "success" : "outline"}
-                                            className="text-xs h-8"
+                                            className="text-[10px] h-7 px-2"
                                         >
                                             {properties.Connected === true ? 'Connected' : 'Connect'}
                                         </Button>
-                                        <Button onClick={fetchProperties} disabled={isLoading} variant="secondary" className="text-xs h-8">
+                                        <Button onClick={fetchProperties} disabled={isLoading} variant="secondary" className="text-[10px] h-7 px-2">
                                             {isLoading ? 'Refreshing...' : 'Refresh'}
                                         </Button>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                {error && (
+                                    <div className="mb-4 p-2 bg-red-900/20 border border-red-900/50 rounded flex items-center gap-2 text-red-400 text-xs shrink-0">
+                                        <AlertCircle className="w-4 h-4" />
+                                        <span>{error}</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 overflow-y-auto pr-1 custom-scrollbar flex-1">
                                     {Object.entries(properties).map(([key, value]) => (
-                                        <div key={key} className="bg-slate-800/40 p-2 rounded border border-slate-800 flex flex-col gap-1">
+                                        <div key={key} className="bg-slate-800/40 p-2 rounded border border-slate-800 flex flex-col gap-1 h-fit">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase">{key}</span>
-                                                <span className={`text-xs font-mono ${typeof value === 'boolean' ? (value ? 'text-emerald-400' : 'text-red-400') : 'text-slate-300'}`}>
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase">{key}</span>
+                                                <span className={`text-[10px] font-mono ${typeof value === 'boolean' ? (value ? 'text-emerald-400' : 'text-red-400') : 'text-slate-300'}`}>
                                                     {String(value)}
                                                 </span>
                                             </div>
@@ -159,14 +173,14 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                                                     <button 
                                                         onClick={() => handleUpdateProperty(key, true)}
                                                         disabled={isLoading}
-                                                        className={`flex-1 py-1 text-[9px] rounded border transition-colors ${value === true ? 'bg-emerald-900/40 border-emerald-500 text-emerald-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600'}`}
+                                                        className={`flex-1 py-1 text-[8px] rounded border transition-colors ${value === true ? 'bg-emerald-900/40 border-emerald-500 text-emerald-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600'}`}
                                                     >
                                                         ON / TRUE
                                                     </button>
                                                     <button 
                                                         onClick={() => handleUpdateProperty(key, false)}
                                                         disabled={isLoading}
-                                                        className={`flex-1 py-1 text-[9px] rounded border transition-colors ${value === false ? 'bg-red-900/40 border-red-500 text-red-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600'}`}
+                                                        className={`flex-1 py-1 text-[8px] rounded border transition-colors ${value === false ? 'bg-red-900/40 border-red-500 text-red-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600'}`}
                                                     >
                                                         OFF / FALSE
                                                     </button>
@@ -177,8 +191,9 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                                 </div>
                             </div>
                         ) : (
-                            <div className="h-full flex items-center justify-center text-slate-600 italic">
-                                Select a device to view properties
+                            <div className="h-full flex flex-col items-center justify-center text-slate-600 italic gap-2">
+                                <AlertCircle className="w-8 h-8 opacity-20" />
+                                <p>Select a device to view properties</p>
                             </div>
                         )}
                     </div>

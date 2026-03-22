@@ -15,6 +15,7 @@ import { GoogleDriveIcon } from './icons/GoogleDriveIcon';
 import { VideoIcon } from './icons/VideoIcon';
 import { useTranslation } from '../contexts/LanguageContext';
 import { FocuserControlAlpaca } from './FocuserControlAlpaca';
+import { RefreshCw } from 'lucide-react';
 import * as AstroService from '../services/AstroServiceAlpaca';
 import * as GoogleDriveService from '../services/GoogleDriveService';
 import AlpacaDiscoveryService, { DiscoveryResult } from '../services/AlpacaDiscoveryService';
@@ -744,22 +745,6 @@ const EquipmentPanel = memo((props: any) => {
                             <label htmlFor="port-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.port')}</label>
                             <input type="number" id="port-input" value={connectionSettings?.port || 11111} onChange={(e) => { setSelectedConnectionIndex(""); onSettingsChange({ ...connectionSettings, port: Number(e.target.value), driver: 'Alpaca' }); }} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-2 focus:ring-red-500 focus:outline-none font-mono text-slate-200 select-text" title={t('tooltips.port')} />
                         </div>
-                        <button 
-                            onClick={() => {
-                                const settings = SettingsService.loadSettings();
-                                SettingsService.saveSettings({
-                                    ...settings,
-                                    connectionSettings: { ...connectionSettings, driver: 'Alpaca' }
-                                });
-                                // Show a small feedback if possible, but for now just save
-                                console.log("[ControlPanelAlpaca] Settings saved manually");
-                            }}
-                            className="bg-blue-800 hover:bg-blue-700 text-white p-2 rounded border border-blue-700 h-[38px]"
-                            title={t('controlPanel.connectionProfiles.saveCurrent')}
-                            type="button"
-                        >
-                            <SaveIcon className="w-5 h-5" />
-                        </button>
                     </div>
 
                     <div className="flex gap-2 items-end border-t border-slate-700 pt-3">
@@ -788,13 +773,55 @@ const EquipmentPanel = memo((props: any) => {
             )}
             {isConnected && (
             <><div className="space-y-1">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Device Controls</h3>
-                        <Button onClick={() => setShowAlpacaControlPanel(true)} variant="secondary" className="text-[10px] h-6 px-2">
-                            Alpaca Control Panel
-                        </Button>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t('controlPanel.equipment')}</h3>
+                        <div className="flex gap-1">
+                            <button 
+                                onClick={() => setShowAlpacaControlPanel(true)} 
+                                className="text-[10px] text-red-400 hover:text-red-300 bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 transition-colors"
+                            >
+                                {t('controlPanel.openControlPanel')}
+                            </button>
+                            <button 
+                                onClick={() => AstroService.refreshDevices()} 
+                                className="text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                                title="Refresh device list"
+                            >
+                                <RefreshCw className="w-3 h-3" />
+                            </button>
+                        </div>
                     </div>
-                    <div className="space-y-2">{(alpacaDevices || []).map((dev) => (<div key={dev.uniqueId} className="flex items-center justify-between p-2 bg-slate-800/60 rounded border border-slate-700 hover:border-slate-600"><div className="flex items-center gap-2 overflow-hidden"><div className={`w-2 h-2 rounded-full ${dev.connected ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-slate-600'}`}></div><span className="text-sm text-slate-200 font-mono truncate" title={dev.deviceName}>{dev.deviceName}</span>{dev.deviceType && (<span className="text-[10px] text-slate-500 bg-slate-800 px-1 rounded">{dev.deviceType}</span>)}</div><div className="flex items-center gap-2"><button onClick={() => dev.connected ? AstroService.disconnectDevice(dev.deviceName) : AstroService.connectDevice(dev.deviceName)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${dev.connected ? 'bg-green-600' : 'bg-slate-600'}`} title={dev.connected ? t('controlPanel.disconnect') : t('controlPanel.connect')}><span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ease-in-out ${dev.connected ? 'translate-x-5' : 'translate-x-1'}`} /></button></div></div>))}</div>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                        {(alpacaDevices || []).length > 0 ? (
+                            (alpacaDevices || []).map((dev) => (
+                                <div key={dev.uniqueId} className="flex items-center justify-between p-2 bg-slate-800/60 rounded border border-slate-700 hover:border-slate-600 transition-all">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <div className={`w-2 h-2 rounded-full shrink-0 ${dev.connected ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-slate-600'}`}></div>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-sm text-slate-200 font-mono truncate leading-tight" title={dev.deviceName}>{dev.deviceName}</span>
+                                            {dev.deviceType && (
+                                                <span className="text-[9px] text-slate-500 bg-slate-900/50 px-1 rounded w-fit mt-0.5">{dev.deviceType}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            onClick={() => dev.connected ? AstroService.disconnectDevice(dev.deviceName) : AstroService.connectDevice(dev.deviceName)} 
+                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${dev.connected ? 'bg-green-600' : 'bg-slate-600'}`}
+                                            title={dev.connected ? t('controlPanel.disconnect') : t('controlPanel.connect')}
+                                        >
+                                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ease-in-out ${dev.connected ? 'translate-x-5' : 'translate-x-1'}`} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-6 border border-dashed border-slate-800 rounded bg-slate-900/30">
+                                <p className="text-xs text-slate-600 italic">No devices found.</p>
+                                <p className="text-[10px] text-slate-700 mt-1">Check host/port and refresh.</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <Button onClick={onDisconnect} variant="danger" className="w-full mt-4" title="Disconnect from all network devices."><DisconnectIcon className="w-5 h-5" /> {t('controlPanel.disconnect')}</Button>
                 

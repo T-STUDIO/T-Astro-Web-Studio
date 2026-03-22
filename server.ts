@@ -306,7 +306,7 @@ async function startServer() {
         });
         
         // Final fallback for SPA
-        app.get('*', (req, res, next) => {
+        app.use((req, res, next) => {
             // Strictly exclude API and static assets from SPA fallback
             if (req.path.startsWith('/api/') || req.path.includes('.')) return next();
             res.sendFile(path.resolve(distPath, 'index.html'));

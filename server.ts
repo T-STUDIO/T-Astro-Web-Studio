@@ -93,7 +93,7 @@ async function startServer() {
             // Clean up headers for proxying
             delete options.headers.host;
             delete options.headers['x-target-url'];
-            // Keep content-length if it exists to avoid chunked encoding issues with some XML-RPC servers
+            delete options.headers['content-length'];
             options.headers.host = parsedUrl.host;
             options.headers.connection = 'keep-alive';
 

@@ -11,11 +11,13 @@ const savedDriver = settings.connectionSettings.driver;
 
 // Redirect if we are on the INDI page but another driver is selected
 // This ensures that opening the root URL redirects to the last used driver app
+/* 
 if (savedDriver === 'Alpaca' && !window.location.pathname.includes('alpaca.html')) {
   window.location.href = './alpaca.html';
 } else if (savedDriver === 'Simulator' && !window.location.pathname.includes('simulator.html')) {
   window.location.href = './simulator.html';
 }
+*/
 
 if (settings.connectionSettings.driver !== 'INDI') {
   SettingsService.saveSettings({

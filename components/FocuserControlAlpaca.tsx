@@ -16,10 +16,11 @@ export const FocuserControlAlpaca: React.FC<FocuserControlProps> = ({ isConnecte
     useEffect(() => {
         if (isConnected) {
             const handleUpdate = async () => {
-                // For Alpaca, we might need a different way to get position if getNumericValue is INDI-specific
-                // But for now let's assume AstroServiceAlpaca handles it or we mock it
+                const pos = await AstroService.getFocuserPosition();
+                setPosition(pos);
             };
-            const interval = setInterval(handleUpdate, 2000);
+            handleUpdate();
+            const interval = setInterval(handleUpdate, 3000);
             return () => clearInterval(interval);
         }
     }, [isConnected]);

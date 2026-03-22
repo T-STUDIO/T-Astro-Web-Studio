@@ -130,9 +130,18 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                                         <h3 className="text-lg font-bold text-slate-200">{selectedDevice.deviceName}</h3>
                                         <p className="text-xs text-slate-500">{selectedDevice.uniqueId}</p>
                                     </div>
-                                    <Button onClick={fetchProperties} disabled={isLoading} variant="secondary" className="text-xs h-8">
-                                        {isLoading ? 'Refreshing...' : 'Refresh'}
-                                    </Button>
+                                    <div className="flex gap-2">
+                                        <Button 
+                                            onClick={() => handleUpdateProperty('Connected', !properties.Connected)} 
+                                            variant={properties.Connected === true ? "success" : "outline"}
+                                            className="text-xs h-8"
+                                        >
+                                            {properties.Connected === true ? 'Connected' : 'Connect'}
+                                        </Button>
+                                        <Button onClick={fetchProperties} disabled={isLoading} variant="secondary" className="text-xs h-8">
+                                            {isLoading ? 'Refreshing...' : 'Refresh'}
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">

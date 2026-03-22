@@ -707,6 +707,34 @@ const EquipmentPanel = memo((props: any) => {
                     </div>
                 </div>
                 <div className="space-y-3">
+                    {isDisconnected && (
+                        <div className="space-y-2 mb-2">
+                            {isNamingConnection ? (
+                                <div className="flex gap-2 mb-2 items-center">
+                                    <input type="text" value={newConnectionName} onChange={(e) => setNewConnectionName(e.target.value)} placeholder={t('controlPanel.connectionProfiles.enterName')} className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500 select-text" autoFocus />
+                                    <button onClick={() => { if(newConnectionName.trim()) { onSaveConnection(newConnectionName.trim(), { ...connectionSettings, driver: 'Alpaca' }); setSelectedConnectionIndex(String(savedConnections.length)); setIsNamingConnection(false); } }} className="bg-green-700 hover:bg-green-600 text-white p-1 rounded border border-green-600" title={t('common.ok')} type="button"><span className="text-xs font-bold px-1">{t('common.ok')}</span></button>
+                                    <button onClick={() => { setIsNamingConnection(false); }} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600" title={t('common.cancel')} type="button"><CloseIcon className="w-4 h-4" /></button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2 mb-2 items-center">
+                                    <select className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-red-500" value={selectedConnectionIndex} onChange={(e) => {
+                                        const idxStr = e.target.value;
+                                        setSelectedConnectionIndex(idxStr);
+                                        const idx = parseInt(idxStr);
+                                        if (!isNaN(idx) && savedConnections[idx]) onSettingsChange(savedConnections[idx].settings);
+                                    }}>
+                                        <option value="" disabled>{t('controlPanel.connectionProfiles.select')}</option>
+                                        {savedConnections && savedConnections.map((prof: SavedConnection, i: number) => (<option key={`${prof.name}-${i}`} value={String(i)}>{prof.name}</option>))}
+                                    </select>
+                                    {selectedConnectionIndex !== "" && onUpdateSavedConnection && (
+                                        <button onClick={() => onUpdateSavedConnection(Number(selectedConnectionIndex), {...connectionSettings, driver: 'Alpaca'})} className="bg-blue-800 hover:bg-blue-700 text-white p-1 rounded border border-blue-700" title={t('controlPanel.connectionProfiles.overwrite')} type="button"><SaveIcon className="w-4 h-4" /></button>
+                                    )}
+                                    <button onClick={() => { setNewConnectionName(''); setIsNamingConnection(true); }} className="bg-slate-700 hover:bg-slate-600 text-white p-1 rounded border border-slate-600" title={t('controlPanel.connectionProfiles.saveCurrent')} type="button"><PlusIcon className="w-4 h-4" /></button>
+                                    {selectedConnectionIndex !== "" && (<button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteConnection(Number(selectedConnectionIndex)); setSelectedConnectionIndex(""); }} className="bg-red-900/50 hover:bg-red-800 text-white p-1 rounded border border-red-800" title={t('controlPanel.deleteSelected')} type="button"><TrashIcon className="w-4 h-4" /></button>)}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="flex gap-2 items-end">
                         <div className="flex-1">
                             <label htmlFor="host-input" className="block text-sm font-medium mb-1 text-slate-400">{t('controlPanel.host')}</label>

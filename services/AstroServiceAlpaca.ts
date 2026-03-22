@@ -17,8 +17,11 @@ export const setTelescopePositionCallback = (cb: typeof telescopePositionCallbac
     telescopePositionCallback = cb;
 };
 
-// Mock other callbacks for compatibility
-export const setLogCallback = (cb: any) => {};
+let logCallback: ((msg: string) => void) | null = null;
+
+export const setLogCallback = (cb: any) => {
+    logCallback = cb;
+};
 let deviceCallback: ((devices: any[]) => void) | null = null;
 let messageCountCallback: ((count: number) => void) | null = null;
 
@@ -41,8 +44,10 @@ let debugLogs: string[] = [];
 
 const addDebugLog = (msg: string) => {
     const time = new Date().toLocaleTimeString();
-    debugLogs.push(`[${time}] ${msg}`);
+    const entry = `[${time}] ${msg}`;
+    debugLogs.push(entry);
     if (debugLogs.length > 500) debugLogs.shift();
+    if (logCallback) logCallback(entry);
 };
 
 const getDeviceNumber = (type: string): number => {
@@ -54,7 +59,7 @@ export const connect = async (settings: any): Promise<boolean> => {
     addDebugLog(`Connecting to Alpaca at ${settings.host}:${settings.port}...`);
     const ok = await alpacaClient.connect(settings);
     if (ok) {
-        addDebugLog(`Connected successfully.`);
+        addDebugLog(`Connected successfully. Found ${alpacaClient.getDevices().length} devices.`);
         // Try to connect primary devices
         await connectDevices();
     } else {
@@ -65,9 +70,22 @@ export const connect = async (settings: any): Promise<boolean> => {
 
 export const connectDevices = async () => {
     const devices = alpacaClient.getDevices();
+    if (devices.length === 0) {
+        addDebugLog("No devices found to connect.");
+        return;
+    }
     for (const device of devices) {
         addDebugLog(`Connecting to ${device.deviceType} ${device.deviceNumber}...`);
-        await alpacaClient.putCommand(device.deviceType, device.deviceNumber, 'Connected', { Connected: true });
+        try {
+            const res = await alpacaClient.putCommand(device.deviceType, device.deviceNumber, 'Connected', { Connected: true });
+            if (res && res.ErrorNumber === 0) {
+                addDebugLog(`✅ ${device.deviceType} ${device.deviceNumber} connected.`);
+            } else {
+                addDebugLog(`❌ Failed to connect ${device.deviceType} ${device.deviceNumber}: ${res?.ErrorMessage || 'Unknown error'}`);
+            }
+        } catch (e: any) {
+            addDebugLog(`❌ Error connecting ${device.deviceType} ${device.deviceNumber}: ${e.message}`);
+        }
     }
 };
 
@@ -206,18 +224,43 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
             // Flatten it if it's a 2D/3D array
             data = Array.isArray(rawData) ? rawData.flat(Infinity) : rawData;
             header = {
-                dimension1: Array.isArray(rawData) ? (Array.isArray(rawData[0]) ? (Array.isArray(rawData[0][0]) ? rawData[0][0].length : rawData[0].length) : rawData.length) : 0,
-                dimension2: Array.isArray(rawData) ? (Array.isArray(rawData[0]) ? rawData.length : 1) : 0,
-                dimension3: Array.isArray(rawData) && Array.isArray(rawData[0]) && Array.isArray(rawData[0][0]) ? rawData.length : 1,
+                dimension1: Array.isArray(rawData) ? (Array.isArray(rawData[0]) ? rawData[0].length : rawData.length) : 0,
+                dimension2: Array.isArray(rawData) ? rawData.length : 0,
                 imageElementType: 0 // Generic
             };
+            if (Array.isArray(rawData) && Array.isArray(rawData[0]) && Array.isArray(rawData[0][0])) {
+                // 3D array (RGB)
+                header.dimension1 = rawData[0][0].length;
+                header.dimension2 = rawData[0].length;
+                header.dimension3 = rawData.length;
+            }
         }
         
-        // Convert to displayable URL using AlpacaImageService
-        const url = await AlpacaImageService.convertToDisplay(header, data);
+        // Extract metadata
+        const w = header.dimension1 || 640;
+        const h = header.dimension2 || 480;
+        const bpp = (header.imageElementType === 1 || header.imageElementType === 5) ? 16 : 
+                    (header.imageElementType === 2 || header.imageElementType === 4) ? 32 : 8;
+        
+        const format = bpp === 16 ? 'RAW16' : (bpp === 32 ? 'RAW32' : 'RAW8');
+        
+        addDebugLog(`Processing ${w}x${h} ${bpp}-bit image...`);
+
+        // Convert to displayable URL using existing logic
+        // We pass the raw data (Uint8Array/Uint16Array/etc) to rawFitsToDisplay
+        // If it was binary, we slice the buffer to ensure we only pass the image data part
+        let imageDataBuffer: any;
+        if (rawData instanceof ArrayBuffer) {
+            imageDataBuffer = rawData.slice(header.dataStart);
+        } else {
+            // If it's JSON, data is already the image data
+            imageDataBuffer = data;
+        }
+        
+        const { url } = rawFitsToDisplay(imageDataBuffer, format, 'Auto', { width: w, height: h, bpp, format });
         
         if (url && imageReceivedCallback) {
-            imageReceivedCallback(url, 'jpeg', { width: header.dimension1, height: header.dimension2 });
+            imageReceivedCallback(url, format, { width: w, height: h });
             addDebugLog("Image received and processed.");
         }
         
@@ -236,21 +279,11 @@ export const stopCapture = async () => {
     await alpacaClient.putCommand('Camera', getDeviceNumber('Camera'), 'AbortExposure');
 };
 
-let isStreaming = false;
 export const startStream = () => {
-    if (isStreaming) return;
-    isStreaming = true;
-    const run = async () => {
-        if (!isStreaming) return;
-        // Use a short exposure for streaming
-        await capturePreview(500, 100, 10, true);
-        if (isStreaming) setTimeout(run, 100);
-    };
-    run();
+    // Alpaca doesn't support stream easily without MJPEG
 };
 
 export const stopStream = () => {
-    isStreaming = false;
 };
 
 export const setVideoStream = async (enabled: boolean) => {
@@ -331,12 +364,22 @@ export const refreshDevices = async () => {
     // Polling will handle this, but can trigger manual fetch if needed
 };
 export const getFocuserPosition = async (): Promise<number> => {
-    const focId = getDeviceNumber('Focuser');
+    let focId = getDeviceNumber('Focuser');
+    
+    // If not found, wait a bit and retry (in case device list is still being populated)
+    if (focId === -1) {
+        await sleep(1000);
+        focId = getDeviceNumber('Focuser');
+    }
+    
     if (focId === -1) return 0;
     try {
         const res = await alpacaClient.getCommand('Focuser', focId, 'Position');
         if (res && res.ErrorNumber === 0) return Number(res.Value);
-    } catch (e) {}
+        else addDebugLog(`Focuser position error: ${res?.ErrorMessage || 'Unknown error'}`);
+    } catch (e: any) {
+        addDebugLog(`Focuser position exception: ${e.message}`);
+    }
     return 0;
 };
 
@@ -349,7 +392,7 @@ export const moveFocuser = async (steps: number) => {
         const posRes = await alpacaClient.getCommand('Focuser', focId, 'Position');
         if (posRes && posRes.ErrorNumber === 0) {
             const currentPos = Number(posRes.Value);
-            const target = Math.round(currentPos + steps);
+            const target = currentPos + steps;
             addDebugLog(`Moving focuser from ${currentPos} to ${target}...`);
             await alpacaClient.putCommand('Focuser', focId, 'Move', { Position: target });
         } else {

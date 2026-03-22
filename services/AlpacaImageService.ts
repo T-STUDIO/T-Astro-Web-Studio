@@ -94,9 +94,10 @@ export class AlpacaImageService {
     /**
      * Converts the parsed Alpaca image data to a displayable format (Canvas/DataURL).
      */
-    public async convertToDisplay(header: AlpacaImageHeader, data: any): Promise<string> {
-        const width = header.dimension1;
-        const height = header.dimension2;
+    public async convertToDisplay(header: any, data: any): Promise<string> {
+        const width = header.dimension1 || 640;
+        const height = header.dimension2 || 480;
+        const isRGB = header.dimension3 === 3;
         
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -107,22 +108,39 @@ export class AlpacaImageService {
         const imageData = ctx.createImageData(width, height);
         const pixels = imageData.data;
 
-        // Simple grayscale normalization for display
-        let min = Infinity;
-        let max = -Infinity;
-        for (let i = 0; i < data.length; i++) {
-            if (data[i] < min) min = data[i];
-            if (data[i] > max) max = data[i];
-        }
+        if (isRGB) {
+            // RGB data is usually interleaved or plane-separated
+            // Alpaca JSON usually returns [y][x][c] or [c][y][x]
+            // If flattened, we need to know the order.
+            // Let's assume it's R, G, B for each pixel if rank is 3 and dim3 is 3
+            for (let i = 0; i < width * height; i++) {
+                const idx = i * 4;
+                const dataIdx = i * 3;
+                pixels[idx] = data[dataIdx] || 0;     // R
+                pixels[idx + 1] = data[dataIdx + 1] || 0; // G
+                pixels[idx + 2] = data[dataIdx + 2] || 0; // B
+                pixels[idx + 3] = 255; // A
+            }
+        } else {
+            // Simple grayscale normalization for display
+            let min = Infinity;
+            let max = -Infinity;
+            // Sample some pixels for faster min/max if data is huge
+            const step = data.length > 1000000 ? 10 : 1;
+            for (let i = 0; i < data.length; i += step) {
+                if (data[i] < min) min = data[i];
+                if (data[i] > max) max = data[i];
+            }
 
-        const range = max - min || 1;
-        for (let i = 0; i < data.length; i++) {
-            const val = ((data[i] - min) / range) * 255;
-            const idx = i * 4;
-            pixels[idx] = val;     // R
-            pixels[idx + 1] = val; // G
-            pixels[idx + 2] = val; // B
-            pixels[idx + 3] = 255; // A
+            const range = max - min || 1;
+            for (let i = 0; i < width * height; i++) {
+                const val = ((data[i] - min) / range) * 255;
+                const idx = i * 4;
+                pixels[idx] = val;     // R
+                pixels[idx + 1] = val; // G
+                pixels[idx + 2] = val; // B
+                pixels[idx + 3] = 255; // A
+            }
         }
 
         ctx.putImageData(imageData, 0, 0);

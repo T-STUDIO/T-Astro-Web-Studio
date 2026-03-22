@@ -47,15 +47,36 @@ const addDebugLog = (msg: string) => {
 
 const getDeviceNumber = (type: string): number => {
     const device = alpacaClient.getDevices().find(d => d.deviceType.toLowerCase() === type.toLowerCase());
-    return device !== undefined ? device.deviceNumber : 0;
+    return device !== undefined ? device.deviceNumber : -1;
 };
 
 export const connect = async (settings: any): Promise<boolean> => {
     addDebugLog(`Connecting to Alpaca at ${settings.host}:${settings.port}...`);
     const ok = await alpacaClient.connect(settings);
-    if (ok) addDebugLog(`Connected successfully.`);
-    else addDebugLog(`Connection failed.`);
+    if (ok) {
+        addDebugLog(`Connected successfully.`);
+        // Try to connect primary devices
+        await connectDevices();
+    } else {
+        addDebugLog(`Connection failed.`);
+    }
     return ok;
+};
+
+export const connectDevices = async () => {
+    const devices = alpacaClient.getDevices();
+    for (const device of devices) {
+        addDebugLog(`Connecting to ${device.deviceType} ${device.deviceNumber}...`);
+        await alpacaClient.putCommand(device.deviceType, device.deviceNumber, 'Connected', { Connected: true });
+    }
+};
+
+export const disconnectDevices = async () => {
+    const devices = alpacaClient.getDevices();
+    for (const device of devices) {
+        addDebugLog(`Disconnecting from ${device.deviceType} ${device.deviceNumber}...`);
+        await alpacaClient.putCommand(device.deviceType, device.deviceNumber, 'Connected', { Connected: false });
+    }
 };
 
 export const disconnect = async () => {
@@ -65,7 +86,8 @@ export const disconnect = async () => {
 export const slewTo = async (obj: CelestialObject) => {
     const ra = hmsToDegrees(obj.ra) / 15;
     const dec = dmsToDegrees(obj.dec);
-    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SlewToCoordinates', { RightAscension: ra, Declination: dec });
+    addDebugLog(`Slewing to ${obj.name} (RA: ${ra.toFixed(4)}, Dec: ${dec.toFixed(4)})...`);
+    await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SlewToCoordinatesAsync', { RightAscension: ra, Declination: dec });
 };
 
 export const syncTo = async (obj: CelestialObject) => {
@@ -88,11 +110,37 @@ export const getTelescopePosition = async (): Promise<TelescopePosition | null> 
 };
 
 export const startMotion = async (dir: string, speed: MountSpeed) => {
-    // Alpaca PulseGuide or MoveAxis
+    const telId = getDeviceNumber('Telescope');
+    if (telId === -1) return;
+
+    let axis = 0; // 0 = RA/Az, 1 = Dec/Alt
+    let rate = 0;
+
+    // Map speed to deg/sec (approximate)
+    switch (speed) {
+        case 'Guide': rate = 0.01; break;
+        case 'Center': rate = 0.1; break;
+        case 'Find': rate = 1.0; break;
+        case 'Slew': rate = 4.0; break;
+        default: rate = 0.1;
+    }
+
+    if (dir === 'north') { axis = 1; }
+    else if (dir === 'south') { axis = 1; rate = -rate; }
+    else if (dir === 'east') { axis = 0; }
+    else if (dir === 'west') { axis = 0; rate = -rate; }
+
+    addDebugLog(`Mount MoveAxis: Axis=${axis}, Rate=${rate}`);
+    await alpacaClient.putCommand('Telescope', telId, 'MoveAxis', { Axis: axis, Rate: rate });
 };
 
 export const stopMotion = async (dir: string) => {
-    // Alpaca MoveAxis with rate 0
+    const telId = getDeviceNumber('Telescope');
+    if (telId === -1) return;
+
+    let axis = (dir === 'north' || dir === 'south') ? 1 : 0;
+    addDebugLog(`Mount Stop MoveAxis: Axis=${axis}`);
+    await alpacaClient.putCommand('Telescope', telId, 'MoveAxis', { Axis: axis, Rate: 0 });
 };
 
 export const setTracking = async (enabled: boolean) => {
@@ -140,14 +188,35 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
         }
         
         addDebugLog("Image ready, fetching data...");
-        const buffer = await alpacaClient.getImageArray(camId);
-        if (!buffer) {
+        const rawData = await alpacaClient.getImageArray(camId);
+        if (!rawData) {
             addDebugLog("Failed to fetch image array.");
             return "";
         }
         
-        // Use AlpacaImageService to parse the binary format
-        const { header, data } = AlpacaImageService.parseBinaryImage(buffer);
+        let header: any;
+        let data: any;
+        
+        if (rawData instanceof ArrayBuffer) {
+            const parsed = AlpacaImageService.parseBinaryImage(rawData);
+            header = parsed.header;
+            data = parsed.data;
+        } else {
+            // JSON format - rawData is the Value from Alpaca response
+            // Flatten it if it's a 2D/3D array
+            data = Array.isArray(rawData) ? rawData.flat(Infinity) : rawData;
+            header = {
+                dimension1: Array.isArray(rawData) ? (Array.isArray(rawData[0]) ? rawData[0].length : rawData.length) : 0,
+                dimension2: Array.isArray(rawData) ? rawData.length : 0,
+                imageElementType: 0 // Generic
+            };
+            if (Array.isArray(rawData) && Array.isArray(rawData[0]) && Array.isArray(rawData[0][0])) {
+                // 3D array (RGB)
+                header.dimension1 = rawData[0][0].length;
+                header.dimension2 = rawData[0].length;
+                header.dimension3 = rawData.length;
+            }
+        }
         
         // Extract metadata
         const w = header.dimension1 || 640;
@@ -161,8 +230,15 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
 
         // Convert to displayable URL using existing logic
         // We pass the raw data (Uint8Array/Uint16Array/etc) to rawFitsToDisplay
-        // Slicing the buffer to ensure we only pass the image data part
-        const imageDataBuffer = buffer.slice(header.dataStart);
+        // If it was binary, we slice the buffer to ensure we only pass the image data part
+        let imageDataBuffer: any;
+        if (rawData instanceof ArrayBuffer) {
+            imageDataBuffer = rawData.slice(header.dataStart);
+        } else {
+            // If it's JSON, data is already the image data
+            imageDataBuffer = data;
+        }
+        
         const { url } = rawFitsToDisplay(imageDataBuffer, format, 'Auto', { width: w, height: h, bpp, format });
         
         if (url && imageReceivedCallback) {
@@ -208,7 +284,49 @@ export const sendLocation = async (loc: LocationData, time: Date) => {
 export const updateDeviceSetting = (device: string, prop: string, values: any) => {};
 export const getActiveCamera = () => 'Alpaca Camera';
 export const getActiveFocuser = () => 'Alpaca Focuser';
-export const getDeviceProperties = (device: string) => [];
+export const getDeviceProperties = (device: string): any[] => {
+    const devices = alpacaClient.getDevices();
+    const dev = devices.find(d => d.deviceName === device);
+    if (!dev) return [];
+
+    // Map Alpaca properties to INDI-like vectors for the UI
+    // This is a simplified mapping so DeviceSettingsModalAlpaca can display them
+    const vectors: any[] = [];
+
+    // Connection Status
+    vectors.push({
+        device: dev.deviceName,
+        name: 'CONNECTION',
+        label: 'Connection',
+        group: 'Main',
+        state: (dev as any).connected ? 'Ok' : 'Idle',
+        perm: 'rw',
+        type: 'Switch',
+        rule: 'OneOfMany',
+        elements: new Map([
+            ['CONNECT', { name: 'CONNECT', label: 'Connect', value: (dev as any).connected === true }],
+            ['DISCONNECT', { name: 'DISCONNECT', label: 'Disconnect', value: (dev as any).connected === false }]
+        ])
+    });
+
+    // Info
+    vectors.push({
+        device: dev.deviceName,
+        name: 'INFO',
+        label: 'Device Info',
+        group: 'Main',
+        state: 'Ok',
+        perm: 'ro',
+        type: 'Text',
+        elements: new Map([
+            ['NAME', { name: 'NAME', label: 'Name', value: dev.deviceName }],
+            ['TYPE', { name: 'TYPE', label: 'Type', value: dev.deviceType }],
+            ['ID', { name: 'ID', label: 'Unique ID', value: dev.uniqueId }]
+        ])
+    });
+
+    return vectors;
+};
 export const getNumericValue = (device: string, prop: string, elem: string) => 0;
 export const connectDevice = async (name: string) => {
     const devices = alpacaClient.getConfiguredDevices();
@@ -227,13 +345,33 @@ export const disconnectDevice = async (name: string) => {
 export const refreshDevices = async () => {
     // Polling will handle this, but can trigger manual fetch if needed
 };
-export const moveFocuser = async (steps: number) => {
-    // Get current position first
+export const getFocuserPosition = async (): Promise<number> => {
     const focId = getDeviceNumber('Focuser');
-    const posRes = await alpacaClient.getCommand('Focuser', focId, 'Position');
-    if (posRes) {
-        const target = posRes.Value + steps;
-        await alpacaClient.putCommand('Focuser', focId, 'Move', { Position: target });
+    if (focId === -1) return 0;
+    try {
+        const res = await alpacaClient.getCommand('Focuser', focId, 'Position');
+        if (res && res.ErrorNumber === 0) return Number(res.Value);
+    } catch (e) {}
+    return 0;
+};
+
+export const moveFocuser = async (steps: number) => {
+    const focId = getDeviceNumber('Focuser');
+    if (focId === -1) return;
+
+    try {
+        // Get current position first
+        const posRes = await alpacaClient.getCommand('Focuser', focId, 'Position');
+        if (posRes && posRes.ErrorNumber === 0) {
+            const currentPos = Number(posRes.Value);
+            const target = currentPos + steps;
+            addDebugLog(`Moving focuser from ${currentPos} to ${target}...`);
+            await alpacaClient.putCommand('Focuser', focId, 'Move', { Position: target });
+        } else {
+            addDebugLog(`Failed to get focuser position: ${posRes?.ErrorMessage || 'Unknown error'}`);
+        }
+    } catch (e: any) {
+        addDebugLog(`Focuser move error: ${e.message}`);
     }
 };
 export const reprocessRawFITS = (fmt: string) => {};

@@ -274,9 +274,9 @@ export class AlpacaClientService {
         return results;
     }
 
-    public async getImageArray(deviceNumber: number): Promise<ArrayBuffer | null> {
+    public async getImageArray(deviceNumber: number): Promise<any> {
         if (!this.baseUrl) return null;
-        const targetUrl = `${this.baseUrl}/camera/${deviceNumber}/imagearray`;
+        const targetUrl = `${this.baseUrl}/camera/${deviceNumber}/imagearray?ClientTransactionID=${this.getNextId()}`;
         
         try {
             const response = await fetch('/api/alpaca/proxy', {
@@ -298,9 +298,10 @@ export class AlpacaClientService {
                     console.error(`[AlpacaClient] Alpaca error ${data.ErrorNumber}: ${data.ErrorMessage}`);
                     return null;
                 }
-                // If it's JSON but has no error, it might be the image data as a JSON array
-                // We'd need to convert it to a binary buffer, but for now let's log it
-                console.warn("[AlpacaClient] Received JSON instead of binary image data. This is not yet supported.");
+                // If it's JSON, it's the image data as a JSON object with a Value property
+                if (data && data.Value) {
+                    return data.Value; // Return the raw JSON array/object
+                }
                 return null;
             }
 

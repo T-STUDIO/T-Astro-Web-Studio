@@ -52,11 +52,13 @@ export const connect = async (settings: SampSettings) => {
 
     const host = settings.host || 'localhost';
     const port = settings.port || 8202;
-    const hubUrl = `http://${host}:${port}/samp/`;
+    // Standard SAMP hub URL is usually the root or /xmlrpc
+    const hubUrl = `http://${host}:${port}/`;
     
     // Use proxy for SAMP to bypass CORS
     const proxyUrl = `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(hubUrl)}`;
     console.log(`[SAMP] Connecting to hub at: ${hubUrl} via proxy: ${proxyUrl}`);
+    if (statusCallback) statusCallback('Connecting');
 
     const meta = {
         "samp.name": "T-Astro Web Studio",

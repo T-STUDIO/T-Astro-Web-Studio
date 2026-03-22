@@ -4,6 +4,7 @@ import { AlpacaDevice, alpacaClient } from '../services/AlpacaClientService';
 import { Button } from './Button';
 import { CloseIcon } from './icons/CloseIcon';
 import { useTranslation } from '../contexts/LanguageContext';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 
 interface AlpacaControlPanelProps {
     onClose: () => void;
@@ -18,6 +19,8 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
     const [properties, setProperties] = useState<Record<string, any>>({});
     const [isLoading, setIsLoading] = useState(false);
 
+    const [error, setError] = useState<string | null>(null);
+
     useEffect(() => {
         setDevices(alpacaClient.getConfiguredDevices());
     }, []);
@@ -31,28 +34,61 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
     const fetchProperties = async () => {
         if (!selectedDevice) return;
         setIsLoading(true);
-        let props = {};
-        if (selectedDevice.deviceType === 'Telescope') {
-            props = await alpacaClient.getTelescopeStatus(selectedDevice.deviceNumber) || {};
-        } else if (selectedDevice.deviceType === 'Camera') {
-            props = await alpacaClient.getCameraStatus(selectedDevice.deviceNumber) || {};
-        } else {
-            props = await alpacaClient.getDeviceStatus(selectedDevice.deviceType, selectedDevice.deviceNumber) || {};
+        setError(null);
+        
+        try {
+            let props: Record<string, any> = {};
+            const deviceType = selectedDevice.deviceType;
+            const deviceNumber = selectedDevice.deviceNumber;
+
+            // Define properties to fetch based on device type
+            let propList: string[] = ['Connected', 'Name', 'Description'];
+            if (deviceType === 'Telescope') {
+                propList = [...propList, 'AtHome', 'AtPark', 'Azimuth', 'Declination', 'RightAscension', 'Slewing', 'Tracking', 'CanSlew', 'CanPark'];
+            } else if (deviceType === 'Camera') {
+                propList = [...propList, 'CameraState', 'CCDTemperature', 'ImageReady', 'CoolerOn', 'CanSetCCDTemperature', 'CanAbortExposure'];
+            } else if (deviceType === 'Focuser') {
+                propList = [...propList, 'Position', 'IsMoving', 'MaxStep', 'StepSize', 'Temp'];
+            }
+
+            // Fetch in parallel to be faster
+            const results = await Promise.all(
+                propList.map(async (prop) => {
+                    try {
+                        const res = await alpacaClient.getCommand(deviceType, deviceNumber, prop);
+                        return { prop, value: res && res.ErrorNumber === 0 ? res.Value : 'N/A' };
+                    } catch (e) {
+                        return { prop, value: 'Error' };
+                    }
+                })
+            );
+
+            results.forEach(({ prop, value }) => {
+                props[prop] = value;
+            });
+
+            setProperties(props);
+        } catch (error) {
+            console.error("[AlpacaControlPanel] Error fetching properties:", error);
+            setError("Failed to fetch properties. Check connection.");
+        } finally {
+            setIsLoading(false);
         }
-        setProperties(props);
-        setIsLoading(false);
     };
 
     const handleUpdateProperty = async (propName: string, value: any) => {
         if (!selectedDevice) return;
+        setError(null);
         
-        // Simple logic to determine if it's a PUT or GET
-        // In Alpaca, settings are usually PUT
-        const res = await alpacaClient.putCommand(selectedDevice.deviceType, selectedDevice.deviceNumber, propName, { [propName]: value });
-        if (res && res.ErrorNumber === 0) {
-            fetchProperties();
-        } else {
-            alert(`Error updating ${propName}: ${res?.ErrorMessage || 'Unknown error'}`);
+        try {
+            const res = await alpacaClient.putCommand(selectedDevice.deviceType, selectedDevice.deviceNumber, propName, { [propName]: value });
+            if (res && res.ErrorNumber === 0) {
+                fetchProperties();
+            } else {
+                setError(`Error updating ${propName}: ${res?.ErrorMessage || 'Unknown error'}`);
+            }
+        } catch (e: any) {
+            setError(`Failed to update ${propName}: ${e.message}`);
         }
     };
 
@@ -99,34 +135,34 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                                     </Button>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                                     {Object.entries(properties).map(([key, value]) => (
-                                        <div key={key} className="bg-slate-800/40 p-3 rounded border border-slate-800 flex flex-col gap-2">
+                                        <div key={key} className="bg-slate-800/40 p-2 rounded border border-slate-800 flex flex-col gap-1">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-xs font-bold text-slate-400 uppercase">{key}</span>
-                                                <span className="text-xs font-mono text-red-400">{String(value)}</span>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase">{key}</span>
+                                                <span className={`text-xs font-mono ${typeof value === 'boolean' ? (value ? 'text-emerald-400' : 'text-red-400') : 'text-slate-300'}`}>
+                                                    {String(value)}
+                                                </span>
                                             </div>
                                             
-                                            {/* Simple input for boolean properties */}
                                             {typeof value === 'boolean' && (
-                                                <div className="flex gap-2">
+                                                <div className="flex gap-1 mt-1">
                                                     <button 
                                                         onClick={() => handleUpdateProperty(key, true)}
-                                                        className={`flex-1 py-1 text-[10px] rounded border ${value === true ? 'bg-red-900/40 border-red-500 text-red-400' : 'bg-slate-700 border-slate-600 text-slate-400'}`}
+                                                        disabled={isLoading}
+                                                        className={`flex-1 py-1 text-[9px] rounded border transition-colors ${value === true ? 'bg-emerald-900/40 border-emerald-500 text-emerald-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600'}`}
                                                     >
-                                                        True
+                                                        ON / TRUE
                                                     </button>
                                                     <button 
                                                         onClick={() => handleUpdateProperty(key, false)}
-                                                        className={`flex-1 py-1 text-[10px] rounded border ${value === false ? 'bg-red-900/40 border-red-500 text-red-400' : 'bg-slate-700 border-slate-600 text-slate-400'}`}
+                                                        disabled={isLoading}
+                                                        className={`flex-1 py-1 text-[9px] rounded border transition-colors ${value === false ? 'bg-red-900/40 border-red-500 text-red-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600'}`}
                                                     >
-                                                        False
+                                                        OFF / FALSE
                                                     </button>
                                                 </div>
                                             )}
-
-                                            {/* Simple input for numbers (if we know they are settable) */}
-                                            {/* In a real app, we'd check 'CanSet...' properties */}
                                         </div>
                                     ))}
                                 </div>

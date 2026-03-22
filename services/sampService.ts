@@ -51,7 +51,7 @@ export const connect = async (settings: SampSettings) => {
     }
 
     const host = settings.host || 'localhost';
-    const port = settings.port || 8202;
+    const port = settings.port || 21012;
     // Standard SAMP hub URL is usually the root or /xmlrpc
     const hubUrl = `http://${host}:${port}/`;
     

@@ -179,7 +179,7 @@ export class AlpacaClientService {
     public async putCommand(deviceType: string, deviceNumber: number, action: string, params: Record<string, any> = {}) {
         if (!this.baseUrl) return null;
         
-        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}`;
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action}`;
         const bodyParams = new URLSearchParams();
         bodyParams.append('ClientTransactionID', this.getNextId().toString());
         for (const [key, value] of Object.entries(params)) {
@@ -216,7 +216,7 @@ export class AlpacaClientService {
         const query = new URLSearchParams(params);
         query.append('ClientTransactionID', this.getNextId().toString());
         const queryString = query.toString();
-        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}${queryString ? '?' + queryString : ''}`;
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action}${queryString ? '?' + queryString : ''}`;
 
         try {
             const response = await fetch('/api/alpaca/proxy', {

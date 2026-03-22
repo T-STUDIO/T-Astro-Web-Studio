@@ -206,43 +206,18 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
             // Flatten it if it's a 2D/3D array
             data = Array.isArray(rawData) ? rawData.flat(Infinity) : rawData;
             header = {
-                dimension1: Array.isArray(rawData) ? (Array.isArray(rawData[0]) ? rawData[0].length : rawData.length) : 0,
-                dimension2: Array.isArray(rawData) ? rawData.length : 0,
+                dimension1: Array.isArray(rawData) ? (Array.isArray(rawData[0]) ? (Array.isArray(rawData[0][0]) ? rawData[0][0].length : rawData[0].length) : rawData.length) : 0,
+                dimension2: Array.isArray(rawData) ? (Array.isArray(rawData[0]) ? rawData.length : 1) : 0,
+                dimension3: Array.isArray(rawData) && Array.isArray(rawData[0]) && Array.isArray(rawData[0][0]) ? rawData.length : 1,
                 imageElementType: 0 // Generic
             };
-            if (Array.isArray(rawData) && Array.isArray(rawData[0]) && Array.isArray(rawData[0][0])) {
-                // 3D array (RGB)
-                header.dimension1 = rawData[0][0].length;
-                header.dimension2 = rawData[0].length;
-                header.dimension3 = rawData.length;
-            }
         }
         
-        // Extract metadata
-        const w = header.dimension1 || 640;
-        const h = header.dimension2 || 480;
-        const bpp = (header.imageElementType === 1 || header.imageElementType === 5) ? 16 : 
-                    (header.imageElementType === 2 || header.imageElementType === 4) ? 32 : 8;
-        
-        const format = bpp === 16 ? 'RAW16' : (bpp === 32 ? 'RAW32' : 'RAW8');
-        
-        addDebugLog(`Processing ${w}x${h} ${bpp}-bit image...`);
-
-        // Convert to displayable URL using existing logic
-        // We pass the raw data (Uint8Array/Uint16Array/etc) to rawFitsToDisplay
-        // If it was binary, we slice the buffer to ensure we only pass the image data part
-        let imageDataBuffer: any;
-        if (rawData instanceof ArrayBuffer) {
-            imageDataBuffer = rawData.slice(header.dataStart);
-        } else {
-            // If it's JSON, data is already the image data
-            imageDataBuffer = data;
-        }
-        
-        const { url } = rawFitsToDisplay(imageDataBuffer, format, 'Auto', { width: w, height: h, bpp, format });
+        // Convert to displayable URL using AlpacaImageService
+        const url = await AlpacaImageService.convertToDisplay(header, data);
         
         if (url && imageReceivedCallback) {
-            imageReceivedCallback(url, format, { width: w, height: h });
+            imageReceivedCallback(url, 'jpeg', { width: header.dimension1, height: header.dimension2 });
             addDebugLog("Image received and processed.");
         }
         
@@ -261,11 +236,21 @@ export const stopCapture = async () => {
     await alpacaClient.putCommand('Camera', getDeviceNumber('Camera'), 'AbortExposure');
 };
 
+let isStreaming = false;
 export const startStream = () => {
-    // Alpaca doesn't support stream easily without MJPEG
+    if (isStreaming) return;
+    isStreaming = true;
+    const run = async () => {
+        if (!isStreaming) return;
+        // Use a short exposure for streaming
+        await capturePreview(500, 100, 10, true);
+        if (isStreaming) setTimeout(run, 100);
+    };
+    run();
 };
 
 export const stopStream = () => {
+    isStreaming = false;
 };
 
 export const setVideoStream = async (enabled: boolean) => {
@@ -364,7 +349,7 @@ export const moveFocuser = async (steps: number) => {
         const posRes = await alpacaClient.getCommand('Focuser', focId, 'Position');
         if (posRes && posRes.ErrorNumber === 0) {
             const currentPos = Number(posRes.Value);
-            const target = currentPos + steps;
+            const target = Math.round(currentPos + steps);
             addDebugLog(`Moving focuser from ${currentPos} to ${target}...`);
             await alpacaClient.putCommand('Focuser', focId, 'Move', { Position: target });
         } else {

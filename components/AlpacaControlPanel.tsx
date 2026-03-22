@@ -144,7 +144,7 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                                     {Object.entries(properties).map(([key, value]) => (
                                         <div key={key} className="bg-slate-800/40 p-2 rounded border border-slate-800 flex flex-col gap-1">
                                             <div className="flex justify-between items-center">

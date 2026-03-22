@@ -286,7 +286,24 @@ export class AlpacaClientService {
                 }
             });
             
-            if (!response.ok) return null;
+            if (!response.ok) {
+                console.error(`[AlpacaClient] Image fetch failed with status ${response.status}`);
+                return null;
+            }
+
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data && data.ErrorNumber !== 0) {
+                    console.error(`[AlpacaClient] Alpaca error ${data.ErrorNumber}: ${data.ErrorMessage}`);
+                    return null;
+                }
+                // If it's JSON but has no error, it might be the image data as a JSON array
+                // We'd need to convert it to a binary buffer, but for now let's log it
+                console.warn("[AlpacaClient] Received JSON instead of binary image data. This is not yet supported.");
+                return null;
+            }
+
             return await response.arrayBuffer();
         } catch (error) {
             console.error("[AlpacaClient] Failed to fetch image array:", error);

@@ -53,7 +53,10 @@ export const connect = async (settings: SampSettings) => {
     const host = settings.host || 'localhost';
     const port = settings.port || 8202;
     const hubUrl = `http://${host}:${port}/samp/`;
-    console.log(`[SAMP] Connecting to hub at: ${hubUrl}`);
+    
+    // Use proxy for SAMP to bypass CORS
+    const proxyUrl = `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(hubUrl)}`;
+    console.log(`[SAMP] Connecting to hub at: ${hubUrl} via proxy: ${proxyUrl}`);
 
     const meta = {
         "samp.name": "T-Astro Web Studio",
@@ -63,11 +66,10 @@ export const connect = async (settings: SampSettings) => {
 
     try {
         // Connector handles the Web Profile (CORS, etc.)
-        // We create a new connector to ensure the hubUrl is applied
-        // Some versions of samp.js use hubUrl, others use hub_url
+        // We use the proxy URL as the hub URL
         connector = new window.samp.Connector(meta, { 
-            hubUrl: hubUrl,
-            hub_url: hubUrl 
+            hubUrl: proxyUrl,
+            hub_url: proxyUrl 
         });
 
         // Set up connection change listener

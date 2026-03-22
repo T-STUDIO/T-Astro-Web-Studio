@@ -32,6 +32,10 @@ export class AlpacaImageService {
      * @param buffer The raw ArrayBuffer from the Alpaca server.
      */
     public parseBinaryImage(buffer: ArrayBuffer): { header: AlpacaImageHeader, data: Uint8Array | Int32Array | Float32Array } {
+        if (buffer.byteLength < 44) {
+            throw new Error(`Buffer too small for Alpaca image header: ${buffer.byteLength} bytes. Expected at least 44.`);
+        }
+        
         const view = new DataView(buffer);
         
         const header: AlpacaImageHeader = {
@@ -49,31 +53,39 @@ export class AlpacaImageService {
         };
 
         const dataOffset = header.dataStart;
+        if (dataOffset > buffer.byteLength) {
+            throw new Error(`Invalid dataStart offset: ${dataOffset}. Buffer size is ${buffer.byteLength}.`);
+        }
+        
         const dataLength = buffer.byteLength - dataOffset;
         
         // Element Types: 1=Int16, 2=Int32, 3=Double, 4=Single, 5=Uint16, 6=Byte
         let data: any;
-        switch (header.imageElementType) {
-            case 1: // Int16
-                data = new Int16Array(buffer, dataOffset, dataLength / 2);
-                break;
-            case 2: // Int32
-                data = new Int32Array(buffer, dataOffset, dataLength / 4);
-                break;
-            case 3: // Double
-                data = new Float64Array(buffer, dataOffset, dataLength / 8);
-                break;
-            case 4: // Single
-                data = new Float32Array(buffer, dataOffset, dataLength / 4);
-                break;
-            case 5: // Uint16
-                data = new Uint16Array(buffer, dataOffset, dataLength / 2);
-                break;
-            case 6: // Byte
-                data = new Uint8Array(buffer, dataOffset, dataLength);
-                break;
-            default:
-                data = new Uint8Array(buffer, dataOffset, dataLength);
+        try {
+            switch (header.imageElementType) {
+                case 1: // Int16
+                    data = new Int16Array(buffer, dataOffset, Math.floor(dataLength / 2));
+                    break;
+                case 2: // Int32
+                    data = new Int32Array(buffer, dataOffset, Math.floor(dataLength / 4));
+                    break;
+                case 3: // Double
+                    data = new Float64Array(buffer, dataOffset, Math.floor(dataLength / 8));
+                    break;
+                case 4: // Single
+                    data = new Float32Array(buffer, dataOffset, Math.floor(dataLength / 4));
+                    break;
+                case 5: // Uint16
+                    data = new Uint16Array(buffer, dataOffset, Math.floor(dataLength / 2));
+                    break;
+                case 6: // Byte
+                    data = new Uint8Array(buffer, dataOffset, dataLength);
+                    break;
+                default:
+                    data = new Uint8Array(buffer, dataOffset, dataLength);
+            }
+        } catch (e: any) {
+            throw new Error(`Failed to create typed array: ${e.message}. dataOffset=${dataOffset}, dataLength=${dataLength}, type=${header.imageElementType}`);
         }
 
         return { header, data };

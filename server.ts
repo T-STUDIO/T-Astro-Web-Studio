@@ -1,6 +1,5 @@
 
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import http from 'http';
 import https from 'https';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -275,31 +274,42 @@ async function startServer() {
 
     // Vite middleware for development
     if (process.env.NODE_ENV !== 'production') {
-        const vite = await createViteServer({
-            server: { middlewareMode: true },
-            appType: 'spa', 
-        });
-
-        app.use(vite.middlewares);
+        try {
+            const { createServer: createViteServer } = await import('vite');
+            const vite = await createViteServer({
+                server: { middlewareMode: true },
+                appType: 'spa', 
+            });
+            app.use(vite.middlewares);
+            console.log('[Server] Vite middleware loaded (Development)');
+        } catch (e) {
+            console.error('[Server] Failed to load Vite middleware:', e);
+            // Fallback to static serving if vite is missing even in non-production
+            app.use(express.static(path.resolve(process.cwd(), 'dist')));
+        }
     } else {
-        app.use(express.static('dist'));
+        const distPath = path.resolve(process.cwd(), 'dist');
+        console.log(`[Server] Serving static files from: ${distPath}`);
+        app.use(express.static(distPath));
+        
         // Fallback to serve html files without extension in production
         app.get('/:page', (req, res, next) => {
             const pages = ['index', 'alpaca', 'simulator', 'test'];
             const page = req.params.page;
             if (pages.includes(page)) {
-                res.sendFile(path.resolve(process.cwd(), 'dist', `${page}.html`));
+                res.sendFile(path.resolve(distPath, `${page}.html`));
             } else if (page === 'viewer') {
-                res.sendFile(path.resolve(process.cwd(), 'dist', 'viewer', 'index.html'));
+                res.sendFile(path.resolve(distPath, 'viewer', 'index.html'));
             } else {
                 next();
             }
         });
+        
         // Final fallback for SPA
         app.get('*', (req, res, next) => {
             // Strictly exclude API and static assets from SPA fallback
             if (req.path.startsWith('/api/') || req.path.includes('.')) return next();
-            res.sendFile(path.resolve(process.cwd(), 'dist', 'index.html'));
+            res.sendFile(path.resolve(distPath, 'index.html'));
         });
     }
 

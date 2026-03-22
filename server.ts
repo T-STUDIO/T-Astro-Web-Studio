@@ -172,7 +172,10 @@ async function startServer() {
             return res.status(400).json({ ErrorNumber: 0x400, ErrorMessage: 'Missing x-target-url header' });
         }
 
-        console.log(`[AlpacaProxy] ${req.method} -> ${targetUrl}`);
+        // Log only non-polling requests to avoid cluttering
+        if (!targetUrl.toLowerCase().includes('connected') && !targetUrl.toLowerCase().includes('imageready')) {
+            console.log(`[AlpacaProxy] ${req.method} -> ${targetUrl}`);
+        }
 
         try {
             const parsedUrl = new URL(targetUrl);
@@ -185,7 +188,7 @@ async function startServer() {
                     'Accept': req.headers['accept'] || 'application/json',
                     'User-Agent': 'T-Astro-Web-Studio/1.0'
                 },
-                timeout: 10000
+                timeout: 15000 // Increased timeout for slow devices
             };
 
             // Alpaca requires application/x-www-form-urlencoded for PUT/POST
@@ -262,6 +265,52 @@ async function startServer() {
                 ErrorNumber: 0x500, 
                 ErrorMessage: `Setup Error: ${e.message}` 
             });
+        }
+    });
+
+    apiRouter.all('/samp/proxy', async (req, res) => {
+        let targetUrl = req.headers['x-target-url'] as string;
+        
+        // Fallback to query parameter for libraries that don't support custom headers
+        if (!targetUrl && req.query.target) {
+            targetUrl = req.query.target as string;
+        }
+
+        if (!targetUrl) return res.status(400).json({ error: 'Missing x-target-url header or target query param' });
+
+        console.log(`[SAMPProxy] ${req.method} -> ${targetUrl}`);
+
+        try {
+            const parsedUrl = new URL(targetUrl);
+            const requester = parsedUrl.protocol === 'https:' ? https : http;
+
+            const options: http.RequestOptions = {
+                method: req.method,
+                headers: {
+                    'Content-Type': req.headers['content-type'] || 'text/xml',
+                    'Accept': req.headers['accept'] || '*/*',
+                },
+                timeout: 5000
+            };
+
+            const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
+                res.status(proxyRes.statusCode || 500);
+                res.set(proxyRes.headers);
+                proxyRes.pipe(res);
+            });
+
+            proxyReq.on('error', (e) => {
+                console.error(`[SAMPProxy] Error: ${e.message}`);
+                res.status(500).json({ error: e.message });
+            });
+
+            if (req.method !== 'GET' && req.method !== 'HEAD') {
+                req.pipe(proxyReq);
+            } else {
+                proxyReq.end();
+            }
+        } catch (e: any) {
+            res.status(500).json({ error: e.message });
         }
     });
 

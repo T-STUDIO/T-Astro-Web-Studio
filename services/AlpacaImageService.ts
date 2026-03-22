@@ -95,8 +95,14 @@ export class AlpacaImageService {
      * Converts the parsed Alpaca image data to a displayable format (Canvas/DataURL).
      */
     public async convertToDisplay(header: any, data: any): Promise<string> {
-        const width = header.dimension1 || 640;
-        const height = header.dimension2 || 480;
+        const width = Number(header.dimension1) || 0;
+        const height = Number(header.dimension2) || 0;
+        
+        if (width <= 0 || height <= 0 || !data || data.length === 0) {
+            console.error('[AlpacaImage] Invalid image dimensions or data:', { width, height, dataLength: data?.length });
+            throw new Error(`Invalid image dimensions: ${width}x${height}`);
+        }
+
         const isRGB = header.dimension3 === 3;
         
         const canvas = document.createElement('canvas');

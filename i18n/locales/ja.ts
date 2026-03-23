@@ -159,6 +159,21 @@ export const ja = {
       moveIn: 'IN (繰入)',
       moveOut: 'OUT (繰出)'
   },
+  alpaca: {
+      controlPanel: 'Alpaca コントロールパネル',
+      devices: 'デバイス',
+      properties: 'プロパティ',
+      refresh: '更新',
+      close: '閉じる',
+      connected: '接続済み',
+      disconnected: '未接続',
+      error: 'エラー',
+      noDevices: 'デバイスが見つかりません。',
+      selectDevice: 'デバイスを選択してください',
+      updateError: '更新エラー',
+      fetchError: 'プロパティの取得に失敗しました。接続を確認してください。',
+      liveViewNotSupported: 'このカメラはライブビューをサポートしていません。'
+  },
   controlPanel: {
     tabs: {
         equipment: '機材',
@@ -171,6 +186,9 @@ export const ja = {
         ctrl: '制御',
         set: '設定'
     },
+    openControlPanel: 'コントロールパネルを開く',
+    imaging: '撮影制御',
+    settings: '設定',
     locationAndTime: '観測地と時刻',
     location: {
       latitude: '緯度',
@@ -190,7 +208,6 @@ export const ja = {
       enterName: '場所の名前を入力してください:',
       confirmDelete: 'この場所を削除してもよろしいですか？',
     },
-    equipment: '機器接続',
     connectionSettings: '接続設定',
     connectionProfiles: {
         select: '保存設定を選択...',

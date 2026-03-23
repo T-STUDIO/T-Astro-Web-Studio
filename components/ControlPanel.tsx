@@ -328,7 +328,7 @@ const ImagingPanel = memo((props: any) => {
     const { 
         connectionStatus, isLiveViewActive, onToggleLiveView, exposure, gain, offset, binning, colorBalance,
         onSetExposure, onSetGain, onSetOffset, onSetBinning, onSetColorBalance, onPreview, isCapturing, onStartCapture, onStopCapture,
-        indiDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings
+        indiDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings, connectionSettings
     } = props;
 
     const devices = (indiDevices || []) as INDIDevice[];
@@ -398,7 +398,7 @@ const ImagingPanel = memo((props: any) => {
         <div className="w-full space-y-2 bg-slate-800/20 p-2 rounded-lg border border-slate-700/50">
             <h3 className="text-xs font-bold text-slate-500 uppercase">{t('controlPanel.videoStreamLabel')}</h3>
             <p className="text-[10px] text-slate-500 leading-tight mb-1">{t('tooltips.videoStream')}</p>
-            <Button onClick={onToggleVideoStream} disabled={isLiveViewActive} variant={isVideoStreamActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.videoStream')}>
+            <Button onClick={onToggleVideoStream} disabled={isLiveViewActive || connectionStatus !== 'Connected' || connectionSettings?.driver === 'Alpaca'} variant={isVideoStreamActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.videoStream')}>
                 {isVideoStreamActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopVideoStream')}</> : <><VideoIcon className="w-4 h-4" /> {t('controlPanel.videoStream')}</>}
             </Button>
             {streamEncoderProperty?.elements && (
@@ -451,11 +451,11 @@ const ImagingPanel = memo((props: any) => {
         <div className="w-full space-y-2 bg-slate-800/20 p-2 rounded-lg border border-slate-700/50">
             <h3 className="text-xs font-bold text-slate-500 uppercase">{t('controlPanel.staticCapture')}</h3>
             <div className="grid grid-cols-2 gap-2">
-                <Button onClick={onPreview} disabled={isCapturing || isPreviewLoading || isVideoStreamActive} variant="secondary" className="w-full text-xs" type="button" title={t('tooltips.preview')}>
+                <Button onClick={onPreview} disabled={isCapturing || isPreviewLoading || isVideoStreamActive || connectionStatus !== 'Connected'} variant="secondary" className="w-full text-xs" type="button" title={t('tooltips.preview')}>
                     {isPreviewLoading ? <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></div> : <CameraIcon className="w-5 h-5" />} 
                     {isPreviewLoading ? ` ${t('controlPanel.loading')}` : t('controlPanel.preview')}
                 </Button>
-                <Button onClick={onToggleLiveView} disabled={isVideoStreamActive} variant={isLiveViewActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.liveView')}>
+                <Button onClick={onToggleLiveView} disabled={isVideoStreamActive || connectionStatus !== 'Connected'} variant={isLiveViewActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.liveView')}>
                     {isLiveViewActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopLiveView')}</> : <><CameraIcon className="w-4 h-4" /> {t('controlPanel.liveView')}</>}
                 </Button>
             </div>

@@ -97,7 +97,7 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
             <div className="bg-slate-900 border border-red-900/50 rounded-xl w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                 <div className="p-3 border-b border-red-900/30 flex justify-between items-center bg-slate-800/50">
                     <div className="flex items-center gap-3">
-                        <h2 className="text-base sm:text-lg font-bold text-red-400">Alpaca Control Panel</h2>
+                        <h2 className="text-base sm:text-lg font-bold text-red-400">{t('alpaca.controlPanel')}</h2>
                         <span className="hidden sm:inline text-[10px] text-slate-500 font-mono">{host}:{port}</span>
                     </div>
                     <button onClick={onClose} className="p-1.5 hover:bg-red-900/20 rounded-full transition-colors">
@@ -109,22 +109,26 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                     {/* Device List */}
                     <div className="w-full sm:w-56 border-b sm:border-b-0 sm:border-r border-red-900/20 bg-slate-900/50 overflow-y-auto p-2 max-h-[150px] sm:max-h-none">
                         <div className="flex items-center justify-between mb-2 px-2">
-                            <h3 className="text-[9px] font-bold text-slate-500 uppercase">Devices</h3>
+                            <h3 className="text-[9px] font-bold text-slate-500 uppercase">{t('alpaca.devices')}</h3>
                             <button onClick={() => setDevices(alpacaClient.getConfiguredDevices())} className="text-slate-500 hover:text-slate-300">
                                 <RefreshCw className="w-3 h-3" />
                             </button>
                         </div>
                         <div className="space-y-1">
-                            {devices.map((dev, i) => (
-                                <button 
-                                    key={i}
-                                    onClick={() => setSelectedDevice(dev)}
-                                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${selectedDevice?.uniqueId === dev.uniqueId ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 'text-slate-400 hover:bg-slate-800'}`}
-                                >
-                                    <div className="font-bold truncate">{dev.deviceName}</div>
-                                    <div className="text-[9px] opacity-60">{dev.deviceType} #{dev.deviceNumber}</div>
-                                </button>
-                            ))}
+                            {devices.length === 0 ? (
+                                <p className="text-[10px] text-slate-600 p-2 italic">{t('alpaca.noDevices')}</p>
+                            ) : (
+                                devices.map((dev, i) => (
+                                    <button 
+                                        key={i}
+                                        onClick={() => setSelectedDevice(dev)}
+                                        className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${selectedDevice?.uniqueId === dev.uniqueId ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 'text-slate-400 hover:bg-slate-800'}`}
+                                    >
+                                        <div className="font-bold truncate">{dev.deviceName}</div>
+                                        <div className="text-[9px] opacity-60">{dev.deviceType} #{dev.deviceNumber}</div>
+                                    </button>
+                                ))
+                            )}
                         </div>
                     </div>
 
@@ -143,10 +147,10 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                                             variant={properties.Connected === true ? "success" : "outline"}
                                             className="text-[10px] h-7 px-2"
                                         >
-                                            {properties.Connected === true ? 'Connected' : 'Connect'}
+                                            {properties.Connected === true ? t('alpaca.connected') : t('alpaca.disconnected')}
                                         </Button>
                                         <Button onClick={fetchProperties} disabled={isLoading} variant="secondary" className="text-[10px] h-7 px-2">
-                                            {isLoading ? 'Refreshing...' : 'Refresh'}
+                                            {isLoading ? t('alpaca.refresh') + '...' : t('alpaca.refresh')}
                                         </Button>
                                     </div>
                                 </div>
@@ -193,7 +197,7 @@ export const AlpacaControlPanel: React.FC<AlpacaControlPanelProps> = ({ onClose,
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-slate-600 italic gap-2">
                                 <AlertCircle className="w-8 h-8 opacity-20" />
-                                <p>Select a device to view properties</p>
+                                <p>{t('alpaca.selectDevice')}</p>
                             </div>
                         )}
                     </div>

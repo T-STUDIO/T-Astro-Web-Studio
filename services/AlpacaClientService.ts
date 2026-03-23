@@ -220,10 +220,11 @@ export class AlpacaClientService {
     public async putCommand(deviceType: string, deviceNumber: number, action: string, params: Record<string, any> = {}) {
         if (!this.baseUrl) return null;
         
-        // Alpaca standard says actions are case-insensitive, but many drivers are case-sensitive.
-        // We use the original casing provided by the caller for both deviceType and action
-        // to be fully protocol-compliant and compatible with strict drivers.
-        const targetUrl = `${this.baseUrl}/${deviceType}/${deviceNumber}/${action}`;
+        // Alpaca standard says URL path segments (deviceType and action) should be lowercase.
+        // However, body parameters MUST maintain their casing (usually PascalCase).
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}`;
+        console.log(`[AlpacaClient] PUT ${targetUrl}`, params);
+        
         const bodyParams = new URLSearchParams();
         bodyParams.append('ClientID', '24233191433'); // Unique ID for this app
         bodyParams.append('ClientTransactionID', this.getNextId().toString());
@@ -266,8 +267,9 @@ export class AlpacaClientService {
         const query = new URLSearchParams(params);
         query.append('ClientTransactionID', this.getNextId().toString());
         const queryString = query.toString();
-        // Use original casing for deviceType and action
-        const targetUrl = `${this.baseUrl}/${deviceType}/${deviceNumber}/${action}${queryString ? '?' + queryString : ''}`;
+        // Alpaca standard says URL path segments should be lowercase.
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}${queryString ? '?' + queryString : ''}`;
+        console.log(`[AlpacaClient] GET ${targetUrl}`);
 
         try {
             const response = await fetch('/api/alpaca/proxy', {

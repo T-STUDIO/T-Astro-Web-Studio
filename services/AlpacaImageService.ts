@@ -95,10 +95,16 @@ export class AlpacaImageService {
      * Converts the parsed Alpaca image data to a displayable format (Canvas/DataURL).
      */
     public async convertToDisplay(header: any, data: any): Promise<string> {
-        // Note: Some Alpaca drivers report dimension1 as height and dimension2 as width, 
-        // or the orientation is swapped. Swapping them to match common landscape astro cameras.
-        const width = Number(header.dimension2) || 0;
-        const height = Number(header.dimension1) || 0;
+        // Alpaca standard: dimension1 is the first dimension (rows/height), dimension2 is the second (cols/width)
+        let height = Number(header.dimension1) || 0;
+        let width = Number(header.dimension2) || 0;
+        
+        // If it's a 3D array (RGB), dimension3 is the color channel
+        // If it's a 2D array, dimension1=height, dimension2=width
+        
+        // Many astro cameras are landscape. If we get a portrait-like dimension set, 
+        // it might be that the driver is using dimension1 for the long axis.
+        // However, the standard is dimension1=rows.
         
         if (width <= 0 || height <= 0 || !data || data.length === 0) {
             console.error('[AlpacaImage] Invalid image dimensions or data:', { width, height, dataLength: data?.length });
@@ -143,11 +149,11 @@ export class AlpacaImageService {
                 samples.push(val);
             }
 
-            // Use 99.5th percentile for max to reject hot pixels
+            // Use a higher percentile to avoid over-brightening
             let effectiveMax = max;
-            if (max - min > 500) {
+            if (max - min > 100) {
                 samples.sort((a, b) => a - b);
-                effectiveMax = samples[Math.floor(samples.length * 0.995)];
+                effectiveMax = samples[Math.floor(samples.length * 0.999)];
             }
 
             const range = (effectiveMax - min) || 1;

@@ -35,6 +35,43 @@ export class AlpacaClientService {
         return id;
     }
 
+    /**
+     * Normalizes Alpaca response keys to PascalCase to handle drivers/relays 
+     * that might return all lowercase keys.
+     */
+    private normalizeResponse(data: any): any {
+        if (!data || typeof data !== 'object') return data;
+        
+        if (Array.isArray(data)) {
+            return data.map(item => this.normalizeResponse(item));
+        }
+
+        const normalized: any = { ...data };
+        const mapping: Record<string, string> = {
+            'value': 'Value',
+            'errornumber': 'ErrorNumber',
+            'errormessage': 'ErrorMessage',
+            'clienttransactionid': 'ClientTransactionID',
+            'servertransactionid': 'ServerTransactionID',
+            'devicename': 'DeviceName',
+            'devicetype': 'DeviceType',
+            'devicenumber': 'DeviceNumber',
+            'uniqueid': 'UniqueID'
+        };
+
+        for (const key of Object.keys(data)) {
+            const lowerKey = key.toLowerCase();
+            if (mapping[lowerKey] && normalized[mapping[lowerKey]] === undefined) {
+                normalized[mapping[lowerKey]] = data[key];
+            }
+            // Recursively normalize nested objects/arrays (like the Value array in configureddevices)
+            if (typeof data[key] === 'object' && data[key] !== null) {
+                normalized[key] = this.normalizeResponse(data[key]);
+            }
+        }
+        return normalized;
+    }
+
     public getDevices(): AlpacaDevice[] {
         return this.devices;
     }
@@ -65,7 +102,8 @@ export class AlpacaClientService {
                 throw new Error(`Proxy returned ${response.status}: ${text}`);
             }
             
-            const data = await response.json();
+            const rawData = await response.json();
+            const data = this.normalizeResponse(rawData);
 
             if (data && Array.isArray(data.Value)) {
                 this.devices = data.Value.map((d: any) => ({
@@ -182,8 +220,10 @@ export class AlpacaClientService {
     public async putCommand(deviceType: string, deviceNumber: number, action: string, params: Record<string, any> = {}) {
         if (!this.baseUrl) return null;
         
-        // Alpaca standard uses PascalCase for actions in the URL
-        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action}`;
+        // Alpaca standard says actions are case-insensitive, but many drivers are case-sensitive.
+        // We use the original casing provided by the caller for both deviceType and action
+        // to be fully protocol-compliant and compatible with strict drivers.
+        const targetUrl = `${this.baseUrl}/${deviceType}/${deviceNumber}/${action}`;
         const bodyParams = new URLSearchParams();
         bodyParams.append('ClientID', '24233191433'); // Unique ID for this app
         bodyParams.append('ClientTransactionID', this.getNextId().toString());
@@ -208,7 +248,8 @@ export class AlpacaClientService {
             
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
-                return await response.json();
+                const data = await response.json();
+                return this.normalizeResponse(data);
             } else {
                 const text = await response.text();
                 return { ErrorNumber: response.status, ErrorMessage: text };
@@ -225,7 +266,8 @@ export class AlpacaClientService {
         const query = new URLSearchParams(params);
         query.append('ClientTransactionID', this.getNextId().toString());
         const queryString = query.toString();
-        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}${queryString ? '?' + queryString : ''}`;
+        // Use original casing for deviceType and action
+        const targetUrl = `${this.baseUrl}/${deviceType}/${deviceNumber}/${action}${queryString ? '?' + queryString : ''}`;
 
         try {
             const response = await fetch('/api/alpaca/proxy', {
@@ -236,7 +278,8 @@ export class AlpacaClientService {
             
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
-                return await response.json();
+                const data = await response.json();
+                return this.normalizeResponse(data);
             } else {
                 const text = await response.text();
                 return { ErrorNumber: response.status, ErrorMessage: text };
@@ -302,7 +345,8 @@ export class AlpacaClientService {
 
             const contentType = response.headers.get('content-type') || '';
             if (contentType.includes('application/json')) {
-                const data = await response.json();
+                const rawData = await response.json();
+                const data = this.normalizeResponse(rawData);
                 if (data && data.ErrorNumber !== 0) {
                     console.error(`[AlpacaClient] Alpaca error ${data.ErrorNumber}: ${data.ErrorMessage}`);
                     return null;

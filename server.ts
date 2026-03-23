@@ -49,7 +49,11 @@ async function startServer() {
 
             const proxyReq = transport.request(targetUrl, options, (proxyRes) => {
                 // Forward status and headers
-                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                const headers = { ...proxyRes.headers };
+                headers['Access-Control-Allow-Origin'] = '*';
+                headers['Access-Control-Allow-Methods'] = 'GET, PUT, POST, DELETE, OPTIONS';
+                headers['Access-Control-Allow-Headers'] = '*';
+                res.writeHead(proxyRes.statusCode || 200, headers);
                 proxyRes.pipe(res);
             });
 
@@ -99,7 +103,11 @@ async function startServer() {
 
             const proxyReq = transport.request(targetUrl, options, (proxyRes) => {
                 // Forward status and headers
-                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                const headers = { ...proxyRes.headers };
+                headers['Access-Control-Allow-Origin'] = '*';
+                headers['Access-Control-Allow-Methods'] = 'GET, PUT, POST, DELETE, OPTIONS';
+                headers['Access-Control-Allow-Headers'] = '*';
+                res.writeHead(proxyRes.statusCode || 200, headers);
                 proxyRes.pipe(res);
             });
 

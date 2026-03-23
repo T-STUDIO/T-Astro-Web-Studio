@@ -20,7 +20,6 @@ import * as AstroService from '../services/AstroServiceAlpaca';
 import * as GoogleDriveService from '../services/GoogleDriveService';
 import AlpacaDiscoveryService, { DiscoveryResult } from '../services/AlpacaDiscoveryService';
 import * as SettingsService from '../services/SettingsService';
-import { AlpacaControlPanel } from './AlpacaControlPanel';
 import { AlpacaDevice } from '../services/AlpacaClientService';
 import { decimalToSexagesimal, sexagesimalToDecimal } from '../utils/coords';
 
@@ -466,7 +465,6 @@ const EquipmentPanel = memo((props: any) => {
     const [isDiscovering, setIsDiscovering] = useState(false);
     const [discoveryResults, setDiscoveryResults] = useState<DiscoveryResult[]>([]);
     const [discoveryPort, setDiscoveryPort] = useState(32227);
-    const [showAlpacaControlPanel, setShowAlpacaControlPanel] = useState(false);
     
     const [selectedLocationIndex, setSelectedLocationIndex] = useState<string>("");
     const [selectedConnectionIndex, setSelectedConnectionIndex] = useState<string>("");
@@ -483,7 +481,7 @@ const EquipmentPanel = memo((props: any) => {
         onSendLocationToMount, mountSyncStatus, onToggleAutoSyncLocation, isAutoSyncLocationEnabled,
         connectionStatus, onShowDiagnostics, connectionSettings, onSettingsChange, onConnect, onDisconnect, onAbortConnection,
         savedConnections, onSaveConnection, onUpdateSavedConnection, onDeleteConnection,
-        alpacaDevices, alpacaMessageCount, onOpenDeviceSettings
+        alpacaDevices, alpacaMessageCount, onOpenDeviceSettings, onOpenAlpacaControlPanel
     } = props;
 
     const isConnected = connectionStatus === 'Connected';
@@ -777,7 +775,7 @@ const EquipmentPanel = memo((props: any) => {
                         <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t('controlPanel.equipment')}</h3>
                         <div className="flex gap-1">
                             <button 
-                                onClick={() => setShowAlpacaControlPanel(true)} 
+                                onClick={onOpenAlpacaControlPanel} 
                                 className="text-[10px] text-red-400 hover:text-red-300 bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 transition-colors"
                             >
                                 {t('controlPanel.openControlPanel')}
@@ -824,14 +822,6 @@ const EquipmentPanel = memo((props: any) => {
                     </div>
                 </div>
                 <Button onClick={onDisconnect} variant="danger" className="w-full mt-4" title="Disconnect from all network devices."><DisconnectIcon className="w-5 h-5" /> {t('controlPanel.disconnect')}</Button>
-                
-                {showAlpacaControlPanel && (
-                    <AlpacaControlPanel 
-                        onClose={() => setShowAlpacaControlPanel(false)}
-                        host={connectionSettings?.host || ''}
-                        port={connectionSettings?.port || 11111}
-                    />
-                )}
             </>
             )}
             {isDisconnected && (

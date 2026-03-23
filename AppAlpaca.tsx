@@ -14,6 +14,7 @@ import { StatusBarAlpaca as StatusBar } from './components/StatusBarAlpaca';
 import { GeminiInfoModal } from './components/GeminiInfoModal';
 import { DeviceSettingsModalAlpaca as DeviceSettingsModal } from './components/DeviceSettingsModalAlpaca';
 import { DiagnosticsModalAlpaca as DiagnosticsModal } from './components/DiagnosticsModalAlpaca';
+import { AlpacaControlPanel } from './components/AlpacaControlPanel';
 import { useTranslation } from './contexts/LanguageContext';
 import { StarIcon } from './components/icons/StarIcon';
 import { CameraIcon } from './components/icons/CameraIcon';
@@ -107,6 +108,7 @@ const AppAlpaca: React.FC = () => {
   const [selectedDeviceName, setSelectedDeviceName] = useState<string>('');
 
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [isAlpacaControlPanelOpen, setIsAlpacaControlPanelOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
 
@@ -463,6 +465,7 @@ const AppAlpaca: React.FC = () => {
                         onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
                         savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
+                        onOpenAlpacaControlPanel={() => setIsAlpacaControlPanelOpen(true)}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         alpacaDevices={alpacaDevices}
                         alpacaMessageCount={alpacaMessageCount}
@@ -573,6 +576,13 @@ const AppAlpaca: React.FC = () => {
         isConnected={connectionStatus === 'Connected'}
       />
       <DiagnosticsModal isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} currentSettings={connectionSettings} />
+      {isAlpacaControlPanelOpen && (
+        <AlpacaControlPanel 
+          onClose={() => setIsAlpacaControlPanelOpen(false)}
+          host={connectionSettings?.host || ''}
+          port={connectionSettings?.port || 11111}
+        />
+      )}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );

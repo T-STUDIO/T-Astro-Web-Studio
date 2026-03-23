@@ -186,7 +186,11 @@ export class AlpacaClientService {
         const bodyParams = new URLSearchParams();
         bodyParams.append('ClientTransactionID', this.getNextId().toString());
         for (const [key, value] of Object.entries(params)) {
-            bodyParams.append(key, value.toString());
+            let val = value;
+            if (typeof value === 'boolean') {
+                val = value ? 'True' : 'False';
+            }
+            bodyParams.append(key, val.toString());
         }
 
         try {

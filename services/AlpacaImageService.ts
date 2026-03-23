@@ -95,8 +95,10 @@ export class AlpacaImageService {
      * Converts the parsed Alpaca image data to a displayable format (Canvas/DataURL).
      */
     public async convertToDisplay(header: any, data: any): Promise<string> {
-        const width = Number(header.dimension1) || 0;
-        const height = Number(header.dimension2) || 0;
+        // Note: Some Alpaca drivers report dimension1 as height and dimension2 as width, 
+        // or the orientation is swapped. Swapping them to match common landscape astro cameras.
+        const width = Number(header.dimension2) || 0;
+        const height = Number(header.dimension1) || 0;
         
         if (width <= 0 || height <= 0 || !data || data.length === 0) {
             console.error('[AlpacaImage] Invalid image dimensions or data:', { width, height, dataLength: data?.length });

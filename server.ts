@@ -24,11 +24,19 @@ async function startServer() {
 
     // Proxy routes BEFORE body parsers to allow piping raw streams (crucial for SAMP and Alpaca PUT/POST)
     app.all('/api/alpaca/proxy', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', '*');
+            return res.status(200).end();
+        }
+
         const targetUrl = (req.query.target as string) || (req.headers['x-target-url'] as string);
         if (!targetUrl) {
             return res.status(400).json({ error: 'Missing target URL' });
         }
 
+        console.log(`[Alpaca Proxy] ${req.method} -> ${targetUrl}`);
         try {
             const parsedUrl = new URL(targetUrl);
             const isHttps = parsedUrl.protocol === 'https:';
@@ -77,11 +85,19 @@ async function startServer() {
     });
 
     app.all('/api/samp/proxy', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', '*');
+            return res.status(200).end();
+        }
+
         const targetUrl = (req.query.target as string) || (req.headers['x-target-url'] as string);
         if (!targetUrl) {
             return res.status(400).json({ error: 'Missing target URL' });
         }
 
+        console.log(`[SAMP Proxy] ${req.method} -> ${targetUrl}`);
         try {
             const parsedUrl = new URL(targetUrl);
             const transport = parsedUrl.protocol === 'https:' ? https : http;

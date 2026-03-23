@@ -43,7 +43,7 @@ async function startServer() {
             // Clean up headers for proxying
             delete options.headers.host;
             delete options.headers['x-target-url'];
-            delete options.headers['content-length']; // Let http.request recalculate if needed, or pipe will handle it
+            // Keep content-length if it exists to avoid chunked encoding issues with some Alpaca servers
             options.headers.host = parsedUrl.host;
             options.headers.connection = 'keep-alive';
 
@@ -93,7 +93,7 @@ async function startServer() {
             // Clean up headers for proxying
             delete options.headers.host;
             delete options.headers['x-target-url'];
-            delete options.headers['content-length'];
+            // Keep content-length if it exists to avoid chunked encoding issues with some XML-RPC servers
             options.headers.host = parsedUrl.host;
             options.headers.connection = 'keep-alive';
 
@@ -261,7 +261,7 @@ async function startServer() {
             timestamp: new Date().toISOString()
         });
     });
-
+    
     // API 404 Handler (Ensures no HTML fallback for /api/*)
     apiRouter.use((req, res) => {
         res.status(404).json({ error: 'API route not found', path: req.path });

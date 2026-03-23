@@ -172,7 +172,12 @@ export const ja = {
       selectDevice: 'デバイスを選択してください',
       updateError: '更新エラー',
       fetchError: 'プロパティの取得に失敗しました。接続を確認してください。',
-      liveViewNotSupported: 'このカメラはライブビューをサポートしていません。'
+      liveViewNotSupported: 'このカメラはライブビューをサポートしていません。',
+      searching: '検索中...',
+      status: 'ステータス',
+      capabilities: '機能',
+      configuration: '設定',
+      deviceInfo: 'デバイス情報'
   },
   controlPanel: {
     tabs: {

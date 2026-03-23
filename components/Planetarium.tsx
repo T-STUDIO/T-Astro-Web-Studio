@@ -419,7 +419,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tp.x - 30, tp.y); ctx.lineTo(tp.x + 30, tp.y); ctx.moveTo(tp.x, tp.y - 30); ctx.lineTo(tp.x, tp.y + 30); ctx.stroke();
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t]);
+    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }
@@ -526,6 +526,14 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     {
                         name: 'Aladin',
                         url: `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`
+                    },
+                    {
+                        name: 'ESO',
+                        url: `https://archive.eso.org/dss/dss/image?ra=${targetRa}&dec=${targetDec}&x=${tileFov*60}&y=${tileFov*60}&mime-type=download-jpeg`
+                    },
+                    {
+                        name: 'STScI',
+                        url: `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${targetRa}&d=${targetDec}&e=J2000&h=${tileFov*60}&w=${tileFov*60}&f=gif`
                     }
                 ];
 
@@ -541,15 +549,27 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 for (const source of sources) {
                     if (signal.aborted) return;
                     try {
+                        console.log(`[Planetarium] Fetching DSS tile from ${source.name}: ${targetRa},${targetDec}`);
                         const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(source.url)}`;
                         const response = await fetch(proxiedUrl, { signal });
-                        if (!response.ok) throw new Error(`Proxy error ${response.status}`);
+                        if (!response.ok) {
+                            console.warn(`[Planetarium] Proxy error for ${source.name}: ${response.status}`);
+                            throw new Error(`Proxy error ${response.status}`);
+                        }
                         
                         const blob = await response.blob();
+                        if (blob.size < 1000) {
+                            console.warn(`[Planetarium] Received small/invalid blob from ${source.name}: ${blob.size} bytes`);
+                            throw new Error('Invalid image data');
+                        }
+
                         const img = new Image();
                         await new Promise((resolve, reject) => {
                             img.onload = resolve;
-                            img.onerror = reject;
+                            img.onerror = (err) => {
+                                console.error(`[Planetarium] Image load error for ${source.name}:`, err);
+                                reject(err);
+                            };
                             img.src = URL.createObjectURL(blob);
                             signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
                         });
@@ -560,11 +580,12 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             image: img,
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
                         });
+                        console.log(`[Planetarium] Successfully loaded DSS tile ${newTiles.length}/9`);
                         setDssTiles([...newTiles]);
                         break; 
                     } catch (e: any) {
                         if (e.name === 'AbortError') return;
-                        console.warn(`[Planetarium] Tile ${offset.dra},${offset.ddec} failed from ${source.name}`);
+                        console.warn(`[Planetarium] Tile ${offset.dra},${offset.ddec} failed from ${source.name}:`, e.message);
                     }
                 }
             }

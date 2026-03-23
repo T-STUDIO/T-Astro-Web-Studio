@@ -197,11 +197,12 @@ export const startMotion = async (dir: string, speed: MountSpeed) => {
     let rate = 0;
 
     // Map speed to deg/sec (approximate)
+    // Some mounts might expect different units or have specific limits
     switch (speed) {
-        case 'Guide': rate = 0.01; break;
-        case 'Center': rate = 0.1; break;
-        case 'Find': rate = 1.0; break;
-        case 'Slew': rate = 4.0; break;
+        case 'Guide': rate = 0.004; break; // 1x sidereal is ~0.004 deg/sec
+        case 'Center': rate = 0.04; break;
+        case 'Find': rate = 0.5; break;
+        case 'Slew': rate = 2.0; break;
         default: rate = 0.1;
     }
 
@@ -215,9 +216,13 @@ export const startMotion = async (dir: string, speed: MountSpeed) => {
         const res = await alpacaClient.putCommand('Telescope', telId, 'MoveAxis', { Axis: axis, Rate: rate });
         if (res && res.ErrorNumber !== 0) {
             addDebugLog(`MoveAxis failed: ${res.ErrorMessage} (Code: ${res.ErrorNumber})`);
+            console.error(`[Alpaca] MoveAxis failed:`, res);
+        } else {
+            addDebugLog(`MoveAxis command sent successfully.`);
         }
     } catch (e: any) {
         addDebugLog(`MoveAxis error: ${e.message}`);
+        console.error(`[Alpaca] MoveAxis error:`, e);
     }
 };
 
@@ -303,16 +308,16 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
             if (Array.isArray(rawData) && Array.isArray(rawData[0]) && Array.isArray(rawData[0][0])) {
                 // 3D array (RGB) [y][x][c]
                 header = {
-                    dimension1: rawData[0].length, // width
-                    dimension2: rawData.length,    // height
+                    dimension1: rawData.length,    // height
+                    dimension2: rawData[0].length, // width
                     dimension3: rawData[0][0].length, // channels
                     imageElementType: 0
                 };
             } else if (Array.isArray(rawData) && Array.isArray(rawData[0])) {
                 // 2D array (Grayscale) [y][x]
                 header = {
-                    dimension1: rawData[0].length, // width
-                    dimension2: rawData.length,    // height
+                    dimension1: rawData.length,    // height
+                    dimension2: rawData[0].length, // width
                     imageElementType: 0
                 };
             } else {

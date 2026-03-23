@@ -117,10 +117,7 @@ export class AlpacaImageService {
         const pixels = imageData.data;
 
         if (isRGB) {
-            // RGB data is usually interleaved or plane-separated
-            // Alpaca JSON usually returns [y][x][c] or [c][y][x]
-            // If flattened, we need to know the order.
-            // Let's assume it's R, G, B for each pixel if rank is 3 and dim3 is 3
+            // RGB data: Alpaca usually returns [y][x][c] or flattened as R,G,B,R,G,B...
             for (let i = 0; i < width * height; i++) {
                 const idx = i * 4;
                 const dataIdx = i * 3;
@@ -130,19 +127,35 @@ export class AlpacaImageService {
                 pixels[idx + 3] = 255; // A
             }
         } else {
-            // Simple grayscale normalization for display
+            // Grayscale normalization
             let min = Infinity;
             let max = -Infinity;
-            // Sample some pixels for faster min/max if data is huge
-            const step = data.length > 1000000 ? 10 : 1;
+            
+            // Sample pixels for faster min/max
+            const sampleSize = Math.min(data.length, 100000);
+            const step = Math.max(1, Math.floor(data.length / sampleSize));
+            
+            const samples: number[] = [];
             for (let i = 0; i < data.length; i += step) {
-                if (data[i] < min) min = data[i];
-                if (data[i] > max) max = data[i];
+                const val = data[i];
+                if (val < min) min = val;
+                if (val > max) max = val;
+                samples.push(val);
             }
 
-            const range = max - min || 1;
-            for (let i = 0; i < width * height; i++) {
-                const val = ((data[i] - min) / range) * 255;
+            // Use 99.5th percentile for max to reject hot pixels
+            let effectiveMax = max;
+            if (max - min > 500) {
+                samples.sort((a, b) => a - b);
+                effectiveMax = samples[Math.floor(samples.length * 0.995)];
+            }
+
+            const range = (effectiveMax - min) || 1;
+            
+            // Ensure we don't go out of bounds if dimensions are slightly off
+            const len = Math.min(data.length, width * height);
+            for (let i = 0; i < len; i++) {
+                const val = Math.max(0, Math.min(255, ((data[i] - min) / range) * 255));
                 const idx = i * 4;
                 pixels[idx] = val;     // R
                 pixels[idx + 1] = val; // G

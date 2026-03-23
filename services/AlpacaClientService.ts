@@ -182,8 +182,10 @@ export class AlpacaClientService {
     public async putCommand(deviceType: string, deviceNumber: number, action: string, params: Record<string, any> = {}) {
         if (!this.baseUrl) return null;
         
-        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action.toLowerCase()}`;
+        // Alpaca standard uses PascalCase for actions in the URL
+        const targetUrl = `${this.baseUrl}/${deviceType.toLowerCase()}/${deviceNumber}/${action}`;
         const bodyParams = new URLSearchParams();
+        bodyParams.append('ClientID', '24233191433'); // Unique ID for this app
         bodyParams.append('ClientTransactionID', this.getNextId().toString());
         for (const [key, value] of Object.entries(params)) {
             let val = value;

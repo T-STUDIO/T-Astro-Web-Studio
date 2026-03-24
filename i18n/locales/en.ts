@@ -207,7 +207,7 @@ export const en = {
     integrations: 'Integrations',
     sampStatus: 'SAMP Status',
     viewInAladin: 'View in Aladin',
-    connectVirtualSamp: 'Connect Virtual Hub (Sim)',
+    connectVirtualSamp: 'Start Internal SAMP Hub',
     connectSampHub: 'Connect SAMP Hub',
     disconnectSamp: 'Disconnect SAMP',
     planetariumSettings: 'Planetarium Settings',

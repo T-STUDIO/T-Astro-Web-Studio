@@ -235,7 +235,7 @@ export const ja = {
     integrations: '連携機能',
     sampStatus: 'SAMPステータス',
     viewInAladin: 'Aladinで表示',
-    connectVirtualSamp: '仮想ハブに接続 (Sim)',
+    connectVirtualSamp: '内部SAMPハブを起動',
     connectSampHub: 'SAMPハブ接続',
     disconnectSamp: 'SAMPを切断',
     planetariumSettings: 'プラネタリウム設定',

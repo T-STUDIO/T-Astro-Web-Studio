@@ -85,6 +85,7 @@ const AppAlpaca: React.FC = () => {
 
   const [alpacaDevices, setAlpacaDevices] = useState<any[]>([]);
   const [alpacaMessageCount, setAlpacaMessageCount] = useState(0);
+  const [cameraCapabilities, setCameraCapabilities] = useState<any>(null);
 
   useEffect(() => {
     console.log("[AppAlpaca] Rendering Alpaca App Component");
@@ -200,12 +201,14 @@ const AppAlpaca: React.FC = () => {
     AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
     AstroService.setDeviceCallback(devs => setAlpacaDevices(devs));
     AstroService.setMessageCountCallback(count => setAlpacaMessageCount(count));
+    AstroService.setCameraCapabilitiesCallback(caps => setCameraCapabilities(caps));
     setAlpacaDevices(AstroService.getDevices());
     return () => {
         AstroService.setImageReceivedCallback(null);
         AstroService.setTelescopePositionCallback(null);
         AstroService.setDeviceCallback(null);
         AstroService.setMessageCountCallback(null);
+        AstroService.setCameraCapabilitiesCallback(null);
     };
   }, [isCapturing]);
 
@@ -470,6 +473,7 @@ const AppAlpaca: React.FC = () => {
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         alpacaDevices={alpacaDevices}
                         alpacaMessageCount={alpacaMessageCount}
+                        cameraCapabilities={cameraCapabilities}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
                         onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                         onSendLocationToMount={onSendLocationToMount}

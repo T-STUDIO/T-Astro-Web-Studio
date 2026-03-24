@@ -400,7 +400,14 @@ const ImagingPanel = memo((props: any) => {
         <div className="w-full space-y-2 bg-slate-800/20 p-2 rounded-lg border border-slate-700/50">
             <h3 className="text-xs font-bold text-slate-500 uppercase">{t('controlPanel.videoStreamLabel')}</h3>
             <p className="text-[10px] text-slate-500 leading-tight mb-1">{t('tooltips.videoStream')}</p>
-            <Button onClick={onToggleVideoStream} disabled={isLiveViewActive} variant={isVideoStreamActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.videoStream')}>
+            <Button 
+                onClick={onToggleVideoStream} 
+                disabled={isLiveViewActive || !cameraCapabilities?.CanFastReadout} 
+                variant={isVideoStreamActive ? "danger" : "secondary"} 
+                className="w-full text-xs" 
+                type="button" 
+                title={!cameraCapabilities?.CanFastReadout ? "Live View (Video Stream) is not supported by this camera" : t('tooltips.videoStream')}
+            >
                 {isVideoStreamActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopVideoStream')}</> : <><VideoIcon className="w-4 h-4" /> {t('controlPanel.videoStream')}</>}
             </Button>
         </div>
@@ -441,11 +448,11 @@ const ImagingPanel = memo((props: any) => {
                 </Button>
                 <Button 
                     onClick={onToggleLiveView} 
-                    disabled={isVideoStreamActive || !cameraCapabilities?.CanFastReadout} 
+                    disabled={isVideoStreamActive} 
                     variant={isLiveViewActive ? "danger" : "secondary"} 
                     className="w-full text-xs" 
                     type="button" 
-                    title={!cameraCapabilities?.CanFastReadout ? "Live View (Fast Readout) is not supported by this camera" : t('tooltips.liveView')}
+                    title={t('tooltips.liveView')}
                 >
                     {isLiveViewActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopLiveView')}</> : <><CameraIcon className="w-4 h-4" /> {t('controlPanel.liveView')}</>}
                 </Button>

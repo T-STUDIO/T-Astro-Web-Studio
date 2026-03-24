@@ -331,7 +331,8 @@ const ImagingPanel = memo((props: any) => {
     const { 
         connectionStatus, isLiveViewActive, onToggleLiveView, exposure, gain, offset, binning, colorBalance,
         onSetExposure, onSetGain, onSetOffset, onSetBinning, onSetColorBalance, onPreview, isCapturing, onStartCapture, onStopCapture,
-        alpacaDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings
+        alpacaDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings,
+        cameraCapabilities
     } = props;
 
     const devices = (alpacaDevices || []) as AlpacaDevice[];
@@ -438,7 +439,14 @@ const ImagingPanel = memo((props: any) => {
                     {isPreviewLoading ? <div className="w-4 h-4 bg-white rounded-sm"></div> : <CameraIcon className="w-5 h-5" />} 
                     {isPreviewLoading ? ` ${t('controlPanel.loading') || '読込中...'}` : t('controlPanel.preview')}
                 </Button>
-                <Button onClick={onToggleLiveView} disabled={isVideoStreamActive} variant={isLiveViewActive ? "danger" : "secondary"} className="w-full text-xs" type="button" title={t('tooltips.liveView')}>
+                <Button 
+                    onClick={onToggleLiveView} 
+                    disabled={isVideoStreamActive || !cameraCapabilities?.CanFastReadout} 
+                    variant={isLiveViewActive ? "danger" : "secondary"} 
+                    className="w-full text-xs" 
+                    type="button" 
+                    title={!cameraCapabilities?.CanFastReadout ? "Live View (Fast Readout) is not supported by this camera" : t('tooltips.liveView')}
+                >
                     {isLiveViewActive ? <><StopIcon className="w-4 h-4" /> {t('controlPanel.stopLiveView')}</> : <><CameraIcon className="w-4 h-4" /> {t('controlPanel.liveView')}</>}
                 </Button>
             </div>

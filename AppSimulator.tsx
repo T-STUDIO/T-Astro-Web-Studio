@@ -430,7 +430,15 @@ const AppSimulator: React.FC = () => {
                         sampStatus={sampStatus}
                         sampSettings={sampSettings}
                         onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                        onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
+                        onConnectSamp={async () => { 
+                          setSampStatus('Connecting'); 
+                          await SampService.connect(sampSettings); 
+                        }}
+                        onConnectVirtualSamp={() => {
+                          setSampStatus('Connecting');
+                          SampService.connectInternal((status) => setSampStatus(status), sampSettings);
+                        }}
+                        onDisconnectSamp={() => SampService.disconnect()}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}

@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import dgram from 'dgram';
 import url from 'url';
 import path from 'path';
+import xmlrpc from 'xmlrpc';
 
 const args = process.argv.slice(2);
 const portArg = args.indexOf('--port');
@@ -19,8 +20,29 @@ const ALPACA_PORT = 11111;
 const WS_PORT = 11112;
 const DISCOVERY_PORT = 32227;
 
+// --- SAMP Hub State ---
+interface SampClient {
+    id: string;
+    privateKey: string;
+    xmlrpcUrl: string;
+    metadata: any;
+    subscriptions: any;
+}
+
+const sampClients = new Map<string, SampClient>();
+const sampHubSecret = 't-astro-samp-secret-' + Math.random().toString(36).substring(7);
+
 async function startServer() {
     const app = express();
+
+    // CORS for SAMP Web Profile
+    app.use((req, res, next) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', '*');
+        if (req.method === 'OPTIONS') return res.status(200).end();
+        next();
+    });
 
     // Proxy routes BEFORE body parsers to allow piping raw streams (crucial for SAMP and Alpaca PUT/POST)
     app.all('/api/alpaca/proxy', async (req, res) => {
@@ -142,8 +164,104 @@ async function startServer() {
         }
     });
 
+    // --- SAMP Web Profile Registration ---
+    app.post('/samp-registration', (req, res) => {
+        console.log('[SAMP Hub] Registration request received');
+        const protocol = req.protocol;
+        const host = req.get('host');
+        res.json({
+            "samp.hub.xmlrpc.url": `${protocol}://${host}/api/samp/xmlrpc`,
+            "samp.secret": sampHubSecret,
+            "samp.private-key": "t-astro-private-" + Math.random().toString(36).substring(7)
+        });
+    });
+
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
+
+    // --- SAMP XML-RPC Hub Implementation ---
+    // We use a custom handler to integrate with Express
+    const xmlRpcServer = xmlrpc.createServer({ path: '/api/samp/xmlrpc' }, () => {});
+    
+    // Register method
+    xmlRpcServer.on('samp.hub.register', (err, params, callback) => {
+        const secret = params[0];
+        if (secret !== sampHubSecret) return callback(new Error('Invalid secret'), null);
+        
+        const clientId = 'client-' + Math.random().toString(36).substring(7);
+        const privateKey = 'pk-' + Math.random().toString(36).substring(7);
+        
+        sampClients.set(clientId, {
+            id: clientId,
+            privateKey,
+            xmlrpcUrl: '',
+            metadata: {},
+            subscriptions: {}
+        });
+        
+        console.log(`[SAMP Hub] Client registered: ${clientId}`);
+        callback(null, {
+            "samp.self-id": clientId,
+            "samp.private-key": privateKey,
+            "samp.hub-id": "t-astro-hub"
+        });
+    });
+
+    // Unregister method
+    xmlRpcServer.on('samp.hub.unregister', (err, params, callback) => {
+        const privateKey = params[0];
+        let foundId = '';
+        for (const [id, client] of sampClients.entries()) {
+            if (client.privateKey === privateKey) { foundId = id; break; }
+        }
+        if (foundId) {
+            sampClients.delete(foundId);
+            console.log(`[SAMP Hub] Client unregistered: ${foundId}`);
+        }
+        callback(null, "");
+    });
+
+    // Declare Metadata
+    xmlRpcServer.on('samp.hub.declareMetadata', (err, params, callback) => {
+        const privateKey = params[0];
+        const metadata = params[1];
+        for (const client of sampClients.values()) {
+            if (client.privateKey === privateKey) { client.metadata = metadata; break; }
+        }
+        callback(null, "");
+    });
+
+    // Declare Subscriptions
+    xmlRpcServer.on('samp.hub.declareSubscriptions', (err, params, callback) => {
+        const privateKey = params[0];
+        const subs = params[1];
+        for (const client of sampClients.values()) {
+            if (client.privateKey === privateKey) { client.subscriptions = subs; break; }
+        }
+        callback(null, "");
+    });
+
+    // Notify All (Broadcast)
+    xmlRpcServer.on('samp.hub.notifyAll', (err, params, callback) => {
+        const privateKey = params[0];
+        const message = params[1];
+        
+        let senderId = '';
+        for (const [id, client] of sampClients.entries()) {
+            if (client.privateKey === privateKey) { senderId = id; break; }
+        }
+
+        console.log(`[SAMP Hub] Broadcast from ${senderId}: ${message['samp.mtype']}`);
+        callback(null, "");
+    });
+
+    // Mount the XML-RPC server to Express
+    // Note: xmlrpc server handles the request by listening to the 'request' event if created with http.Server
+    // But here we want to pipe it from Express.
+    app.post('/api/samp/xmlrpc', (req, res) => {
+        // @ts-ignore - access internal handler
+        xmlRpcServer.httpServer.emit('request', req, res);
+    });
 
     const server = http.createServer(app);
 

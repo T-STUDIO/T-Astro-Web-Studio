@@ -454,6 +454,10 @@ const AppAlpaca: React.FC = () => {
                             await SampService.connect(sampSettings);
                           }
                         }}
+                        onConnectVirtualSamp={() => {
+                          setSampStatus('Connecting');
+                          SampService.connectInternal((status) => setSampStatus(status), sampSettings);
+                        }}
                         onDisconnectSamp={() => SampService.disconnect()}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}

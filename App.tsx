@@ -439,8 +439,21 @@ const App: React.FC = () => {
                 isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
                 onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                 sampStatus={sampStatus}
-                onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); setSampStatus('Connected'); }}
-                onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
+                sampSettings={sampSettings}
+                onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
+                onConnectSamp={async () => { 
+                  if (sampStatus === 'Connected') {
+                    SampService.disconnect();
+                  } else {
+                    setSampStatus('Connecting'); 
+                    await SampService.connect(sampSettings);
+                  }
+                }}
+                onConnectVirtualSamp={() => {
+                  setSampStatus('Connecting');
+                  SampService.connectInternal((status) => setSampStatus(status), sampSettings);
+                }}
+                onDisconnectSamp={() => SampService.disconnect()}
                 isCapturing={isCapturing}
                 captureProgress={captureProgress}
                 selectedObject={selectedObject}
@@ -502,7 +515,15 @@ const App: React.FC = () => {
                         sampStatus={sampStatus}
                         sampSettings={sampSettings}
                         onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                        onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
+                        onConnectSamp={async () => { 
+                          setSampStatus('Connecting'); 
+                          await SampService.connect(sampSettings); 
+                        }}
+                        onConnectVirtualSamp={() => {
+                          setSampStatus('Connecting');
+                          SampService.connectInternal((status) => setSampStatus(status), sampSettings);
+                        }}
+                        onDisconnectSamp={() => SampService.disconnect()}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}

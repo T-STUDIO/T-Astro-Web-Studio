@@ -6,7 +6,12 @@ import { WebSocketServer, WebSocket } from 'ws';
 import dgram from 'dgram';
 import url from 'url';
 import path from 'path';
-import xmlrpc from 'xmlrpc';
+import * as xmlrpc from 'xmlrpc';
+// @ts-ignore
+import Deserializer from 'xmlrpc/lib/deserializer.js';
+// @ts-ignore
+import Serializer from 'xmlrpc/lib/serializer.js';
+import EventEmitter from 'events';
 
 console.log('[Server] Starting T-Astro Web Studio...');
 
@@ -17,7 +22,7 @@ const hostArg = args.indexOf('--host');
 const cmdHost = hostArg !== -1 ? args[hostArg + 1] : null;
 const BIND_HOST = cmdHost || '0.0.0.0';
 
-const PORT = cmdPort || (process.env.PORT ? parseInt(process.env.PORT) : 3000);
+const PORT = cmdPort || (process.env.PORT ? parseInt(process.env.PORT) : 6002);
 const ALPACA_PORT = 11111;
 const WS_PORT = 11112;
 const DISCOVERY_PORT = 32227;
@@ -121,6 +126,7 @@ async function startServer() {
             return res.status(400).json({ error: 'Missing target URL' });
         }
 
+        // Note: Localhost proxying is allowed to support local server installations.
         console.log(`[SAMP Proxy] ${req.method} -> ${targetUrl}`);
         try {
             const parsedUrl = new URL(targetUrl);
@@ -169,7 +175,7 @@ async function startServer() {
     // --- SAMP Web Profile Registration ---
     app.post('/samp-registration', (req, res) => {
         console.log('[SAMP Hub] Registration request received');
-        const protocol = req.protocol;
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
         const host = req.get('host');
         res.json({
             "samp.hub.xmlrpc.url": `${protocol}://${host}/api/samp/xmlrpc`,
@@ -178,109 +184,174 @@ async function startServer() {
         });
     });
 
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
-
     // --- SAMP XML-RPC Hub Implementation ---
+    class SampXmlRpcHub extends EventEmitter {
+        constructor() {
+            super();
+        }
+
+        handleRequest(req: any, res: any) {
+            const deserializer = new Deserializer();
+            deserializer.deserializeMethodCall(req, (error: any, methodName: string, params: any[]) => {
+                if (error) {
+                    console.error('[SAMP Hub] Deserialization error:', error);
+                    res.writeHead(500);
+                    return res.end();
+                }
+
+                console.log(`[SAMP Hub] Method call: ${methodName}`);
+                if (this.listenerCount(methodName) > 0) {
+                    this.emit(methodName, null, params, (err: any, value: any) => {
+                        let xml = null;
+                        if (err !== null) {
+                            xml = Serializer.serializeFault(err);
+                        } else {
+                            xml = Serializer.serializeMethodResponse(value);
+                        }
+                        res.writeHead(200, { 'Content-Type': 'text/xml' });
+                        res.end(xml);
+                    });
+                } else {
+                    console.warn(`[SAMP Hub] Method not found: ${methodName}`);
+                    res.writeHead(404);
+                    res.end();
+                }
+            });
+        }
+    }
+
     let xmlRpcServer: any;
     try {
         console.log('[SAMP Hub] Initializing XML-RPC server...');
-        // Use port 0 to let the OS pick any available port for the internal XML-RPC server
-        // to avoid conflicts with other services.
-        xmlRpcServer = xmlrpc.createServer({ path: '/api/samp/xmlrpc', port: 0 }, () => {
-            console.log('[SAMP Hub] Internal XML-RPC server ready');
-        });
-
-        if (!xmlRpcServer || typeof xmlRpcServer.on !== 'function') {
-            throw new Error('Failed to create XML-RPC server instance');
-        }
+        xmlRpcServer = new SampXmlRpcHub();
+        console.log('[SAMP Hub] XML-RPC server initialized successfully');
     } catch (e: any) {
         console.error('[SAMP Hub] Critical Error during initialization:', e.message);
-        // We don't exit here to allow the rest of the app to function even if SAMP fails
     }
     
     if (xmlRpcServer) {
+        // Helper to find client by private key
+        const getClientByPk = (pk: string) => {
+            for (const client of sampClients.values()) {
+                if (client.privateKey === pk) return client;
+            }
+            return null;
+        };
+
         // Register method
         xmlRpcServer.on('samp.hub.register', (err: any, params: any[], callback: any) => {
-        const secret = params[0];
-        if (secret !== sampHubSecret) return callback(new Error('Invalid secret'), null);
-        
-        const clientId = 'client-' + Math.random().toString(36).substring(7);
-        const privateKey = 'pk-' + Math.random().toString(36).substring(7);
-        
-        sampClients.set(clientId, {
-            id: clientId,
-            privateKey,
-            xmlrpcUrl: '',
-            metadata: {},
-            subscriptions: {}
+            const secret = params[0];
+            console.log(`[SAMP Hub] Register attempt with secret: ${secret}`);
+            if (secret !== sampHubSecret) {
+                console.warn('[SAMP Hub] Invalid secret provided');
+                return callback(new Error('Invalid secret'), null);
+            }
+            
+            const clientId = 'client-' + Math.random().toString(36).substring(7);
+            const privateKey = 'pk-' + Math.random().toString(36).substring(7);
+            
+            sampClients.set(clientId, {
+                id: clientId,
+                privateKey,
+                xmlrpcUrl: '',
+                metadata: {},
+                subscriptions: {}
+            });
+            
+            console.log(`[SAMP Hub] Client registered: ${clientId}`);
+            callback(null, {
+                "samp.self-id": clientId,
+                "samp.private-key": privateKey,
+                "samp.hub-id": "t-astro-hub"
+            });
         });
-        
-        console.log(`[SAMP Hub] Client registered: ${clientId}`);
-        callback(null, {
-            "samp.self-id": clientId,
-            "samp.private-key": privateKey,
-            "samp.hub-id": "t-astro-hub"
+
+        // Unregister method
+        xmlRpcServer.on('samp.hub.unregister', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const client = getClientByPk(privateKey);
+            if (client) {
+                sampClients.delete(client.id);
+                console.log(`[SAMP Hub] Client unregistered: ${client.id}`);
+            }
+            callback(null, "");
         });
-    });
 
-    // Unregister method
-    xmlRpcServer.on('samp.hub.unregister', (err, params, callback) => {
-        const privateKey = params[0];
-        let foundId = '';
-        for (const [id, client] of sampClients.entries()) {
-            if (client.privateKey === privateKey) { foundId = id; break; }
-        }
-        if (foundId) {
-            sampClients.delete(foundId);
-            console.log(`[SAMP Hub] Client unregistered: ${foundId}`);
-        }
-        callback(null, "");
-    });
+        // Declare Metadata
+        xmlRpcServer.on('samp.hub.declareMetadata', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const metadata = params[1];
+            const client = getClientByPk(privateKey);
+            if (client) {
+                client.metadata = metadata;
+                console.log(`[SAMP Hub] Metadata declared for ${client.id}: ${metadata['samp.name']}`);
+            }
+            callback(null, "");
+        });
 
-    // Declare Metadata
-    xmlRpcServer.on('samp.hub.declareMetadata', (err, params, callback) => {
-        const privateKey = params[0];
-        const metadata = params[1];
-        for (const client of sampClients.values()) {
-            if (client.privateKey === privateKey) { client.metadata = metadata; break; }
-        }
-        callback(null, "");
-    });
+        // Declare Subscriptions
+        xmlRpcServer.on('samp.hub.declareSubscriptions', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const subs = params[1];
+            const client = getClientByPk(privateKey);
+            if (client) {
+                client.subscriptions = subs;
+                console.log(`[SAMP Hub] Subscriptions declared for ${client.id}`);
+            }
+            callback(null, "");
+        });
 
-    // Declare Subscriptions
-    xmlRpcServer.on('samp.hub.declareSubscriptions', (err, params, callback) => {
-        const privateKey = params[0];
-        const subs = params[1];
-        for (const client of sampClients.values()) {
-            if (client.privateKey === privateKey) { client.subscriptions = subs; break; }
-        }
-        callback(null, "");
-    });
+        // Get Registered Clients
+        xmlRpcServer.on('samp.hub.getRegisteredClients', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const client = getClientByPk(privateKey);
+            if (!client) return callback(new Error('Invalid private key'), null);
+            
+            const ids = Array.from(sampClients.keys()).filter(id => id !== client.id);
+            callback(null, ids);
+        });
 
-    // Notify All (Broadcast)
-    xmlRpcServer.on('samp.hub.notifyAll', (err, params, callback) => {
-        const privateKey = params[0];
-        const message = params[1];
-        
-        let senderId = '';
-        for (const [id, client] of sampClients.entries()) {
-            if (client.privateKey === privateKey) { senderId = id; break; }
-        }
+        // Get Metadata
+        xmlRpcServer.on('samp.hub.getMetadata', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const targetId = params[1];
+            const client = getClientByPk(privateKey);
+            if (!client) return callback(new Error('Invalid private key'), null);
+            
+            const target = sampClients.get(targetId);
+            callback(null, target ? target.metadata : {});
+        });
 
-        console.log(`[SAMP Hub] Broadcast from ${senderId}: ${message['samp.mtype']}`);
-        callback(null, "");
-    });
+        // Notify All (Broadcast)
+        xmlRpcServer.on('samp.hub.notifyAll', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const message = params[1];
+            
+            const sender = getClientByPk(privateKey);
+            if (!sender) return callback(new Error('Invalid private key'), null);
 
-    // Mount the XML-RPC server to Express
-    app.post('/api/samp/xmlrpc', (req, res) => {
-        if (!xmlRpcServer || !xmlRpcServer.httpServer) {
-            return res.status(503).json({ error: 'SAMP Hub not initialized' });
-        }
-        // @ts-ignore - access internal handler
-        xmlRpcServer.httpServer.emit('request', req, res);
-    });
+            const mtype = message['samp.mtype'];
+            console.log(`[SAMP Hub] Broadcast from ${sender.id}: ${mtype}`);
+            
+            // In a real hub, we would iterate over clients and call their receiveNotification
+            // For this internal hub, we acknowledge the broadcast.
+            callback(null, "");
+        });
+
+        // Mount the XML-RPC server to Express
+        app.post('/api/samp/xmlrpc', (req, res) => {
+            if (!xmlRpcServer) {
+                return res.status(503).json({ error: 'SAMP Hub not initialized' });
+            }
+            console.log('[SAMP Hub] XML-RPC request received at /api/samp/xmlrpc');
+            xmlRpcServer.handleRequest(req, res);
+        });
     }
+
+    // Body parsers AFTER SAMP Hub and Proxy routes to avoid consuming streams
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+
 
     const server = http.createServer(app);
 

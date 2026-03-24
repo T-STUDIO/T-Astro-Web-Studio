@@ -498,15 +498,25 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const ra = parseFloat(center.ra.toFixed(4));
             const dec = parseFloat(center.dec.toFixed(4));
             
-            const tileFov = 2.0;
             const viewFov = 60 / zoom;
+            // Adjust tile size based on zoom level
+            // For wide fields, we need larger tiles to cover the view
+            const tileFov = viewFov > 30 ? 15.0 : viewFov > 15 ? 7.5 : viewFov > 5 ? 3.0 : 1.5;
             
-            const offsets = viewFov > tileFov * 0.5 ? [
+            // If view is wider than one tile, fetch a grid
+            const offsets = viewFov > tileFov * 0.4 ? [
                 {dra: 0, ddec: 0},
                 {dra: tileFov, ddec: 0}, {dra: -tileFov, ddec: 0},
                 {dra: 0, ddec: tileFov}, {dra: 0, ddec: -tileFov},
                 {dra: tileFov, ddec: tileFov}, {dra: -tileFov, ddec: tileFov},
-                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov}
+                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov},
+                // Add more tiles for very wide fields
+                ...(viewFov > tileFov * 1.2 ? [
+                    {dra: 2*tileFov, ddec: 0}, {dra: -2*tileFov, ddec: 0},
+                    {dra: 0, ddec: 2*tileFov}, {dra: 0, ddec: -2*tileFov},
+                    {dra: 2*tileFov, ddec: 2*tileFov}, {dra: -2*tileFov, ddec: 2*tileFov},
+                    {dra: 2*tileFov, ddec: -2*tileFov}, {dra: -2*tileFov, ddec: -2*tileFov}
+                ] : [])
             ] : [{dra: 0, ddec: 0}];
 
             const newTiles: { image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[] = [];
@@ -526,50 +536,34 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     {
                         name: 'Aladin',
                         url: `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`
-                    },
-                    {
-                        name: 'ESO',
-                        url: `https://archive.eso.org/dss/dss/image?ra=${targetRa}&dec=${targetDec}&x=${tileFov*60}&y=${tileFov*60}&mime-type=download-jpeg`
-                    },
-                    {
-                        name: 'STScI',
-                        url: `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${targetRa}&d=${targetDec}&e=J2000&h=${tileFov*60}&w=${tileFov*60}&f=gif`
                     }
                 ];
 
                 if (offsets.indexOf(offset) > 0) {
                     await new Promise(resolve => {
-                        const t = setTimeout(resolve, 300);
+                        const t = setTimeout(resolve, 200);
                         signal.addEventListener('abort', () => clearTimeout(t));
                     });
                 }
 
                 if (signal.aborted) return;
 
+                let tileLoaded = false;
                 for (const source of sources) {
-                    if (signal.aborted) return;
+                    if (signal.aborted || tileLoaded) break;
                     try {
-                        console.log(`[Planetarium] Fetching DSS tile from ${source.name}: ${targetRa},${targetDec}`);
+                        console.log(`[Planetarium] Fetching DSS tile (${targetRa.toFixed(2)}, ${targetDec.toFixed(2)}) from ${source.name}`);
                         const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(source.url)}`;
                         const response = await fetch(proxiedUrl, { signal });
-                        if (!response.ok) {
-                            console.warn(`[Planetarium] Proxy error for ${source.name}: ${response.status}`);
-                            throw new Error(`Proxy error ${response.status}`);
-                        }
+                        if (!response.ok) throw new Error(`Proxy error ${response.status}`);
                         
                         const blob = await response.blob();
-                        if (blob.size < 1000) {
-                            console.warn(`[Planetarium] Received small/invalid blob from ${source.name}: ${blob.size} bytes`);
-                            throw new Error('Invalid image data');
-                        }
+                        if (blob.size < 2000) throw new Error('Invalid image data (too small)');
 
                         const img = new Image();
                         await new Promise((resolve, reject) => {
                             img.onload = resolve;
-                            img.onerror = (err) => {
-                                console.error(`[Planetarium] Image load error for ${source.name}:`, err);
-                                reject(err);
-                            };
+                            img.onerror = reject;
                             img.src = URL.createObjectURL(blob);
                             signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
                         });
@@ -580,12 +574,12 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             image: img,
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
                         });
-                        console.log(`[Planetarium] Successfully loaded DSS tile ${newTiles.length}/9 from ${source.name}`);
+                        tileLoaded = true;
+                        // Update UI incrementally
                         setDssTiles([...newTiles]);
-                        break; 
                     } catch (e: any) {
                         if (e.name === 'AbortError') return;
-                        console.warn(`[Planetarium] Tile ${offset.dra},${offset.ddec} failed from ${source.name}:`, e.message);
+                        console.warn(`[Planetarium] Tile failed from ${source.name}:`, e.message);
                     }
                 }
             }

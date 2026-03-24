@@ -152,30 +152,31 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         return;
     }
 
-    const meta = {
-        "samp.name": "T-Astro Web Studio (Internal)",
-        "samp.description.text": "Web-based Astronomy Control Center (Internal Hub)",
-        "samp.icon.url": window.location.origin + "/favicon.ico"
-    };
-
     try {
-        // For internal hub, we point the connector to our own server's registration endpoint
-        // The samp.js Connector usually looks for the hub automatically, 
-        // but we can override the registration URL if needed.
+        // 1. Fetch registration info from our server
+        const regResponse = await fetch(`${window.location.origin}/samp-registration`, { method: 'POST' });
+        if (!regResponse.ok) throw new Error('Failed to get registration info from server');
+        
+        const regData = await regResponse.json();
+        const hubUrl = regData["samp.hub.xmlrpc.url"];
+        const secret = regData["samp.secret"];
+        
+        console.log(`[SAMP] Internal Hub URL: ${hubUrl}`);
+
+        const meta = {
+            "samp.name": "T-Astro Web Studio (Internal)",
+            "samp.description.text": "Web-based Astronomy Control Center (Internal Hub)",
+            "samp.icon.url": window.location.origin + "/favicon.ico"
+        };
+
+        // 2. Create connector and override hub URL
         connector = new window.samp.Connector(meta);
         
-        // Override the registration URL to our internal endpoint
-        const registrationUrl = `${window.location.origin}/samp-registration`;
-        console.log(`[SAMP] Using internal registration URL: ${registrationUrl}`);
-        
-        // We need to monkey-patch or configure the connector to use our URL
-        // In samp.js, the XmlRpcClient is what handles the calls.
+        // We need to ensure the connector uses our hub URL and secret
+        // The samp.js Connector usually does its own registration, 
+        // but we can try to configure its internal client.
         if (connector.client) {
-            // This is a bit of a hack depending on samp.js internals, 
-            // but usually we can set the hubUrl or similar.
-            // For the Web Profile, it's often hardcoded to localhost:21012, 
-            // so we might need to proxy it or use a custom client.
-            connector.client.hubUrl = `${window.location.origin}/api/samp/xmlrpc`;
+            connector.client.hubUrl = hubUrl;
         }
 
         connector.onConnectionChange = (isConnected: boolean) => {
@@ -185,14 +186,43 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
             }
         };
 
+        // 3. Register using the secret we got
+        // Note: samp.js Connector.register() usually tries to find the hub on localhost.
+        // We might need to manually call the register method if the connector doesn't pick up our override.
+        
+        // Try standard register first, but it might fail if it ignores our hubUrl override
         connector.register();
+
+        // If not connected after a short delay, try manual registration
+        setTimeout(() => {
+            if (connector && !connector.connection) {
+                console.log("[SAMP] Standard registration failed or timed out, trying manual registration...");
+                const client = new window.samp.XmlRpcClient(hubUrl);
+                client.execute("samp.hub.register", [secret], (err: any, result: any) => {
+                    if (err) {
+                        console.error("[SAMP] Manual registration failed:", err);
+                        if (statusCallback) statusCallback('Error', { error: 'Manual registration failed: ' + err.message });
+                    } else {
+                        console.log("[SAMP] Manual registration successful", result);
+                        // Create a connection object manually
+                        const conn = new window.samp.Connection(client, result["samp.private-key"]);
+                        connector.connection = conn;
+                        if (statusCallback) statusCallback('Connected');
+                        
+                        // Declare metadata and subscriptions
+                        conn.call("samp.hub.declareMetadata", [result["samp.private-key"], meta], () => {});
+                        conn.call("samp.hub.declareSubscriptions", [result["samp.private-key"], {}], () => {});
+                    }
+                });
+            }
+        }, 2000);
 
         setTimeout(() => {
             if (connector && !connector.connection && statusCallback) {
                 console.warn("[SAMP] Internal connection timeout");
                 statusCallback('Error', { error: 'Internal Hub connection timeout.' });
             }
-        }, 5000);
+        }, 10000);
     } catch (e: any) {
         console.error("[SAMP] Internal connection error:", e);
         if (statusCallback) statusCallback('Error', { error: e.message });

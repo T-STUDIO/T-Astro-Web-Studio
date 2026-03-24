@@ -8,6 +8,32 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 let imageReceivedCallback: ((url: string, format: string, metadata?: any) => void) | null = null;
 let telescopePositionCallback: ((pos: TelescopePosition) => void) | null = null;
+let cameraCapabilitiesCallback: ((caps: any) => void) | null = null;
+let cameraCapabilities: any = null;
+let positionInterval: any = null;
+
+const startPositionPolling = () => {
+    if (positionInterval) return;
+    addDebugLog("Starting telescope position polling...");
+    positionInterval = setInterval(async () => {
+        try {
+            const pos = await getTelescopePosition();
+            if (pos && telescopePositionCallback) {
+                telescopePositionCallback(pos);
+            }
+        } catch (e) {
+            // Silent fail for polling
+        }
+    }, 2000);
+};
+
+const stopPositionPolling = () => {
+    if (positionInterval) {
+        addDebugLog("Stopping telescope position polling.");
+        clearInterval(positionInterval);
+        positionInterval = null;
+    }
+};
 
 export const setImageReceivedCallback = (cb: typeof imageReceivedCallback) => {
     imageReceivedCallback = cb;
@@ -15,6 +41,11 @@ export const setImageReceivedCallback = (cb: typeof imageReceivedCallback) => {
 
 export const setTelescopePositionCallback = (cb: typeof telescopePositionCallback) => {
     telescopePositionCallback = cb;
+};
+
+export const setCameraCapabilitiesCallback = (cb: typeof cameraCapabilitiesCallback) => {
+    cameraCapabilitiesCallback = cb;
+    if (cameraCapabilities && cb) cb(cameraCapabilities);
 };
 
 let logCallback: ((msg: string) => void) | null = null;
@@ -62,6 +93,7 @@ export const connect = async (settings: any): Promise<boolean> => {
         addDebugLog(`Connected successfully. Found ${alpacaClient.getDevices().length} devices.`);
         // Try to connect primary devices
         await connectDevices();
+        startPositionPolling();
     } else {
         addDebugLog(`Connection failed.`);
     }
@@ -86,6 +118,15 @@ export const connectDevices = async () => {
                     addDebugLog(`Unparking telescope ${device.deviceNumber}...`);
                     await alpacaClient.putCommand('Telescope', device.deviceNumber, 'Unpark');
                 }
+
+                // If it's a camera, get capabilities
+                if (device.deviceType.toLowerCase() === 'camera') {
+                    addDebugLog(`Fetching camera capabilities...`);
+                    cameraCapabilities = await getCameraCapabilities();
+                    if (cameraCapabilities && cameraCapabilitiesCallback) {
+                        cameraCapabilitiesCallback(cameraCapabilities);
+                    }
+                }
             } else {
                 addDebugLog(`❌ Failed to connect ${device.deviceType} ${device.deviceNumber}: ${res?.ErrorMessage || 'Unknown error'}`);
             }
@@ -104,6 +145,8 @@ export const disconnectDevices = async () => {
 };
 
 export const disconnect = async () => {
+    stopPositionPolling();
+    stopStream();
     alpacaClient.disconnect();
 };
 
@@ -225,10 +268,28 @@ export const syncToCoordinates = async (ra: number, dec: number) => {
 };
 
 export const getTelescopePosition = async (): Promise<TelescopePosition | null> => {
-    const raRes = await alpacaClient.getCommand('Telescope', getDeviceNumber('Telescope'), 'RightAscension');
-    const decRes = await alpacaClient.getCommand('Telescope', getDeviceNumber('Telescope'), 'Declination');
-    if (raRes && decRes) {
-        return { ra: raRes.Value * 15, dec: decRes.Value };
+    const telId = getDeviceNumber('Telescope');
+    if (telId === -1) return null;
+    
+    try {
+        const raRes = await alpacaClient.getCommand('Telescope', telId, 'RightAscension');
+        const decRes = await alpacaClient.getCommand('Telescope', telId, 'Declination');
+        
+        if (raRes && raRes.ErrorNumber === 0 && decRes && decRes.ErrorNumber === 0) {
+            const ra = raRes.Value * 15; // Convert hours to degrees
+            const dec = decRes.Value;
+            
+            // Log every 10th poll to avoid flooding but show it's working
+            if (Math.random() < 0.1) {
+                console.log(`[Alpaca] Telescope Position: RA=${ra.toFixed(4)}°, Dec=${dec.toFixed(4)}° (Raw RA=${raRes.Value}h)`);
+            }
+            
+            return { ra, dec };
+        } else if (raRes?.ErrorNumber !== 0 || decRes?.ErrorNumber !== 0) {
+            console.warn(`[Alpaca] Failed to get position: RA_Err=${raRes?.ErrorNumber}, Dec_Err=${decRes?.ErrorNumber}`);
+        }
+    } catch (e: any) {
+        console.error(`[Alpaca] Error polling position: ${e.message}`);
     }
     return null;
 };
@@ -310,6 +371,24 @@ export const setTracking = async (enabled: boolean) => {
 export const setPark = async (parked: boolean) => {
     if (parked) await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'Park');
     else await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'Unpark');
+};
+
+export const getCameraCapabilities = async () => {
+    const camId = getDeviceNumber('Camera');
+    if (camId === -1) return null;
+    try {
+        const canFast = await alpacaClient.getCommand('Camera', camId, 'CanFastReadout');
+        const canSetTemp = await alpacaClient.getCommand('Camera', camId, 'CanSetCCDTemperature');
+        const canAbort = await alpacaClient.getCommand('Camera', camId, 'CanAbortExposure');
+        
+        return {
+            canFastReadout: canFast?.Value === true,
+            canSetCCDTemperature: canSetTemp?.Value === true,
+            canAbortExposure: canAbort?.Value === true
+        };
+    } catch (e) {
+        return null;
+    }
 };
 
 export const updateGain = async (gain: number) => {

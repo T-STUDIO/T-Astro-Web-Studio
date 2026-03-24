@@ -103,12 +103,13 @@ export class AlpacaImageService {
         let width = d2;
 
         // Heuristic: Most astro cameras are landscape. If d1 > d2, they might be swapped in the driver.
+        // Or the camera is physically rotated.
         let rotate = false;
         if (d1 > d2 && (header.rank === 2 || header.rank === 3 || !header.rank)) {
             width = d1;
             height = d2;
             rotate = true;
-            console.log(`[AlpacaImage] Heuristic: Rotating image (d1=${d1}, d2=${d2}, rank=${header.rank}) to landscape.`);
+            console.log(`[AlpacaImage] Heuristic: Rotating image (d1=${d1}, d2=${d2}, rank=${header.rank}) to landscape (CCW 90).`);
         }
         
         if (width <= 0 || height <= 0 || !data || data.length === 0) {
@@ -162,22 +163,13 @@ export class AlpacaImageService {
             const sampleSize = Math.min(data.length, 100000);
             const step = Math.max(1, Math.floor(data.length / sampleSize));
             
-            const samples: number[] = [];
             for (let i = 0; i < data.length; i += step) {
                 const val = data[i];
                 if (val < min) min = val;
                 if (val > max) max = val;
-                samples.push(val);
             }
 
-            // Use a higher percentile to avoid over-brightening
-            let effectiveMax = max;
-            if (max - min > 100) {
-                samples.sort((a, b) => a - b);
-                effectiveMax = samples[Math.floor(samples.length * 0.999)];
-            }
-
-            const range = (effectiveMax - min) || 1;
+            const range = (max - min) || 1;
             
             if (rotate) {
                 // Fill pixels with rotation (transpose)

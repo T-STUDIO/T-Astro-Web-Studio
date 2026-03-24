@@ -1,5 +1,4 @@
 import { CelestialObject, PlateSolverType, LocalSolverSettings, SlewStatus, LogEntry, ConnectionStatus } from '../types';
-import * as AstroService from './AstroService';
 import { solveImageAstrometryNet, solveImageLocal } from './plateSolvingService';
 import { hmsToDegrees, dmsToDegrees, calculateAngularDistance } from '../utils/coords';
 
@@ -15,6 +14,7 @@ export interface SlewRequest {
     localSettings: LocalSolverSettings;
     setStatus: (status: SlewStatus) => void;
     addLog: (key: string, substitutions?: any, type?: LogEntry['type']) => void;
+    astroService: any; // Add this
 }
 
 /**
@@ -45,14 +45,14 @@ export class AutoCenterService {
      * 通常のスルー移動（GoTo）を実行します。
      */
     private static async runStandardSlew(req: SlewRequest) {
-        const { target, setStatus, addLog } = req;
+        const { target, setStatus, addLog, astroService } = req;
         if (!target) return;
 
         setStatus('Slewing');
         addLog('logs.slewing', { objectName: target.name });
         
         try {
-            await AstroService.slewTo(target);
+            await astroService.slewTo(target);
             setStatus('Idle');
             addLog('logs.slewComplete', { objectName: target.name }, 'success');
         } catch (e: any) {
@@ -68,7 +68,7 @@ export class AutoCenterService {
         if (this.isRunning) return;
         this.isRunning = true;
 
-        const { target, setStatus, addLog } = req;
+        const { target, setStatus, addLog, astroService } = req;
         if (!target) { this.isRunning = false; return; }
 
         try {
@@ -79,13 +79,13 @@ export class AutoCenterService {
             for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
                 // 1. 移動：ターゲット座標へスルー
                 setStatus('Slewing');
-                await AstroService.slewTo(target);
+                await astroService.slewTo(target);
                 // 架台の振動収束待ち
                 await new Promise(resolve => setTimeout(resolve, 4000));
 
                 // 2. 撮影：Plate Solving用の画像を1枚キャプチャ
                 setStatus('Solving');
-                await AstroService.capturePreview(req.exposure, req.gain, req.offset, true);
+                await astroService.capturePreview(req.exposure, req.gain, req.offset, true);
                 // 露出時間 + 転送のバッファ待機
                 await new Promise(resolve => setTimeout(resolve, req.exposure + 2500));
 
@@ -117,7 +117,7 @@ export class AutoCenterService {
 
                 // 5. 同期：現在の望遠鏡位置を解析結果で同期（オフセットを赤道儀に教える）
                 setStatus('Centering');
-                await AstroService.syncToCoordinates(currentRa, currentDec);
+                await astroService.syncToCoordinates(currentRa, currentDec);
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
                 // 次のループの先頭で、補正されたオフセット込みのターゲット座標へ再導入される
@@ -139,8 +139,8 @@ export class AutoCenterService {
     /**
      * 全てのスルー移動を中止します。
      */
-    public static abort() {
+    public static abort(astroService: any) {
         this.isRunning = false;
-        AstroService.abortSlew();
+        astroService.abortSlew();
     }
 }

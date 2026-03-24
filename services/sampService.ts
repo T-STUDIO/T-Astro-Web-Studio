@@ -70,8 +70,8 @@ export const connect = async (settings: SampSettings) => {
         // Connector handles the Web Profile (CORS, etc.)
         // We use the proxy URL as the hub URL
         connector = new window.samp.Connector(meta, { 
-            hubUrl: `${window.location.origin}/api/samp/proxy`,
-            hub_url: `${window.location.origin}/api/samp/proxy`
+            hubUrl: proxyUrl,
+            hub_url: proxyUrl
         });
 
         // Override the register method to add the header

@@ -53,10 +53,10 @@ export class AlpacaClientService {
             'errormessage': 'ErrorMessage',
             'clienttransactionid': 'ClientTransactionID',
             'servertransactionid': 'ServerTransactionID',
-            'devicename': 'DeviceName',
-            'devicetype': 'DeviceType',
-            'devicenumber': 'DeviceNumber',
-            'uniqueid': 'UniqueID'
+            'devicename': 'deviceName',
+            'devicetype': 'deviceType',
+            'devicenumber': 'deviceNumber',
+            'uniqueid': 'uniqueId'
         };
 
         for (const key of Object.keys(data)) {
@@ -235,6 +235,8 @@ export class AlpacaClientService {
             }
             bodyParams.append(key, val.toString());
         }
+
+        console.log(`[AlpacaClient] Body: ${bodyParams.toString()}`);
 
         try {
             // Try direct fetch first

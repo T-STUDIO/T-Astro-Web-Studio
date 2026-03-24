@@ -152,7 +152,9 @@ export const slewToCoordinates = async (ra: number, dec: number) => {
     addDebugLog(`Slewing to RA=${(ra/15).toFixed(4)}h, Dec=${dec.toFixed(4)}°`);
     try {
         const res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinatesAsync', { RightAscension: ra / 15, Declination: dec });
-        if (res && res.ErrorNumber !== 0) {
+        if (res && res.ErrorNumber === 0) {
+            addDebugLog(`Slew command sent successfully.`);
+        } else if (res && res.ErrorNumber !== 0) {
             addDebugLog(`Slew failed: ${res.ErrorMessage} (Code: ${res.ErrorNumber})`);
         }
     } catch (e: any) {
@@ -206,12 +208,12 @@ export const startMotion = async (dir: string, speed: MountSpeed) => {
         default: rate = 0.1;
     }
 
-    if (dir === 'north') { axis = 1; }
-    else if (dir === 'south') { axis = 1; rate = -rate; }
-    else if (dir === 'west') { axis = 0; }
-    else if (dir === 'east') { axis = 0; rate = -rate; }
+    if (dir === 'north' || dir === 'N') { axis = 1; }
+    else if (dir === 'south' || dir === 'S') { axis = 1; rate = -rate; }
+    else if (dir === 'west' || dir === 'W') { axis = 0; }
+    else if (dir === 'east' || dir === 'E') { axis = 0; rate = -rate; }
 
-    addDebugLog(`Mount MoveAxis: Axis=${axis}, Rate=${rate}`);
+    addDebugLog(`Mount MoveAxis: Axis=${axis}, Rate=${rate} (Speed: ${speed}, Dir: ${dir})`);
     try {
         const res = await alpacaClient.putCommand('Telescope', telId, 'MoveAxis', { Axis: axis, Rate: rate });
         if (res && res.ErrorNumber !== 0) {
@@ -230,12 +232,14 @@ export const stopMotion = async (dir: string) => {
     const telId = getDeviceNumber('Telescope');
     if (telId === -1) return;
 
-    let axis = (dir === 'north' || dir === 'south') ? 1 : 0;
-    addDebugLog(`Mount Stop MoveAxis: Axis=${axis}`);
+    let axis = (dir === 'north' || dir === 'south' || dir === 'N' || dir === 'S') ? 1 : 0;
+    addDebugLog(`Mount Stop MoveAxis: Axis=${axis} (Dir: ${dir})`);
     try {
         const res = await alpacaClient.putCommand('Telescope', telId, 'MoveAxis', { Axis: axis, Rate: 0 });
         if (res && res.ErrorNumber !== 0) {
             addDebugLog(`Stop MoveAxis failed: ${res.ErrorMessage} (Code: ${res.ErrorNumber})`);
+        } else {
+            addDebugLog(`Stop MoveAxis command sent successfully.`);
         }
     } catch (e: any) {
         addDebugLog(`Stop MoveAxis error: ${e.message}`);

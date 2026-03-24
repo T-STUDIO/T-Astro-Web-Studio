@@ -96,15 +96,18 @@ export class AlpacaImageService {
      */
     public async convertToDisplay(header: any, data: any): Promise<string> {
         // Alpaca standard: dimension1 is the first dimension (rows/height), dimension2 is the second (cols/width)
-        let height = Number(header.dimension1) || 0;
-        let width = Number(header.dimension2) || 0;
+        let d1 = Number(header.dimension1) || 0;
+        let d2 = Number(header.dimension2) || 0;
         
-        // If it's a 3D array (RGB), dimension3 is the color channel
-        // If it's a 2D array, dimension1=height, dimension2=width
-        
-        // Many astro cameras are landscape. If we get a portrait-like dimension set, 
-        // it might be that the driver is using dimension1 for the long axis.
-        // However, the standard is dimension1=rows.
+        let height = d1;
+        let width = d2;
+
+        // Heuristic: Most astro cameras are landscape. If d1 > d2, they might be swapped in the driver.
+        if (d1 > d2 && header.rank === 2) {
+            width = d1;
+            height = d2;
+            console.log(`[AlpacaImage] Heuristic: Swapping dimensions (d1=${d1}, d2=${d2}) to landscape.`);
+        }
         
         if (width <= 0 || height <= 0 || !data || data.length === 0) {
             console.error('[AlpacaImage] Invalid image dimensions or data:', { width, height, dataLength: data?.length });

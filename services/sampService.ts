@@ -33,7 +33,7 @@ export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
     }
 };
 
-export const connect = async (settings: SampSettings) => {
+export const connect = async (settings: SampSettings, isInternal: boolean = false) => {
     if (!window.samp) {
         console.error("[SAMP] Library not loaded");
         if (statusCallback) statusCallback('Error', { error: 'SAMP library not loaded' });
@@ -50,18 +50,25 @@ export const connect = async (settings: SampSettings) => {
         }
     }
 
-    const host = settings.host || 'localhost';
-    const port = settings.port || 21012;
-    // Standard SAMP hub URL is usually the root or /xmlrpc
-    const hubUrl = `http://${host}:${port}/`;
+    let hubUrl = '';
+    if (isInternal) {
+        // Internal hub on the same server
+        hubUrl = `${window.location.origin}/`;
+        console.log(`[SAMP] Connecting to INTERNAL hub at: ${hubUrl}`);
+    } else {
+        const host = settings.host || 'localhost';
+        const port = settings.port || 21012;
+        // Standard SAMP hub URL is usually the root or /xmlrpc
+        hubUrl = `http://${host}:${port}/`;
+        console.log(`[SAMP] Connecting to EXTERNAL hub at: ${hubUrl}`);
+    }
     
-    // Use proxy for SAMP to bypass CORS only if on HTTPS
+    // Use proxy for SAMP to bypass CORS only if on HTTPS and NOT internal
     const isHttps = window.location.protocol === 'https:';
-    const proxyUrl = isHttps 
+    const proxyUrl = (isHttps && !isInternal)
         ? `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(hubUrl)}`
         : hubUrl;
     
-    console.log(`[SAMP] Connecting to hub at: ${hubUrl} ${isHttps ? '(via proxy)' : '(direct)'}`);
     if (statusCallback) statusCallback('Connecting');
 
     const meta = {
@@ -132,11 +139,9 @@ export const isConnected = (): boolean => {
     return !!(connector && connector.connection);
 };
 
-// Simulation
-export const connectMock = (cb: (status: SampStatus, metadata?: any) => void) => {
-    console.log("[SAMP Simulator] Connecting to Virtual Hub...");
+// Internal Hub Support
+export const connectInternal = (cb: (status: SampStatus, metadata?: any) => void, settings: SampSettings) => {
+    console.log("[SAMP] Connecting to Internal Hub...");
     setCallback(cb);
-    setTimeout(() => {
-        if (statusCallback) statusCallback('Connected', { clientName: "T-Astro (Simulated)" });
-    }, 1000);
+    connect(settings, true);
 }

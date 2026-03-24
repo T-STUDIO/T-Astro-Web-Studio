@@ -172,7 +172,7 @@ export class AlpacaImageService {
                     for (let x = 0; x < d2; x++) {
                         const srcIdx = y * d2 + x;
                         const val = Math.max(0, Math.min(255, ((data[srcIdx] - min) / range) * 255));
-                        // Rotate 90 deg: (x, y) -> (y, d2 - 1 - x)
+                        // Rotate 90 deg CCW: (x, y) -> (y, d2 - 1 - x)
                         const destX = y;
                         const destY = d2 - 1 - x;
                         const destIdx = (destY * width + destX) * 4;

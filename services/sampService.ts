@@ -55,9 +55,13 @@ export const connect = async (settings: SampSettings) => {
     // Standard SAMP hub URL is usually the root or /xmlrpc
     const hubUrl = `http://${host}:${port}/`;
     
-    // Use proxy for SAMP to bypass CORS
-    const proxyUrl = `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(hubUrl)}`;
-    console.log(`[SAMP] Connecting to hub at: ${hubUrl} via proxy: ${proxyUrl}`);
+    // Use proxy for SAMP to bypass CORS only if on HTTPS
+    const isHttps = window.location.protocol === 'https:';
+    const proxyUrl = isHttps 
+        ? `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(hubUrl)}`
+        : hubUrl;
+    
+    console.log(`[SAMP] Connecting to hub at: ${hubUrl} ${isHttps ? '(via proxy)' : '(direct)'}`);
     if (statusCallback) statusCallback('Connecting');
 
     const meta = {

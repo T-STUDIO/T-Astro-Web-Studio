@@ -80,6 +80,12 @@ export const connectDevices = async () => {
             const res = await alpacaClient.putCommand(device.deviceType, device.deviceNumber, 'Connected', { Connected: true });
             if (res && res.ErrorNumber === 0) {
                 addDebugLog(`✅ ${device.deviceType} ${device.deviceNumber} connected.`);
+                
+                // If it's a telescope, try to unpark it
+                if (device.deviceType.toLowerCase() === 'telescope') {
+                    addDebugLog(`Unparking telescope ${device.deviceNumber}...`);
+                    await alpacaClient.putCommand('Telescope', device.deviceNumber, 'Unpark');
+                }
             } else {
                 addDebugLog(`❌ Failed to connect ${device.deviceType} ${device.deviceNumber}: ${res?.ErrorMessage || 'Unknown error'}`);
             }
@@ -114,7 +120,12 @@ export const slewTo = async (obj: CelestialObject) => {
         // Ensure tracking is ON before slewing
         await alpacaClient.putCommand('Telescope', telId, 'Tracking', { Tracking: true });
         
-        const res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinatesAsync', { RightAscension: ra, Declination: dec });
+        let res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinatesAsync', { RightAscension: ra, Declination: dec });
+        if (res && res.ErrorNumber !== 0) {
+            addDebugLog(`SlewToCoordinatesAsync failed (Code: ${res.ErrorNumber}). Trying synchronous SlewToCoordinates...`);
+            res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinates', { RightAscension: ra, Declination: dec });
+        }
+        
         if (res && res.ErrorNumber !== 0) {
             addDebugLog(`Slew failed: ${res.ErrorMessage} (Code: ${res.ErrorNumber})`);
         } else {
@@ -221,6 +232,10 @@ export const startMotion = async (dir: string, speed: MountSpeed) => {
 
     addDebugLog(`Mount MoveAxis: Axis=${axis}, Rate=${rate} (Speed: ${speed}, Dir: ${dir})`);
     try {
+        // Ensure tracking is ON for MoveAxis as well (some mounts require it)
+        addDebugLog(`Ensuring tracking is ON for MoveAxis...`);
+        await alpacaClient.putCommand('Telescope', telId, 'Tracking', { Tracking: true });
+        
         const res = await alpacaClient.putCommand('Telescope', telId, 'MoveAxis', { Axis: axis, Rate: rate });
         if (res && res.ErrorNumber !== 0) {
             addDebugLog(`MoveAxis failed: ${res.ErrorMessage} (Code: ${res.ErrorNumber})`);

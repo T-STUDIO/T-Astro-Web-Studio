@@ -7,12 +7,13 @@ import { CalibrationData } from '../services/plateSolvingService';
  */
 export const hmsToDegrees = (hms: string): number => {
     if (hms === 'Dynamic') return 0;
-    const parts = hms.match(/(\d+)/g);
-    if (!parts || parts.length < 3) return 0;
+    // Match all numbers including decimals
+    const parts = hms.match(/(\d+(?:\.\d+)?)/g);
+    if (!parts || parts.length === 0) return 0;
   
-    const h = parseFloat(parts[0]);
-    const m = parseFloat(parts[1]);
-    const s = parseFloat(parts[2]);
+    const h = parseFloat(parts[0] || '0');
+    const m = parseFloat(parts[1] || '0');
+    const s = parseFloat(parts[2] || '0');
     
     return (h + m / 60 + s / 3600) * 15;
 };
@@ -24,12 +25,12 @@ export const hmsToDegrees = (hms: string): number => {
 export const dmsToDegrees = (dms: string): number => {
     if (dms === 'Dynamic') return 0;
     const isNegative = dms.trim().startsWith('-');
-    const parts = dms.match(/(\d+)/g);
-    if (!parts || parts.length < 3) return 0;
+    const parts = dms.match(/(\d+(?:\.\d+)?)/g);
+    if (!parts || parts.length === 0) return 0;
 
-    const d = parseFloat(parts[0]);
-    const m = parseFloat(parts[1]);
-    const s = parseFloat(parts[2]);
+    const d = parseFloat(parts[0] || '0');
+    const m = parseFloat(parts[1] || '0');
+    const s = parseFloat(parts[2] || '0');
     
     const degrees = d + m / 60 + s / 3600;
     return isNegative ? -degrees : degrees;

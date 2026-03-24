@@ -580,7 +580,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             image: img,
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
                         });
-                        console.log(`[Planetarium] Successfully loaded DSS tile ${newTiles.length}/9`);
+                        console.log(`[Planetarium] Successfully loaded DSS tile ${newTiles.length}/9 from ${source.name}`);
                         setDssTiles([...newTiles]);
                         break; 
                     } catch (e: any) {

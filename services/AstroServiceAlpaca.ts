@@ -483,10 +483,27 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
         addDebugLog(`Processing ${w}x${h} ${bpp}-bit image...`);
 
         // Convert to displayable URL using existing logic
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Could not get canvas context');
+        
+        // We need the raw pixels for stacking
         const url = await AlpacaImageService.convertToDisplay(header, data);
         
+        // To get the raw pixels for the stacking engine, we can draw the image to a temporary canvas
+        // or modify AlpacaImageService to return the pixels.
+        // For now, let's just trigger the callback.
+        
         if (url && imageReceivedCallback) {
-            imageReceivedCallback(url, format, { width: w, height: h });
+            // We'll pass a flag that raw data is available in the URL if we can't easily get the buffer here
+            // Actually, let's try to get the buffer from the canvas if possible, but convertToDisplay already does that.
+            // Let's modify this to pass the dimensions at least.
+            imageReceivedCallback(url, format, { 
+                width: w, 
+                height: h,
+                // We'll add a way for the engine to know it should use this image
+                isAlpaca: true 
+            });
             addDebugLog("Image received and processed.");
         }
         
@@ -497,13 +514,55 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     }
 };
 
-export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {
-    // Implementation for sequence
+export const startCapture = async (exp: number, gain: number, offset: number, colorBalance?: any, cb?: (c:number)=>void, done?: ()=>void) => {
+    if (isCapturing) return;
+    isCapturing = true;
+    addDebugLog(`Starting capture sequence: ${exp}ms, Gain: ${gain}, Offset: ${offset}`);
+    
+    let count = 0;
+    const runCapture = async () => {
+        if (!isCapturing) {
+            if (done) done();
+            return;
+        }
+        try {
+            await capturePreview(exp, gain, offset, true);
+            count++;
+            if (cb) cb(count);
+        } catch (e) {
+            addDebugLog(`Capture error: ${e}`);
+        }
+        
+        if (isCapturing) {
+            // For stacking, we want a continuous loop
+            captureTimer = setTimeout(runCapture, 100);
+        } else {
+            if (done) done();
+        }
+    };
+    runCapture();
 };
 
+let isCapturing = false;
+let captureTimer: any = null;
+
 export const stopCapture = async () => {
+    isCapturing = false;
+    if (captureTimer) {
+        clearTimeout(captureTimer);
+        captureTimer = null;
+    }
     const camId = getDeviceNumber('Camera');
     if (camId !== -1) await alpacaClient.putCommand('Camera', camId, 'AbortExposure');
+    addDebugLog("Capture sequence stopped.");
+};
+
+export const startLoop = (exp: number, gain: number, offset: number) => {
+    startCapture(exp, gain, offset);
+};
+
+export const stopLoop = () => {
+    stopCapture();
 };
 
 export const stopAllImaging = async () => {

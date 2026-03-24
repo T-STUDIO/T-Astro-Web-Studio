@@ -1,5 +1,9 @@
 
-import * as AstroService from './AstroService';
+let astroService: any = null;
+
+export const setAstroService = (service: any) => {
+    astroService = service;
+};
 
 interface Point { x: number; y: number; }
 
@@ -9,9 +13,11 @@ export class LiveStackingEngine {
     private count = 0;
     private width = 0;
     private height = 0;
-    private refStars: Point[] = [];
+    private refStars: (Point & { val: number })[] = [];
     private isRunning = false;
     private canvas: HTMLCanvasElement | null = null;
+    private isProcessing = false;
+    private brightnessFactor = 1.0; // 明るさ調整用
 
     public static getInstance() {
         if (!LiveStackingEngine.instance) LiveStackingEngine.instance = new LiveStackingEngine();
@@ -29,66 +35,106 @@ export class LiveStackingEngine {
         this.reset();
         this.isRunning = true;
         this.canvas = document.createElement('canvas');
+        
+        console.log("[LiveStackingEngine] Started.");
 
-        const loop = async () => {
-            if (!this.isRunning) return;
+        // If astroService is provided, we can run the internal loop
+        // Otherwise, we rely on external processNewFrame calls
+        if (astroService) {
+            const loop = async () => {
+                if (!this.isRunning) return;
 
-            try {
-                // カメラの準備待ち
-                const ready = await AstroService.waitForCameraIdle(30000);
-                if (!ready) throw new Error("Camera timeout");
+                try {
+                    // カメラの準備待ち
+                    if (astroService.waitForCameraIdle) {
+                        const ready = await astroService.waitForCameraIdle(30000);
+                        if (!ready) throw new Error("Camera timeout");
+                    }
 
-                // 撮影リクエスト
-                await AstroService.capturePreview(exposure, gain, offset, true);
-                
-                // 画像取得まで待機（ポーリング）
-                // 既存のAstroService.setImageReceivedCallbackを通じて画像が届くのを待つ
-                // ここでは、AstroServiceが最新画像をトリガーするまで待機する仕組みが必要
-                // 簡易化のためsleepを使用（実際の更新はグローバルコールバックでフックされる）
-                await new Promise(resolve => setTimeout(resolve, exposure + 1000));
-
-                if (this.isRunning) {
-                    onProgress(this.count);
-                    setTimeout(loop, 200);
+                    // 撮影リクエスト
+                    await astroService.capturePreview(exposure, gain, offset, true);
+                    
+                    if (this.isRunning) {
+                        onProgress(this.count);
+                        setTimeout(loop, 200);
+                    }
+                } catch (e: any) {
+                    console.error("[LiveStackingEngine] Loop error:", e);
+                    onError(e.message);
+                    this.stop();
                 }
-            } catch (e: any) {
-                onError(e.message);
-                this.stop();
-            }
-        };
-
-        loop();
+            };
+            loop();
+        }
     }
 
     public stop() {
         this.isRunning = false;
-        AstroService.stopCapture();
+        if (astroService && astroService.stopCapture) {
+            astroService.stopCapture();
+        }
+    }
+
+    public setBrightness(val: number) {
+        this.brightnessFactor = val;
     }
 
     private reset() {
         this.sumBuffer = null;
         this.count = 0;
         this.refStars = [];
+        this.width = 0;
+        this.height = 0;
     }
 
     /**
      * 到着した画像を処理する（App.tsxから呼び出し）
      */
-    public processNewFrame(dataUrl: string, metadata: any): string | null {
-        if (!this.isRunning) return null;
-        if (!this.canvas) return null;
+    public async processNewFrame(dataUrl: string, metadata: any): Promise<string | null> {
+        if (!this.isRunning || this.isProcessing) return null;
+        this.isProcessing = true;
 
-        // RAWデータ優先で使用
-        if (dataUrl === 'raw-data-available' && metadata?.rawBuffer) {
-            const { rawBuffer, rawWidth, rawHeight } = metadata;
-            return this.stackRaw(rawBuffer, rawWidth, rawHeight);
+        try {
+            // RAWデータ優先で使用
+            if (dataUrl === 'raw-data-available' && metadata?.rawBuffer) {
+                const { rawBuffer, rawWidth, rawHeight } = metadata;
+                const result = this.stackRaw(rawBuffer, rawWidth, rawHeight);
+                this.isProcessing = false;
+                return result;
+            }
+            
+            // AlpacaやDataURLの場合は、Imageオブジェクトでデコードしてピクセルを取得
+            if (dataUrl.startsWith('data:image')) {
+                const img = new Image();
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = dataUrl;
+                });
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = img.width;
+                tempCanvas.height = img.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                if (tempCtx) {
+                    tempCtx.drawImage(img, 0, 0);
+                    const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+                    const result = this.stackRaw(imageData.data, img.width, img.height);
+                    this.isProcessing = false;
+                    return result;
+                }
+            }
+        } catch (e) {
+            console.error("[LiveStackingEngine] Processing error:", e);
         }
-        
-        return null; // 非RAWは表示ロジックに任せる
+
+        this.isProcessing = false;
+        return null;
     }
 
-    private stackRaw(buffer: Uint8ClampedArray, w: number, h: number): string | null {
+    private stackRaw(buffer: Uint8ClampedArray | Uint8Array, w: number, h: number): string | null {
         if (this.width !== w || this.height !== h) {
+            console.log(`[LiveStackingEngine] Initializing buffer: ${w}x${h}`);
             this.width = w;
             this.height = h;
             this.sumBuffer = new Float32Array(w * h * 3);
@@ -96,75 +142,155 @@ export class LiveStackingEngine {
             this.refStars = [];
         }
 
-        const currentFrame = new Float32Array(w * h * 3);
-        for (let i = 0; i < w * h; i++) {
-            currentFrame[i * 3] = buffer[i * 4];
-            currentFrame[i * 3 + 1] = buffer[i * 4 + 1];
-            currentFrame[i * 3 + 2] = buffer[i * 4 + 2];
-        }
+        // 1. 星の検出（重心計算によるサブピクセル精度）
+        const stars = this.detectStars(buffer as Uint8ClampedArray, w, h);
 
-        // 簡易アライメント（重心検出）
-        const stars = this.detectStars(buffer, w, h);
-        let shiftX = 0;
-        let shiftY = 0;
+        let tx = 0, ty = 0, angle = 0;
 
         if (this.count === 0) {
+            if (stars.length < 1) return null; // 最初のフレームで星が見つからない場合はスキップ
             this.refStars = stars;
-        } else if (stars.length > 0 && this.refStars.length > 0) {
-            // 最も明るい星のズレを計算
-            shiftX = Math.round(this.refStars[0].x - stars[0].x);
-            shiftY = Math.round(this.refStars[0].y - stars[0].y);
+            console.log(`[LiveStackingEngine] Reference stars detected: ${stars.length}`);
+        } else if (stars.length >= 2 && this.refStars.length >= 2) {
+            // 2つ以上の星がある場合、視野回転（経緯台対応）を計算
+            const r1 = this.refStars[0];
+            const r2 = this.refStars[1];
+            const c1 = stars[0];
+            const c2 = stars[1];
+
+            const angleRef = Math.atan2(r2.y - r1.y, r2.x - r1.x);
+            const angleCur = Math.atan2(c2.y - c1.y, c2.x - c1.x);
+            angle = angleRef - angleCur;
+
+            // 回転後の位置合わせ（画像の中心を回転軸とする）
+            const cx = w / 2;
+            const cy = h / 2;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            
+            const rx = (c1.x - cx) * cos - (c1.y - cy) * sin + cx;
+            const ry = (c1.x - cx) * sin + (c1.y - cy) * cos + cy;
+            
+            tx = r1.x - rx;
+            ty = r1.y - ry;
+
+            // 極端な回転や移動はスキップ
+            if (Math.abs(angle) > 0.2 || Math.abs(tx) > 100 || Math.abs(ty) > 100) {
+                console.warn(`[LiveStackingEngine] Excessive movement (angle: ${angle.toFixed(3)}, tx: ${tx.toFixed(1)}, ty: ${ty.toFixed(1)}), skipping.`);
+                return null;
+            }
+        } else if (stars.length >= 1 && this.refStars.length >= 1) {
+            // 星が1つの場合は平行移動のみ
+            tx = this.refStars[0].x - stars[0].x;
+            ty = this.refStars[0].y - stars[0].y;
+            
+            if (Math.abs(tx) > 100 || Math.abs(ty) > 100) return null;
+        } else {
+            return null; // 星が見つからない
         }
 
-        // 加算
+        // 2. 加算（回転と移動を考慮）
         const sum = this.sumBuffer!;
+        const cx = w / 2;
+        const cy = h / 2;
+        const cos = Math.cos(-angle); // 逆回転
+        const sin = Math.sin(-angle);
+
         for (let y = 0; y < h; y++) {
-            const srcY = y - shiftY;
-            if (srcY < 0 || srcY >= h) continue;
             for (let x = 0; x < w; x++) {
-                const srcX = x - shiftX;
-                if (srcX < 0 || srcX >= w) continue;
+                // ターゲット座標(x,y)からソース座標(sx,sy)を逆算
+                // 1. 移動の逆
+                const x1 = x - tx;
+                const y1 = y - ty;
                 
-                const idx = (y * w + x) * 3;
-                const srcIdx = (srcY * w + srcX) * 3;
-                sum[idx] += currentFrame[srcIdx];
-                sum[idx + 1] += currentFrame[srcIdx + 1];
-                sum[idx + 2] += currentFrame[srcIdx + 2];
+                // 2. 回転の逆（中心周り）
+                const sx = Math.round((x1 - cx) * cos - (y1 - cy) * sin + cx);
+                const sy = Math.round((x1 - cx) * sin + (y1 - cy) * cos + cy);
+
+                if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
+                    const idx = (y * w + x) * 3;
+                    const srcIdx = (sy * w + sx) * 4;
+                    sum[idx] += buffer[srcIdx];
+                    sum[idx + 1] += buffer[srcIdx + 1];
+                    sum[idx + 2] += buffer[srcIdx + 2];
+                }
             }
         }
 
         this.count++;
 
-        // 平均化して表示用キャンバスへ
-        this.canvas!.width = w;
-        this.canvas!.height = h;
-        const ctx = this.canvas!.getContext('2d')!;
-        const outData = ctx.createImageData(w, h);
-        for (let i = 0; i < w * h; i++) {
-            outData.data[i * 4] = sum[i * 3] / this.count;
-            outData.data[i * 4 + 1] = sum[i * 3 + 1] / this.count;
-            outData.data[i * 4 + 2] = sum[i * 3 + 2] / this.count;
-            outData.data[i * 4 + 3] = 255;
+        // 3. 加算平均によるノイズ低減と明るさ調整
+        if (this.canvas) {
+            this.canvas.width = w;
+            this.canvas.height = h;
+            const ctx = this.canvas.getContext('2d')!;
+            const outData = ctx.createImageData(w, h);
+            
+            // 明るさの自動調整（簡易的なストレッチ）
+            // ユーザーの「加算で明るさを調整」という意図を汲み、
+            // 平均値にゲインをかける（または加算結果をそのまま使う）
+            const gain = this.brightnessFactor; 
+            
+            for (let i = 0; i < w * h; i++) {
+                outData.data[i * 4] = Math.min(255, (sum[i * 3] / this.count) * gain);
+                outData.data[i * 4 + 1] = Math.min(255, (sum[i * 3 + 1] / this.count) * gain);
+                outData.data[i * 4 + 2] = Math.min(255, (sum[i * 3 + 2] / this.count) * gain);
+                outData.data[i * 4 + 3] = 255;
+            }
+            ctx.putImageData(outData, 0, 0);
+            return this.canvas.toDataURL('image/jpeg', 0.85);
         }
-        ctx.putImageData(outData, 0, 0);
-        return this.canvas!.toDataURL('image/jpeg', 0.85);
+        return null;
     }
 
-    private detectStars(buffer: Uint8ClampedArray, w: number, h: number): Point[] {
-        const stars: {x: number, y: number, val: number}[] = [];
-        const step = 4; // 高速化のため間引く
+    private detectStars(buffer: Uint8ClampedArray, w: number, h: number): (Point & { val: number })[] {
+        const stars: (Point & { val: number })[] = [];
+        const step = 10;
         const threshold = 180;
 
         for (let y = step; y < h - step; y += step) {
             for (let x = step; x < w - step; x += step) {
                 const idx = (y * w + x) * 4;
                 const val = (buffer[idx] + buffer[idx + 1] + buffer[idx + 2]) / 3;
+                
                 if (val > threshold) {
-                    stars.push({ x, y, val });
+                    // 重心計算（3x3領域）
+                    let sumVal = 0;
+                    let sumX = 0;
+                    let sumY = 0;
+                    
+                    for (let dy = -2; dy <= 2; dy++) {
+                        for (let dx = -2; dx <= 2; dx++) {
+                            const pIdx = ((y + dy) * w + (x + dx)) * 4;
+                            const pVal = (buffer[pIdx] + buffer[pIdx + 1] + buffer[pIdx + 2]) / 3;
+                            sumVal += pVal;
+                            sumX += (x + dx) * pVal;
+                            sumY += (y + dy) * pVal;
+                        }
+                    }
+                    
+                    if (sumVal > 0) {
+                        stars.push({ 
+                            x: sumX / sumVal, 
+                            y: sumY / sumVal, 
+                            val: sumVal 
+                        });
+                    }
                 }
             }
         }
-        // 明るい順にソート
-        return stars.sort((a, b) => b.val - a.val).slice(0, 10);
+        
+        // 近すぎる星をマージ（簡易的）
+        const uniqueStars: (Point & { val: number })[] = [];
+        const sorted = stars.sort((a, b) => b.val - a.val);
+        
+        for (const s of sorted) {
+            if (!uniqueStars.some(u => Math.hypot(u.x - s.x, u.y - s.y) < 15)) {
+                uniqueStars.push(s);
+            }
+            if (uniqueStars.length >= 15) break;
+        }
+
+        return uniqueStars;
     }
 }

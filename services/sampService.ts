@@ -172,13 +172,9 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         // 2. Create connector and override hub URL
         connector = new window.samp.Connector(meta);
         
-        // Ensure the connector uses the absolute URL for the internal hub
-        const absoluteHubUrl = hubUrl.startsWith('http') 
-            ? hubUrl 
-            : `${window.location.origin}${hubUrl}`;
-
+        // Use the exact URL provided by the server
         if (connector.client) {
-            connector.client.hubUrl = absoluteHubUrl;
+            connector.client.hubUrl = hubUrl;
         }
 
         connector.onConnectionChange = (isConnected: boolean) => {
@@ -189,19 +185,19 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         };
 
         // 3. Register using the secret we got
-        // Manual registration is often more reliable for non-localhost hubs in samp.js
-        const client = new window.samp.XmlRpcClient(absoluteHubUrl);
+        // We use the XmlRpcClient directly to ensure we connect to the correct server IP
+        const client = new window.samp.XmlRpcClient(hubUrl);
         client.execute("samp.hub.register", [secret], (err: any, result: any) => {
             if (err) {
                 console.error("[SAMP] Internal registration failed:", err);
-                // Fallback to standard register if manual fails
-                connector.register();
+                if (statusCallback) statusCallback('Error', { error: 'Registration failed: ' + err.message });
             } else {
                 console.log("[SAMP] Internal registration successful", result);
                 const conn = new window.samp.Connection(client, result["samp.private-key"]);
                 connector.connection = conn;
                 if (statusCallback) statusCallback('Connected');
                 
+                // Declare metadata and subscriptions
                 conn.call("samp.hub.declareMetadata", [result["samp.private-key"], meta], () => {});
                 conn.call("samp.hub.declareSubscriptions", [result["samp.private-key"], {}], () => {});
             }

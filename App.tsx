@@ -338,7 +338,8 @@ const App: React.FC = () => {
       apiKey: astrometryApiKey,
       localSettings: localSolverSettings,
       setStatus: setSlewStatus,
-      addLog: addLog
+      addLog: addLog,
+      astroService: AstroService
     });
   };
 

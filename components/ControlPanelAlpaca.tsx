@@ -297,7 +297,7 @@ const SettingsPanel = memo((props: any) => {
                 <Button onClick={onConnectSamp} disabled={sampStatus === 'Connecting'} variant="secondary" className="flex-1 text-xs" type="button" title={t('tooltips.samp')}>
                     {sampStatus === 'Connecting' ? t('samp.status.connecting') : t('controlPanel.connectSampHub')}
                 </Button>
-                <Button onClick={onConnectVirtualSamp} disabled={sampStatus === 'Connected' || sampStatus === 'Connecting'} variant="secondary" className="flex-1 text-xs" type="button" title="Simulate a SAMP hub for testing.">
+                <Button onClick={onConnectVirtualSamp} disabled={sampStatus === 'Connected' || sampStatus === 'Connecting'} variant="secondary" className="flex-1 text-xs" type="button" title="Start an internal SAMP hub on this server for inter-app communication.">
                     {t('controlPanel.connectVirtualSamp')}
                 </Button>
             </div>

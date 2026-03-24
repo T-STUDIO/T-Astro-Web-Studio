@@ -107,6 +107,7 @@ interface TSConnectProps {
     sampSettings: SampSettings;
     onSampSettingsChange: (s: Partial<SampSettings>) => void;
     onConnectSamp: () => void;
+    onConnectVirtualSamp: () => void;
     onDisconnectSamp: () => void;
     
     // Imaging & System Sync Props (Interface only, not for UI)
@@ -400,9 +401,14 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                                             <LargeInput label="Host" value={props.sampSettings.host} onChange={(v: string) => props.onSampSettingsChange({ host: v })} />
                                             <LargeInput label="Port" type="number" value={props.sampSettings.port} onChange={(v: string) => props.onSampSettingsChange({ port: Number(v) })} />
                                         </div>
-                                        <Button onClick={props.onConnectSamp} disabled={props.sampStatus === 'Connecting'} title={t('tooltips.samp')} className="w-full py-3 text-sm font-black bg-blue-700">
-                                            {props.sampStatus === 'Connected' ? 'SAMP: CONNECTED' : 'CONNECT SAMP HUB'}
-                                        </Button>
+                                        <div className="flex gap-3">
+                                            <Button onClick={props.onConnectSamp} disabled={props.sampStatus === 'Connecting'} title={t('tooltips.samp')} className="flex-1 py-3 text-sm font-black bg-blue-700">
+                                                {props.sampStatus === 'Connected' ? 'SAMP: CONNECTED' : 'CONNECT SAMP HUB'}
+                                            </Button>
+                                            <Button onClick={props.onConnectVirtualSamp} disabled={props.sampStatus === 'Connected' || props.sampStatus === 'Connecting'} title="Start an internal SAMP hub on this server for inter-app communication." className="flex-1 py-3 text-sm font-black bg-slate-700 uppercase">
+                                                {t('controlPanel.connectVirtualSamp')}
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

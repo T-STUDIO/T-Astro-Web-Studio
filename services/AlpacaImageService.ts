@@ -104,11 +104,11 @@ export class AlpacaImageService {
 
         // Heuristic: Most astro cameras are landscape. If d1 > d2, they might be swapped in the driver.
         let rotate = false;
-        if (d1 > d2 && header.rank === 2) {
+        if (d1 > d2 && (header.rank === 2 || header.rank === 3 || !header.rank)) {
             width = d1;
             height = d2;
             rotate = true;
-            console.log(`[AlpacaImage] Heuristic: Rotating image (d1=${d1}, d2=${d2}) to landscape.`);
+            console.log(`[AlpacaImage] Heuristic: Rotating image (d1=${d1}, d2=${d2}, rank=${header.rank}) to landscape.`);
         }
         
         if (width <= 0 || height <= 0 || !data || data.length === 0) {
@@ -129,14 +129,29 @@ export class AlpacaImageService {
 
         if (isRGB) {
             // RGB data: Alpaca usually returns [y][x][c] or flattened as R,G,B,R,G,B...
-            // Note: Rotation not yet implemented for RGB
-            for (let i = 0; i < width * height; i++) {
-                const idx = i * 4;
-                const dataIdx = i * 3;
-                pixels[idx] = data[dataIdx] || 0;     // R
-                pixels[idx + 1] = data[dataIdx + 1] || 0; // G
-                pixels[idx + 2] = data[dataIdx + 2] || 0; // B
-                pixels[idx + 3] = 255; // A
+            if (rotate) {
+                for (let y = 0; y < d1; y++) {
+                    for (let x = 0; x < d2; x++) {
+                        const srcIdx = (y * d2 + x) * 3;
+                        // Rotate 90 deg CCW: (x, y) -> (y, d2 - 1 - x)
+                        const destX = y;
+                        const destY = d2 - 1 - x;
+                        const destIdx = (destY * width + destX) * 4;
+                        pixels[destIdx] = data[srcIdx] || 0;
+                        pixels[destIdx + 1] = data[srcIdx + 1] || 0;
+                        pixels[destIdx + 2] = data[srcIdx + 2] || 0;
+                        pixels[destIdx + 3] = 255;
+                    }
+                }
+            } else {
+                for (let i = 0; i < width * height; i++) {
+                    const idx = i * 4;
+                    const dataIdx = i * 3;
+                    pixels[idx] = data[dataIdx] || 0;     // R
+                    pixels[idx + 1] = data[dataIdx + 1] || 0; // G
+                    pixels[idx + 2] = data[dataIdx + 2] || 0; // B
+                    pixels[idx + 3] = 255; // A
+                }
             }
         } else {
             // Grayscale normalization

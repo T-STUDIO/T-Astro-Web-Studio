@@ -165,7 +165,27 @@ export const slewToCoordinates = async (ra: number, dec: number) => {
     }
     addDebugLog(`Slewing to RA=${(ra/15).toFixed(4)}h, Dec=${dec.toFixed(4)}°`);
     try {
-        const res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinatesAsync', { RightAscension: ra / 15, Declination: dec });
+        // Check capabilities first if possible, but for now just try and catch
+        // Ensure telescope is UNPARKED and tracking is ON before slewing
+        addDebugLog(`Ensuring telescope is unparked and tracking is ON...`);
+        try {
+            await alpacaClient.putCommand('Telescope', telId, 'Unpark');
+        } catch (e) {
+            addDebugLog(`Unpark failed or not supported (ignoring): ${e}`);
+        }
+        
+        try {
+            await alpacaClient.putCommand('Telescope', telId, 'Tracking', { Tracking: true });
+        } catch (e) {
+            addDebugLog(`Set Tracking failed (ignoring): ${e}`);
+        }
+        
+        let res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinatesAsync', { RightAscension: ra / 15, Declination: dec });
+        if (res && res.ErrorNumber !== 0) {
+            addDebugLog(`SlewToCoordinatesAsync failed (Code: ${res.ErrorNumber}). Trying synchronous SlewToCoordinates...`);
+            res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinates', { RightAscension: ra / 15, Declination: dec });
+        }
+        
         if (res && res.ErrorNumber === 0) {
             addDebugLog(`Slew command sent successfully.`);
         } else if (res && res.ErrorNumber !== 0) {
@@ -184,9 +204,20 @@ export const syncToCoordinates = async (ra: number, dec: number) => {
     }
     addDebugLog(`Syncing to RA=${(ra/15).toFixed(4)}h, Dec=${dec.toFixed(4)}°`);
     try {
+        // Some mounts require tracking to be ON and unparked for sync
+        addDebugLog(`Ensuring telescope is unparked and tracking is ON for sync...`);
+        try {
+            await alpacaClient.putCommand('Telescope', telId, 'Unpark');
+        } catch (e) {}
+        try {
+            await alpacaClient.putCommand('Telescope', telId, 'Tracking', { Tracking: true });
+        } catch (e) {}
+        
         const res = await alpacaClient.putCommand('Telescope', telId, 'SyncToCoordinates', { RightAscension: ra / 15, Declination: dec });
         if (res && res.ErrorNumber !== 0) {
             addDebugLog(`Sync failed: ${res.ErrorMessage} (Code: ${res.ErrorNumber})`);
+        } else {
+            addDebugLog(`Sync successful.`);
         }
     } catch (e: any) {
         addDebugLog(`Sync error: ${e.message}`);
@@ -232,9 +263,14 @@ export const startMotion = async (dir: string, speed: MountSpeed) => {
 
     addDebugLog(`Mount MoveAxis: Axis=${axis}, Rate=${rate} (Speed: ${speed}, Dir: ${dir})`);
     try {
-        // Ensure tracking is ON for MoveAxis as well (some mounts require it)
-        addDebugLog(`Ensuring tracking is ON for MoveAxis...`);
-        await alpacaClient.putCommand('Telescope', telId, 'Tracking', { Tracking: true });
+        // Ensure telescope is UNPARKED and tracking is ON for MoveAxis
+        addDebugLog(`Ensuring telescope is unparked and tracking is ON for MoveAxis...`);
+        try {
+            await alpacaClient.putCommand('Telescope', telId, 'Unpark');
+        } catch (e) {}
+        try {
+            await alpacaClient.putCommand('Telescope', telId, 'Tracking', { Tracking: true });
+        } catch (e) {}
         
         const res = await alpacaClient.putCommand('Telescope', telId, 'MoveAxis', { Axis: axis, Rate: rate });
         if (res && res.ErrorNumber !== 0) {
@@ -336,6 +372,7 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
                     dimension1: rawData.length,    // height
                     dimension2: rawData[0].length, // width
                     dimension3: rawData[0][0].length, // channels
+                    rank: 3,
                     imageElementType: 0
                 };
             } else if (Array.isArray(rawData) && Array.isArray(rawData[0])) {
@@ -343,12 +380,14 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
                 header = {
                     dimension1: rawData.length,    // height
                     dimension2: rawData[0].length, // width
+                    rank: 2,
                     imageElementType: 0
                 };
             } else {
                 header = {
                     dimension1: 0,
                     dimension2: 0,
+                    rank: 1,
                     imageElementType: 0
                 };
             }

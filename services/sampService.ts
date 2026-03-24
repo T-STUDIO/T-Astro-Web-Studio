@@ -73,20 +73,13 @@ export const connect = async (settings: SampSettings) => {
     try {
         // Connector handles the Web Profile (CORS, etc.)
         // We use the proxy URL as the hub URL
-        connector = new window.samp.Connector(meta, { 
-            hubUrl: proxyUrl,
-            hub_url: proxyUrl
-        });
-
-        // Override the register method to add the header
-        const originalRegister = connector.register.bind(connector);
-        connector.register = () => {
-            // We need to ensure the proxy knows where to go
-            // samp.js uses XML-RPC which might not easily allow custom headers in the Connector
-            // So we stick to the query param for now but ensure it's clean
-            originalRegister();
-        };
-
+        connector = new window.samp.Connector(meta);
+        
+        // Manually set the hub URL on the connector's client
+        if (connector.client) {
+            connector.client.hubUrl = proxyUrl;
+        }
+        
         // Set up connection change listener
         connector.onConnectionChange = (isConnected: boolean) => {
             console.log(`[SAMP] Connection changed: ${isConnected}`);

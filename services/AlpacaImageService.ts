@@ -103,10 +103,12 @@ export class AlpacaImageService {
         let width = d2;
 
         // Heuristic: Most astro cameras are landscape. If d1 > d2, they might be swapped in the driver.
+        let rotate = false;
         if (d1 > d2 && header.rank === 2) {
             width = d1;
             height = d2;
-            console.log(`[AlpacaImage] Heuristic: Swapping dimensions (d1=${d1}, d2=${d2}) to landscape.`);
+            rotate = true;
+            console.log(`[AlpacaImage] Heuristic: Rotating image (d1=${d1}, d2=${d2}) to landscape.`);
         }
         
         if (width <= 0 || height <= 0 || !data || data.length === 0) {
@@ -127,6 +129,7 @@ export class AlpacaImageService {
 
         if (isRGB) {
             // RGB data: Alpaca usually returns [y][x][c] or flattened as R,G,B,R,G,B...
+            // Note: Rotation not yet implemented for RGB
             for (let i = 0; i < width * height; i++) {
                 const idx = i * 4;
                 const dataIdx = i * 3;
@@ -161,15 +164,35 @@ export class AlpacaImageService {
 
             const range = (effectiveMax - min) || 1;
             
-            // Ensure we don't go out of bounds if dimensions are slightly off
-            const len = Math.min(data.length, width * height);
-            for (let i = 0; i < len; i++) {
-                const val = Math.max(0, Math.min(255, ((data[i] - min) / range) * 255));
-                const idx = i * 4;
-                pixels[idx] = val;     // R
-                pixels[idx + 1] = val; // G
-                pixels[idx + 2] = val; // B
-                pixels[idx + 3] = 255; // A
+            if (rotate) {
+                // Fill pixels with rotation (transpose)
+                // d1 is original height (rows), d2 is original width (cols)
+                // new width is d1, new height is d2
+                for (let y = 0; y < d1; y++) {
+                    for (let x = 0; x < d2; x++) {
+                        const srcIdx = y * d2 + x;
+                        const val = Math.max(0, Math.min(255, ((data[srcIdx] - min) / range) * 255));
+                        // Rotate 90 deg: (x, y) -> (y, d2 - 1 - x)
+                        const destX = y;
+                        const destY = d2 - 1 - x;
+                        const destIdx = (destY * width + destX) * 4;
+                        pixels[destIdx] = val;
+                        pixels[destIdx + 1] = val;
+                        pixels[destIdx + 2] = val;
+                        pixels[destIdx + 3] = 255;
+                    }
+                }
+            } else {
+                // Standard fill
+                const len = Math.min(data.length, width * height);
+                for (let i = 0; i < len; i++) {
+                    const val = Math.max(0, Math.min(255, ((data[i] - min) / range) * 255));
+                    const idx = i * 4;
+                    pixels[idx] = val;     // R
+                    pixels[idx + 1] = val; // G
+                    pixels[idx + 2] = val; // B
+                    pixels[idx + 3] = 255; // A
+                }
             }
         }
 

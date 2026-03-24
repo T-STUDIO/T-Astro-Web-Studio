@@ -111,6 +111,9 @@ export const slewTo = async (obj: CelestialObject) => {
     const dec = dmsToDegrees(obj.dec);
     addDebugLog(`Slewing to ${obj.name} (RA: ${ra.toFixed(4)}h, Dec: ${dec.toFixed(4)}°)...`);
     try {
+        // Ensure tracking is ON before slewing
+        await alpacaClient.putCommand('Telescope', telId, 'Tracking', { Tracking: true });
+        
         const res = await alpacaClient.putCommand('Telescope', telId, 'SlewToCoordinatesAsync', { RightAscension: ra, Declination: dec });
         if (res && res.ErrorNumber !== 0) {
             addDebugLog(`Slew failed: ${res.ErrorMessage} (Code: ${res.ErrorNumber})`);
@@ -201,17 +204,20 @@ export const startMotion = async (dir: string, speed: MountSpeed) => {
     // Map speed to deg/sec (approximate)
     // Some mounts might expect different units or have specific limits
     switch (speed) {
-        case 'Guide': rate = 0.004; break; // 1x sidereal is ~0.004 deg/sec
-        case 'Center': rate = 0.04; break;
-        case 'Find': rate = 0.5; break;
-        case 'Slew': rate = 2.0; break;
-        default: rate = 0.1;
+        case 'Guide': rate = 0.0042; break; // 1x sidereal is ~0.00416 deg/sec.
+        case 'Center': rate = 0.1; break;
+        case 'Find': rate = 1.0; break;
+        case 'Slew': rate = 4.0; break;
+        default: rate = 0.5;
     }
 
     if (dir === 'north' || dir === 'N') { axis = 1; }
     else if (dir === 'south' || dir === 'S') { axis = 1; rate = -rate; }
     else if (dir === 'west' || dir === 'W') { axis = 0; }
     else if (dir === 'east' || dir === 'E') { axis = 0; rate = -rate; }
+
+    // Ensure rate is not 0 if direction is set
+    if (rate === 0) rate = 0.1;
 
     addDebugLog(`Mount MoveAxis: Axis=${axis}, Rate=${rate} (Speed: ${speed}, Dir: ${dir})`);
     try {
@@ -334,8 +340,8 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
         }
         
         // Extract metadata
-        const w = header.dimension1 || 640;
-        const h = header.dimension2 || 480;
+        const w = header.dimension2 || 640;
+        const h = header.dimension1 || 480;
         const bpp = (header.imageElementType === 1 || header.imageElementType === 5) ? 16 : 
                     (header.imageElementType === 2 || header.imageElementType === 4) ? 32 : 8;
         

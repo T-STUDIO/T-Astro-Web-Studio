@@ -26,7 +26,7 @@ import * as GoogleDriveService from './services/GoogleDriveService';
 import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
 import { DEFAULT_SIMULATOR_SETTINGS } from './services/SimulatorService';
-import { LiveStackingEngine } from './services/LiveStackingEngine';
+import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine';
 import { CELESTIAL_OBJECTS } from './constants';
 import { MountControllerSimulator } from './components/MountControllerSimulator';
 import { AutoCenterService } from './services/AutoCenterService';
@@ -162,10 +162,14 @@ const AppSimulator: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    AstroService.setImageReceivedCallback((url, format, metadata) => {
+    setAstroService(AstroService);
+  }, []);
+
+  useEffect(() => {
+    AstroService.setImageReceivedCallback(async (url, format, metadata) => {
     BroadcastService.getInstance().sendImage(url, metadata); 
         if (isCapturing) {
-            const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
+            const stackedUrl = await LiveStackingEngine.getInstance().processNewFrame(url, metadata);
             if (stackedUrl) {
               BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
                 setLatestImage(stackedUrl);

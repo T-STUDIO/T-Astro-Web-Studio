@@ -26,7 +26,7 @@ import * as SettingsService from './services/SettingsService';
 import * as GoogleDriveService from './services/GoogleDriveService';
 import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
-import { LiveStackingEngine } from './services/LiveStackingEngine'; // New Import
+import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
 import { MountController } from './components/MountController';
 import { AutoCenterService } from './services/AutoCenterService';
@@ -72,6 +72,7 @@ const App: React.FC = () => {
   const [gain, setGain] = useState(initialSettings.gain);
   const [offset, setOffset] = useState(initialSettings.offset);
   const [binning, setBinning] = useState(initialSettings.binning);
+  const [brightnessFactor, setBrightnessFactor] = useState(1.0);
   const [colorBalance, setColorBalance] = useState(initialSettings.colorBalance);
   
   const [astrometryApiKey, setAstrometryApiKey] = useState(initialSettings.astrometryApiKey);
@@ -156,12 +157,16 @@ const App: React.FC = () => {
   }, [isTimeRunning]);
 
   useEffect(() => {
-    AstroService.setImageReceivedCallback((url, format, metadata) => {
+    setAstroService(AstroService);
+  }, []);
+
+  useEffect(() => {
+    AstroService.setImageReceivedCallback(async (url, format, metadata) => {
       　// 画像をビューアーへ中継
     BroadcastService.getInstance().sendImage(url, metadata); 
         // スタッキング実行中の場合は、エンジンに画像を渡して合成された画像を受け取る
         if (isCapturing) {
-            const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
+            const stackedUrl = await LiveStackingEngine.getInstance().processNewFrame(url, metadata);
             if (stackedUrl) {
               BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
                 setLatestImage(stackedUrl);
@@ -271,6 +276,11 @@ const App: React.FC = () => {
   const handleSetOffset = (val: number) => {
     setOffset(val);
     AstroService.updateOffset(val);
+  };
+
+  const handleSetBrightness = (val: number) => {
+    setBrightnessFactor(val);
+    LiveStackingEngine.getInstance().setBrightness(val);
   };
 
   const handleToggleLiveView = () => {
@@ -498,6 +508,7 @@ const App: React.FC = () => {
                         exposure={exposure} onSetExposure={setExposure}
                         gain={gain} onSetGain={handleSetGain}
                         offset={offset} onSetOffset={handleSetOffset}
+                        brightness={brightnessFactor} onSetBrightness={handleSetBrightness}
                         binning={binning} onSetBinning={setBinning}
                         colorBalance={colorBalance} onSetColorBalance={setColorBalance}
                         isLiveViewActive={isLiveViewActive} onToggleLiveView={handleToggleLiveView}

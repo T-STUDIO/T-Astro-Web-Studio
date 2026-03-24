@@ -26,7 +26,7 @@ import * as SettingsService from './services/SettingsService';
 import * as GoogleDriveService from './services/GoogleDriveService';
 import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
-import { LiveStackingEngine } from './services/LiveStackingEngine';
+import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine';
 import { CELESTIAL_OBJECTS } from './constants';
 import { MountControllerAlpaca } from './components/MountControllerAlpaca';
 import { AutoCenterService } from './services/AutoCenterService';
@@ -68,6 +68,7 @@ const AppAlpaca: React.FC = () => {
   const [exposure, setExposure] = useState(initialSettings.exposure);
   const [gain, setGain] = useState(initialSettings.gain);
   const [offset, setOffset] = useState(initialSettings.offset);
+  const [brightness, setBrightness] = useState(initialSettings.brightness || 0);
   const [binning, setBinning] = useState(initialSettings.binning);
   const [colorBalance, setColorBalance] = useState(initialSettings.colorBalance);
   
@@ -181,10 +182,14 @@ const AppAlpaca: React.FC = () => {
   }, [isTimeRunning]);
 
   useEffect(() => {
-    AstroService.setImageReceivedCallback((url, format, metadata) => {
+    setAstroService(AstroService);
+  }, []);
+
+  useEffect(() => {
+    AstroService.setImageReceivedCallback(async (url, format, metadata) => {
     BroadcastService.getInstance().sendImage(url, metadata); 
         if (isCapturing) {
-            const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
+            const stackedUrl = await LiveStackingEngine.getInstance().processNewFrame(url, metadata);
             if (stackedUrl) {
               BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
                 setLatestImage(stackedUrl);
@@ -214,12 +219,12 @@ const AppAlpaca: React.FC = () => {
 
   useEffect(() => {
     SettingsService.saveSettings({
-      connectionSettings, planetariumSettings, exposure, gain, offset, binning, colorBalance,
+      connectionSettings, planetariumSettings, exposure, gain, offset, brightness, binning, colorBalance,
       astrometryApiKey, plateSolverType, localSolverSettings, isAutoCenterEnabled, isAutoSyncLocationEnabled,
       sampSettings, location, savedLocations, savedConnections, savedApiKeys, savedLocalSolvers, savedSampSettings,
       lastSaveTimestamp: new Date().toISOString()
     } as any);
-  }, [connectionSettings, planetariumSettings, exposure, gain, offset, binning, colorBalance, astrometryApiKey, plateSolverType, localSolverSettings, isAutoCenterEnabled, isAutoSyncLocationEnabled, sampSettings, location, savedLocations, savedConnections, savedApiKeys, savedLocalSolvers, savedSampSettings]);
+  }, [connectionSettings, planetariumSettings, exposure, gain, offset, brightness, binning, colorBalance, astrometryApiKey, plateSolverType, localSolverSettings, isAutoCenterEnabled, isAutoSyncLocationEnabled, sampSettings, location, savedLocations, savedConnections, savedApiKeys, savedLocalSolvers, savedSampSettings]);
 
   const stopAllImaging = useCallback(() => {
     if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopStream(); }
@@ -279,7 +284,7 @@ const AppAlpaca: React.FC = () => {
     try {
       const s = await SettingsService.importSettingsFromFile(file);
       setConnectionSettings(s.connectionSettings); setPlanetariumSettings(s.planetariumSettings);
-      setExposure(s.exposure); setGain(s.gain); setOffset(s.offset); setBinning(s.binning); setColorBalance(s.colorBalance);
+      setExposure(s.exposure); setGain(s.gain); setOffset(s.offset); setBrightness(s.brightness || 0); setBinning(s.binning); setColorBalance(s.colorBalance);
       setAstrometryApiKey(s.astrometryApiKey); setPlateSolverType(s.plateSolverType); setLocalSolverSettings(s.localSolverSettings);
       setIsAutoCenterEnabled(s.isAutoCenterEnabled); setIsAutoSyncLocationEnabled(s.isAutoSyncLocationEnabled);
       setSampSettings(s.sampSettings); setLocation(s.location);
@@ -429,6 +434,7 @@ const AppAlpaca: React.FC = () => {
                         exposure={exposure} onSetExposure={setExposure}
                         gain={gain} onSetGain={setGain}
                         offset={offset} onSetOffset={setOffset}
+                        brightness={brightness} onSetBrightness={setBrightness}
                         binning={binning} onSetBinning={setBinning}
                         colorBalance={colorBalance} onSetColorBalance={setColorBalance}
                         isLiveViewActive={isLiveViewActive} onToggleLiveView={handleToggleLiveView}

@@ -172,11 +172,13 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         // 2. Create connector and override hub URL
         connector = new window.samp.Connector(meta);
         
-        // We need to ensure the connector uses our hub URL and secret
-        // The samp.js Connector usually does its own registration, 
-        // but we can try to configure its internal client.
+        // Ensure the connector uses the absolute URL for the internal hub
+        const absoluteHubUrl = hubUrl.startsWith('http') 
+            ? hubUrl 
+            : `${window.location.origin}${hubUrl}`;
+
         if (connector.client) {
-            connector.client.hubUrl = hubUrl;
+            connector.client.hubUrl = absoluteHubUrl;
         }
 
         connector.onConnectionChange = (isConnected: boolean) => {
@@ -187,35 +189,23 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         };
 
         // 3. Register using the secret we got
-        // Note: samp.js Connector.register() usually tries to find the hub on localhost.
-        // We might need to manually call the register method if the connector doesn't pick up our override.
-        
-        // Try standard register first, but it might fail if it ignores our hubUrl override
-        connector.register();
-
-        // If not connected after a short delay, try manual registration
-        setTimeout(() => {
-            if (connector && !connector.connection) {
-                console.log("[SAMP] Standard registration failed or timed out, trying manual registration...");
-                const client = new window.samp.XmlRpcClient(hubUrl);
-                client.execute("samp.hub.register", [secret], (err: any, result: any) => {
-                    if (err) {
-                        console.error("[SAMP] Manual registration failed:", err);
-                        if (statusCallback) statusCallback('Error', { error: 'Manual registration failed: ' + err.message });
-                    } else {
-                        console.log("[SAMP] Manual registration successful", result);
-                        // Create a connection object manually
-                        const conn = new window.samp.Connection(client, result["samp.private-key"]);
-                        connector.connection = conn;
-                        if (statusCallback) statusCallback('Connected');
-                        
-                        // Declare metadata and subscriptions
-                        conn.call("samp.hub.declareMetadata", [result["samp.private-key"], meta], () => {});
-                        conn.call("samp.hub.declareSubscriptions", [result["samp.private-key"], {}], () => {});
-                    }
-                });
+        // Manual registration is often more reliable for non-localhost hubs in samp.js
+        const client = new window.samp.XmlRpcClient(absoluteHubUrl);
+        client.execute("samp.hub.register", [secret], (err: any, result: any) => {
+            if (err) {
+                console.error("[SAMP] Internal registration failed:", err);
+                // Fallback to standard register if manual fails
+                connector.register();
+            } else {
+                console.log("[SAMP] Internal registration successful", result);
+                const conn = new window.samp.Connection(client, result["samp.private-key"]);
+                connector.connection = conn;
+                if (statusCallback) statusCallback('Connected');
+                
+                conn.call("samp.hub.declareMetadata", [result["samp.private-key"], meta], () => {});
+                conn.call("samp.hub.declareSubscriptions", [result["samp.private-key"], {}], () => {});
             }
-        }, 2000);
+        });
 
         setTimeout(() => {
             if (connector && !connector.connection && statusCallback) {

@@ -8,6 +8,8 @@ import url from 'url';
 import path from 'path';
 import xmlrpc from 'xmlrpc';
 
+console.log('[Server] Starting T-Astro Web Studio...');
+
 const args = process.argv.slice(2);
 const portArg = args.indexOf('--port');
 const cmdPort = portArg !== -1 ? parseInt(args[portArg + 1]) : null;
@@ -180,11 +182,26 @@ async function startServer() {
     app.use(express.urlencoded({ extended: true }));
 
     // --- SAMP XML-RPC Hub Implementation ---
-    // We use a custom handler to integrate with Express
-    const xmlRpcServer = xmlrpc.createServer({ path: '/api/samp/xmlrpc' }, () => {});
+    let xmlRpcServer: any;
+    try {
+        console.log('[SAMP Hub] Initializing XML-RPC server...');
+        // Use port 0 to let the OS pick any available port for the internal XML-RPC server
+        // to avoid conflicts with other services.
+        xmlRpcServer = xmlrpc.createServer({ path: '/api/samp/xmlrpc', port: 0 }, () => {
+            console.log('[SAMP Hub] Internal XML-RPC server ready');
+        });
+
+        if (!xmlRpcServer || typeof xmlRpcServer.on !== 'function') {
+            throw new Error('Failed to create XML-RPC server instance');
+        }
+    } catch (e: any) {
+        console.error('[SAMP Hub] Critical Error during initialization:', e.message);
+        // We don't exit here to allow the rest of the app to function even if SAMP fails
+    }
     
-    // Register method
-    xmlRpcServer.on('samp.hub.register', (err, params, callback) => {
+    if (xmlRpcServer) {
+        // Register method
+        xmlRpcServer.on('samp.hub.register', (err: any, params: any[], callback: any) => {
         const secret = params[0];
         if (secret !== sampHubSecret) return callback(new Error('Invalid secret'), null);
         
@@ -256,12 +273,14 @@ async function startServer() {
     });
 
     // Mount the XML-RPC server to Express
-    // Note: xmlrpc server handles the request by listening to the 'request' event if created with http.Server
-    // But here we want to pipe it from Express.
     app.post('/api/samp/xmlrpc', (req, res) => {
+        if (!xmlRpcServer || !xmlRpcServer.httpServer) {
+            return res.status(503).json({ error: 'SAMP Hub not initialized' });
+        }
         // @ts-ignore - access internal handler
         xmlRpcServer.httpServer.emit('request', req, res);
     });
+    }
 
     const server = http.createServer(app);
 
@@ -451,6 +470,15 @@ async function startServer() {
             res.sendFile(path.resolve(distPath, 'index.html'));
         });
     }
+
+    server.on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(`[Server] Error: Port ${PORT} is already in use. Please kill the existing process or use a different port.`);
+        } else {
+            console.error(`[Server] Fatal Error:`, err);
+        }
+        process.exit(1);
+    });
 
     server.listen(PORT, BIND_HOST, () => {
         console.log(`Server running on http://${BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST}:${PORT}`);

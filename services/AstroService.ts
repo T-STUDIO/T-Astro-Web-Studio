@@ -225,7 +225,19 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     
     if (!isStream) {
         await setVideoStream(false);
-        await waitForCameraIdle(5000);
+        // Wait a bit more for the camera to settle after stopping stream
+        await sleep(300);
+        const ready = await waitForCameraIdle(5000);
+        if (!ready) {
+            console.warn("[AstroService] Camera is still busy after timeout, attempting to abort...");
+            stopCapture();
+            await sleep(500);
+            const secondReady = await waitForCameraIdle(3000);
+            if (!secondReady) {
+                console.error("[AstroService] Camera failed to become idle. Aborting capture.");
+                return;
+            }
+        }
     }
 
     if (DriverConnection.hasProperty(cam, 'CCD_VIDEO_STREAM')) {
@@ -305,9 +317,9 @@ export const startLoop = (exp: number, gain: number, offset: number) => {
         const loop = async () => {
             if (!isLooping) return;
             const ready = await waitForCameraIdle(5000);
+            if (!isLooping) return; // Check again after wait
             if (ready) {
                 try {
-                    // Use actual parameters instead of hardcoded 200, 300, 0
                     await capturePreview(exp, gain, offset, true); 
                 } catch (e) {
                     console.error("[AstroService] Loop capture error:", e);

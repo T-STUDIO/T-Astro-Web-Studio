@@ -35,44 +35,11 @@ export class LiveStackingEngine {
         this.reset();
         this.isRunning = true;
         this.canvas = document.createElement('canvas');
-        
         console.log("[LiveStackingEngine] Started.");
-
-        // If astroService is provided, we can run the internal loop
-        // Otherwise, we rely on external processNewFrame calls
-        if (astroService) {
-            const loop = async () => {
-                if (!this.isRunning) return;
-
-                try {
-                    // カメラの準備待ち
-                    if (astroService.waitForCameraIdle) {
-                        const ready = await astroService.waitForCameraIdle(30000);
-                        if (!ready) throw new Error("Camera timeout");
-                    }
-
-                    // 撮影リクエスト
-                    await astroService.capturePreview(exposure, gain, offset, true);
-                    
-                    if (this.isRunning) {
-                        onProgress(this.count);
-                        setTimeout(loop, 200);
-                    }
-                } catch (e: any) {
-                    console.error("[LiveStackingEngine] Loop error:", e);
-                    onError(e.message);
-                    this.stop();
-                }
-            };
-            loop();
-        }
     }
 
     public stop() {
         this.isRunning = false;
-        if (astroService && astroService.stopCapture) {
-            astroService.stopCapture();
-        }
     }
 
     public setBrightness(val: number) {
@@ -134,7 +101,6 @@ export class LiveStackingEngine {
 
     private stackRaw(buffer: Uint8ClampedArray | Uint8Array, w: number, h: number): string | null {
         if (this.width !== w || this.height !== h) {
-            console.log(`[LiveStackingEngine] Initializing buffer: ${w}x${h}`);
             this.width = w;
             this.height = h;
             this.sumBuffer = new Float32Array(w * h * 3);
@@ -142,110 +108,60 @@ export class LiveStackingEngine {
             this.refStars = [];
         }
 
-        // 1. 星の検出（重心計算によるサブピクセル精度）
         const stars = this.detectStars(buffer as Uint8ClampedArray, w, h);
-
-        let tx = 0, ty = 0, angle = 0;
+        let tx = 0, ty = 0;
+        const sum = this.sumBuffer!;
 
         if (this.count === 0) {
-            if (stars.length < 1) {
-                // 初回フレームで星が見つからない場合でも、画像をそのまま表示してカウントは進めない
-                return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
-            }
             this.refStars = stars;
-            console.log(`[LiveStackingEngine] Reference stars detected: ${stars.length}`);
-        } else if (stars.length >= 2 && this.refStars.length >= 2) {
-            // 2つ以上の星がある場合、視野回転（経緯台対応）を計算
-            const r1 = this.refStars[0];
-            const r2 = this.refStars[1];
-            const c1 = stars[0];
-            const c2 = stars[1];
-
-            const angleRef = Math.atan2(r2.y - r1.y, r2.x - r1.x);
-            const angleCur = Math.atan2(c2.y - c1.y, c2.x - c1.x);
-            angle = angleRef - angleCur;
-
-            // 回転後の位置合わせ（画像の中心を回転軸とする）
-            const cx = w / 2;
-            const cy = h / 2;
-            const cos = Math.cos(angle);
-            const sin = Math.sin(angle);
-            
-            const rx = (c1.x - cx) * cos - (c1.y - cy) * sin + cx;
-            const ry = (c1.x - cx) * sin + (c1.y - cy) * cos + cy;
-            
-            tx = r1.x - rx;
-            ty = r1.y - ry;
-
-            // 極端な回転や移動はスキップ
-            if (Math.abs(angle) > 0.3 || Math.abs(tx) > 150 || Math.abs(ty) > 150) {
-                console.warn(`[LiveStackingEngine] Excessive movement (angle: ${angle.toFixed(3)}, tx: ${tx.toFixed(1)}, ty: ${ty.toFixed(1)}), skipping.`);
-                return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
+            // 初回はそのままバッファにコピー
+            for (let i = 0; i < w * h; i++) {
+                sum[i * 3] = buffer[i * 4];
+                sum[i * 3 + 1] = buffer[i * 4 + 1];
+                sum[i * 3 + 2] = buffer[i * 4 + 2];
             }
-        } else if (stars.length >= 1 && this.refStars.length >= 1) {
-            // 星が1つの場合は平行移動のみ
+        } else if (stars.length > 0 && this.refStars.length > 0) {
+            // シンプルな位置合わせ（最初の1つの星で合わせる）
             tx = this.refStars[0].x - stars[0].x;
             ty = this.refStars[0].y - stars[0].y;
             
-            if (Math.abs(tx) > 150 || Math.abs(ty) > 150) return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
-        } else {
-            // 星が見つからない場合は位置合わせをスキップして現在の画像を表示
-            return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
-        }
+            // 極端な移動は無視（ノイズによる誤検出対策）
+            if (Math.abs(tx) > w * 0.1 || Math.abs(ty) > h * 0.1) {
+                console.warn("[LiveStackingEngine] Large shift detected, skipping alignment:", tx, ty);
+                tx = 0; ty = 0;
+            }
 
-        // 2. 加算（回転と移動を考慮）
-        const sum = this.sumBuffer!;
-        const cx = w / 2;
-        const cy = h / 2;
-        const cos = Math.cos(-angle); // 逆回転
-        const sin = Math.sin(-angle);
+            for (let y = 0; y < h; y++) {
+                const sy = Math.round(y - ty);
+                if (sy < 0 || sy >= h) continue;
 
-        // バイリニア補間を使用してスタッキング精度を向上
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                const x1 = x - tx;
-                const y1 = y - ty;
-                
-                const sx = (x1 - cx) * cos - (y1 - cy) * sin + cx;
-                const sy = (x1 - cx) * sin + (y1 - cy) * cos + cy;
+                for (let x = 0; x < w; x++) {
+                    const sx = Math.round(x - tx);
+                    if (sx < 0 || sx >= w) continue;
 
-                if (sx >= 0 && sx < w - 1 && sy >= 0 && sy < h - 1) {
-                    const x0 = Math.floor(sx);
-                    const y0 = Math.floor(sy);
-                    const xf = sx - x0;
-                    const yf = sy - y0;
-
-                    const idx = (y * w + x) * 3;
-                    
-                    // 4画素の重み付け平均 (Bilinear)
-                    for (let c = 0; c < 3; c++) {
-                        const v00 = buffer[(y0 * w + x0) * 4 + c];
-                        const v10 = buffer[(y0 * w + (x0 + 1)) * 4 + c];
-                        const v01 = buffer[((y0 + 1) * w + x0) * 4 + c];
-                        const v11 = buffer[((y0 + 1) * w + (x0 + 1)) * 4 + c];
-                        
-                        const val = v00 * (1 - xf) * (1 - yf) +
-                                    v10 * xf * (1 - yf) +
-                                    v01 * (1 - xf) * yf +
-                                    v11 * xf * yf;
-                        
-                        sum[idx + c] += val;
-                    }
+                    const srcIdx = (sy * w + sx) * 4;
+                    const dstIdx = (y * w + x) * 3;
+                    sum[dstIdx] += buffer[srcIdx];
+                    sum[dstIdx + 1] += buffer[srcIdx + 1];
+                    sum[dstIdx + 2] += buffer[srcIdx + 2];
                 }
             }
+        } else {
+            // 星が見つからない場合は位置合わせなしで加算
+            for (let i = 0; i < w * h; i++) {
+                sum[i * 3] += buffer[i * 4];
+                sum[i * 3 + 1] += buffer[i * 4 + 1];
+                sum[i * 3 + 2] += buffer[i * 4 + 2];
+            }
         }
-
         this.count++;
 
-        // 3. 加算平均によるノイズ低減と明るさ調整
         if (this.canvas) {
             this.canvas.width = w;
             this.canvas.height = h;
             const ctx = this.canvas.getContext('2d')!;
             const outData = ctx.createImageData(w, h);
-            
-            const gain = this.brightnessFactor; 
-            
+            const gain = this.brightnessFactor;
             for (let i = 0; i < w * h; i++) {
                 outData.data[i * 4] = Math.min(255, (sum[i * 3] / this.count) * gain);
                 outData.data[i * 4 + 1] = Math.min(255, (sum[i * 3 + 1] / this.count) * gain);
@@ -258,100 +174,29 @@ export class LiveStackingEngine {
         return null;
     }
 
-    /**
-     * スタッキングできない場合に、現在のフレームを単体で表示するためのヘルパー
-     */
-    private renderCurrentFrame(buffer: Uint8ClampedArray, w: number, h: number): string | null {
-        if (!this.canvas) return null;
-        this.canvas.width = w;
-        this.canvas.height = h;
-        const ctx = this.canvas.getContext('2d')!;
-        const outData = ctx.createImageData(w, h);
-        const gain = this.brightnessFactor;
-        for (let i = 0; i < w * h; i++) {
-            outData.data[i * 4] = Math.min(255, buffer[i * 4] * gain);
-            outData.data[i * 4 + 1] = Math.min(255, buffer[i * 4 + 1] * gain);
-            outData.data[i * 4 + 2] = Math.min(255, buffer[i * 4 + 2] * gain);
-            outData.data[i * 4 + 3] = 255;
-        }
-        ctx.putImageData(outData, 0, 0);
-        return this.canvas.toDataURL('image/jpeg', 0.85);
-    }
-
     private detectStars(buffer: Uint8ClampedArray, w: number, h: number): (Point & { val: number })[] {
         const stars: (Point & { val: number })[] = [];
-        const step = 6; 
+        const threshold = 180;
+        const step = 8;
         
-        // 適応型の閾値計算（平均輝度に基づいて調整）
-        let totalBrightness = 0;
-        let samples = 0;
-        for (let i = 0; i < buffer.length; i += 400) {
-            totalBrightness += (buffer[i] + buffer[i + 1] + buffer[i + 2]) / 3;
-            samples++;
-        }
-        const avgBrightness = totalBrightness / samples;
-        const threshold = Math.max(30, avgBrightness + 50); // 最低30、平均+50を閾値とする
-
         for (let y = step; y < h - step; y += step) {
             for (let x = step; x < w - step; x += step) {
                 const idx = (y * w + x) * 4;
                 const val = (buffer[idx] + buffer[idx + 1] + buffer[idx + 2]) / 3;
                 
                 if (val > threshold) {
-                    // Check if it's a local maximum
-                    let isMax = true;
-                    for (let dy = -2; dy <= 2; dy++) {
-                        for (let dx = -2; dx <= 2; dx++) {
-                            if (dx === 0 && dy === 0) continue;
-                            const nIdx = ((y + dy) * w + (x + dx)) * 4;
-                            const nVal = (buffer[nIdx] + buffer[nIdx + 1] + buffer[nIdx + 2]) / 3;
-                            if (nVal > val) {
-                                isMax = false;
-                                break;
-                            }
-                        }
-                        if (!isMax) break;
-                    }
-
-                    if (isMax) {
-                        // 重心計算（5x5領域）
-                        let sumVal = 0;
-                        let sumX = 0;
-                        let sumY = 0;
-                        
-                        for (let dy = -2; dy <= 2; dy++) {
-                            for (let dx = -2; dx <= 2; dx++) {
-                                const pIdx = ((y + dy) * w + (x + dx)) * 4;
-                                const pVal = (buffer[pIdx] + buffer[pIdx + 1] + buffer[pIdx + 2]) / 3;
-                                sumVal += pVal;
-                                sumX += (x + dx) * pVal;
-                                sumY += (y + dy) * pVal;
-                            }
-                        }
-                        
-                        if (sumVal > 0) {
-                            stars.push({ 
-                                x: sumX / sumVal, 
-                                y: sumY / sumVal, 
-                                val: sumVal 
-                            });
-                        }
+                    // 周囲より明るいかチェック（簡易的なピーク検出）
+                    const up = (buffer[((y - 1) * w + x) * 4] + buffer[((y - 1) * w + x) * 4 + 1] + buffer[((y - 1) * w + x) * 4 + 2]) / 3;
+                    const down = (buffer[((y + 1) * w + x) * 4] + buffer[((y + 1) * w + x) * 4 + 1] + buffer[((y + 1) * w + x) * 4 + 2]) / 3;
+                    const left = (buffer[(y * w + (x - 1)) * 4] + buffer[(y * w + (x - 1)) * 4 + 1] + buffer[(y * w + (x - 1)) * 4 + 2]) / 3;
+                    const right = (buffer[(y * w + (x + 1)) * 4] + buffer[(y * w + (x + 1)) * 4 + 1] + buffer[(y * w + (x + 1)) * 4 + 2]) / 3;
+                    
+                    if (val >= up && val >= down && val >= left && val >= right) {
+                        stars.push({ x, y, val });
                     }
                 }
             }
         }
-        
-        // 近すぎる星をマージ（簡易的）
-        const uniqueStars: (Point & { val: number })[] = [];
-        const sorted = stars.sort((a, b) => b.val - a.val);
-        
-        for (const s of sorted) {
-            if (!uniqueStars.some(u => Math.hypot(u.x - s.x, u.y - s.y) < 12)) {
-                uniqueStars.push(s);
-            }
-            if (uniqueStars.length >= 50) break;
-        }
-
-        return uniqueStars;
+        return stars.sort((a, b) => b.val - a.val).slice(0, 20);
     }
 }

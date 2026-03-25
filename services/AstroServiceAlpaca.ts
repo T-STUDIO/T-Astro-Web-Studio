@@ -403,6 +403,25 @@ export const updateOffset = async (offset: number) => {
 
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
     const camId = getDeviceNumber('Camera');
+    if (camId === -1) return "";
+    
+    // If not a stream, ensure we aren't already exposing
+    if (!isStream) {
+        try {
+            let stateRes = await alpacaClient.getCommand('Camera', camId, 'CameraState');
+            if (stateRes && stateRes.Value !== 0) { // 0 = CameraIdle
+                addDebugLog(`Camera is busy (State: ${stateRes.Value}), aborting previous exposure...`);
+                await alpacaClient.putCommand('Camera', camId, 'AbortExposure');
+                await sleep(1000);
+                stateRes = await alpacaClient.getCommand('Camera', camId, 'CameraState');
+                if (stateRes && stateRes.Value !== 0) {
+                    addDebugLog(`❌ Camera failed to become idle (State: ${stateRes.Value}). Aborting capture.`);
+                    return "";
+                }
+            }
+        } catch (e) {}
+    }
+
     addDebugLog(`Starting ${exp/1000}s exposure on camera ${camId}...`);
     
     try {
@@ -516,6 +535,11 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
 
 export const startCapture = async (exp: number, gain: number, offset: number, colorBalance?: any, cb?: (c:number)=>void, done?: ()=>void) => {
     if (isCapturing) return;
+    
+    // Ensure Stream is OFF when starting Capture/Loop
+    stopStream();
+    await sleep(300);
+
     isCapturing = true;
     addDebugLog(`Starting capture sequence: ${exp}ms, Gain: ${gain}, Offset: ${offset}`);
     
@@ -580,6 +604,10 @@ let streamTimer: any = null;
 
 export const startStream = (exp: number = 1000, gain: number = 0, offset: number = 0) => {
     if (isStreaming) return;
+    
+    // Ensure Capture/Loop is OFF when starting Stream
+    stopCapture();
+    
     isStreaming = true;
     addDebugLog("Starting live view stream...");
     

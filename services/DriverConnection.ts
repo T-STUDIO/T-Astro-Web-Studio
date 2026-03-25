@@ -951,29 +951,27 @@ export const rawFitsToDisplay = (
                     let displayMin = 0; let displayRange = 255;
                     const ch0 = channels[0];
                     if (bitpix === 8) displayRange = 255;
-                    else if (Math.abs(bitpix) === 16) {
-                        // Auto-stretch for 16-bit: Find min/max in a sample
-                        let min = 65535, max = 0;
-                        const step = Math.max(1, Math.floor(numPixels / 1000));
-                        for(let i=0; i<numPixels; i+=step) {
-                            const v = ch0[i];
-                            if (v < min) min = v;
-                            if (v > max) max = v;
-                        }
-                        displayMin = min;
-                        displayRange = Math.max(1, max - min);
-                    }
+                    else if (Math.abs(bitpix) === 16) displayRange = 65535;
                     else if (Math.abs(bitpix) === 32) displayRange = 4294967295;
-                    else if (bitpix === -32) { 
-                        let min = 1e10, max = -1e10;
-                        const step = Math.max(1, Math.floor(numPixels / 1000));
-                        for(let i=0; i<numPixels; i+=step) {
-                            const v = ch0[i];
-                            if (v < min) min = v;
-                            if (v > max) max = v;
+                    else if (bitpix === -32) {
+                        // For float data, we check if it's 0-1 or 0-255 or 0-65535
+                        let maxVal = 0;
+                        for (let i = 0; i < Math.min(ch0.length, 10000); i++) {
+                            if (ch0[i] > maxVal) maxVal = ch0[i];
                         }
-                        displayMin = min;
-                        displayRange = Math.max(1e-10, max - min);
+                        if (maxVal > 255) displayRange = 65535;
+                        else if (maxVal > 1.0) displayRange = 255;
+                        else displayRange = 1.0;
+                    }
+                    
+                    // Simple auto-stretch: if the image is too dark, reduce displayRange
+                    let actualMax = 0;
+                    const sampleSize = Math.min(ch0.length, 5000);
+                    for (let i = 0; i < sampleSize; i++) {
+                        if (ch0[i] > actualMax) actualMax = ch0[i];
+                    }
+                    if (actualMax > 0 && actualMax < displayRange * 0.1) {
+                        displayRange = actualMax * 1.2; // Stretch to fit
                     }
                     const isRGB = (naxis3 === 3); let bayerPat = debayerPattern;
                     if (!isRGB && (!bayerPat || bayerPat === 'Auto')) bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();

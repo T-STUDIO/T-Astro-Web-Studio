@@ -268,7 +268,16 @@ const App: React.FC = () => {
   const handleLoadFromDisk = async (file: File) => {
     try {
       const s = await SettingsService.importSettingsFromFile(file);
-      setConnectionSettings(s.connectionSettings); setPlanetariumSettings(s.planetariumSettings);
+      
+      // Prevent accidental redirection by forcing the driver to INDI if we are on the INDI page
+      const connectionSettings = { ...s.connectionSettings };
+      if (connectionSettings.driver !== 'INDI') {
+          console.log(`[App] Overriding loaded driver '${connectionSettings.driver}' to 'INDI' to prevent redirection.`);
+          connectionSettings.driver = 'INDI';
+      }
+
+      setConnectionSettings(connectionSettings); 
+      setPlanetariumSettings(s.planetariumSettings);
       setExposure(s.exposure); setGain(s.gain); setOffset(s.offset); setBinning(s.binning); setColorBalance(s.colorBalance);
       setAstrometryApiKey(s.astrometryApiKey); setPlateSolverType(s.plateSolverType); setLocalSolverSettings(s.localSolverSettings);
       setIsAutoCenterEnabled(s.isAutoCenterEnabled); setIsAutoSyncLocationEnabled(s.isAutoSyncLocationEnabled);

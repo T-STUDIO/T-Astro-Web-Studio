@@ -7,8 +7,12 @@ export const setAstroService = (service: any) => {
 
 interface Point { x: number; y: number; }
 
-export class LiveStackingEngine {
-    private static instance: LiveStackingEngine;
+/**
+ * Alpaca専用のライブスタッキングエンジン
+ * 位置合わせ（アライメント）の精度と許容範囲を強化
+ */
+export class LiveStackingEngineAlpaca {
+    private static instance: LiveStackingEngineAlpaca;
     private sumBuffer: Float32Array | null = null;
     private count = 0;
     private width = 0;
@@ -17,11 +21,11 @@ export class LiveStackingEngine {
     private isRunning = false;
     private canvas: HTMLCanvasElement | null = null;
     private isProcessing = false;
-    private brightnessFactor = 1.0; // 明るさ調整用
+    private brightnessFactor = 1.0;
 
     public static getInstance() {
-        if (!LiveStackingEngine.instance) LiveStackingEngine.instance = new LiveStackingEngine();
-        return LiveStackingEngine.instance;
+        if (!LiveStackingEngineAlpaca.instance) LiveStackingEngineAlpaca.instance = new LiveStackingEngineAlpaca();
+        return LiveStackingEngineAlpaca.instance;
     }
 
     public async start(
@@ -35,31 +39,22 @@ export class LiveStackingEngine {
         this.reset();
         this.isRunning = true;
         this.canvas = document.createElement('canvas');
-        
-        console.log("[LiveStackingEngine] Started.");
+        console.log("[LiveStackingEngineAlpaca] Started.");
 
-        // If astroService is provided, we can run the internal loop
-        // Otherwise, we rely on external processNewFrame calls
         if (astroService) {
             const loop = async () => {
                 if (!this.isRunning) return;
-
                 try {
-                    // カメラの準備待ち
                     if (astroService.waitForCameraIdle) {
-                        const ready = await astroService.waitForCameraIdle(30000);
-                        if (!ready) throw new Error("Camera timeout");
+                        await astroService.waitForCameraIdle(30000);
                     }
-
-                    // 撮影リクエスト
                     await astroService.capturePreview(exposure, gain, offset, true);
-                    
                     if (this.isRunning) {
                         onProgress(this.count);
                         setTimeout(loop, 200);
                     }
                 } catch (e: any) {
-                    console.error("[LiveStackingEngine] Loop error:", e);
+                    console.error("[LiveStackingEngineAlpaca] Loop error:", e);
                     onError(e.message);
                     this.stop();
                 }
@@ -87,23 +82,11 @@ export class LiveStackingEngine {
         this.height = 0;
     }
 
-    /**
-     * 到着した画像を処理する（App.tsxから呼び出し）
-     */
     public async processNewFrame(dataUrl: string, metadata: any): Promise<string | null> {
         if (!this.isRunning || this.isProcessing) return null;
         this.isProcessing = true;
 
         try {
-            // RAWデータ優先で使用
-            if (dataUrl === 'raw-data-available' && metadata?.rawBuffer) {
-                const { rawBuffer, rawWidth, rawHeight } = metadata;
-                const result = this.stackRaw(rawBuffer, rawWidth, rawHeight);
-                this.isProcessing = false;
-                return result;
-            }
-            
-            // AlpacaやDataURLの場合は、Imageオブジェクトでデコードしてピクセルを取得
             if (dataUrl.startsWith('data:image')) {
                 const img = new Image();
                 await new Promise((resolve, reject) => {
@@ -125,7 +108,7 @@ export class LiveStackingEngine {
                 }
             }
         } catch (e) {
-            console.error("[LiveStackingEngine] Processing error:", e);
+            console.error("[LiveStackingEngineAlpaca] Processing error:", e);
         }
 
         this.isProcessing = false;
@@ -134,7 +117,6 @@ export class LiveStackingEngine {
 
     private stackRaw(buffer: Uint8ClampedArray | Uint8Array, w: number, h: number): string | null {
         if (this.width !== w || this.height !== h) {
-            console.log(`[LiveStackingEngine] Initializing buffer: ${w}x${h}`);
             this.width = w;
             this.height = h;
             this.sumBuffer = new Float32Array(w * h * 3);
@@ -142,20 +124,20 @@ export class LiveStackingEngine {
             this.refStars = [];
         }
 
-        // 1. 星の検出（重心計算によるサブピクセル精度）
+        // Alpaca用に閾値を少し下げ、星の検出数を増やす
         const stars = this.detectStars(buffer as Uint8ClampedArray, w, h);
 
         let tx = 0, ty = 0, angle = 0;
 
         if (this.count === 0) {
             if (stars.length < 1) {
-                // 初回フレームで星が見つからない場合でも、画像をそのまま表示してカウントは進めない
-                return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
+                console.warn(`[LiveStackingEngineAlpaca] No stars detected in first frame.`);
+                return null;
             }
             this.refStars = stars;
-            console.log(`[LiveStackingEngine] Reference stars detected: ${stars.length}`);
+            console.log(`[LiveStackingEngineAlpaca] Reference stars detected: ${stars.length}`);
         } else if (stars.length >= 2 && this.refStars.length >= 2) {
-            // 2つ以上の星がある場合、視野回転（経緯台対応）を計算
+            // 視野回転の計算
             const r1 = this.refStars[0];
             const r2 = this.refStars[1];
             const c1 = stars[0];
@@ -165,7 +147,6 @@ export class LiveStackingEngine {
             const angleCur = Math.atan2(c2.y - c1.y, c2.x - c1.x);
             angle = angleRef - angleCur;
 
-            // 回転後の位置合わせ（画像の中心を回転軸とする）
             const cx = w / 2;
             const cy = h / 2;
             const cos = Math.cos(angle);
@@ -177,27 +158,28 @@ export class LiveStackingEngine {
             tx = r1.x - rx;
             ty = r1.y - ry;
 
-            // 極端な回転や移動はスキップ
-            if (Math.abs(angle) > 0.3 || Math.abs(tx) > 150 || Math.abs(ty) > 150) {
-                console.warn(`[LiveStackingEngine] Excessive movement (angle: ${angle.toFixed(3)}, tx: ${tx.toFixed(1)}, ty: ${ty.toFixed(1)}), skipping.`);
-                return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
+            // Alpacaでは許容範囲を広げる (tx, ty: 200pxまで許容)
+            if (Math.abs(angle) > 0.5 || Math.abs(tx) > 200 || Math.abs(ty) > 200) {
+                console.warn(`[LiveStackingEngineAlpaca] Excessive movement (tx:${tx.toFixed(1)}, ty:${ty.toFixed(1)}, angle:${(angle*180/Math.PI).toFixed(1)}deg), skipping frame.`);
+                return null;
             }
         } else if (stars.length >= 1 && this.refStars.length >= 1) {
-            // 星が1つの場合は平行移動のみ
             tx = this.refStars[0].x - stars[0].x;
             ty = this.refStars[0].y - stars[0].y;
-            
-            if (Math.abs(tx) > 150 || Math.abs(ty) > 150) return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
+            if (Math.abs(tx) > 200 || Math.abs(ty) > 200) {
+                console.warn(`[LiveStackingEngineAlpaca] Excessive movement (tx:${tx.toFixed(1)}, ty:${ty.toFixed(1)}), skipping frame.`);
+                return null;
+            }
         } else {
-            // 星が見つからない場合は位置合わせをスキップして現在の画像を表示
-            return this.renderCurrentFrame(buffer as Uint8ClampedArray, w, h);
+            // 星が見つからない場合、前回のフレームを維持するためにnullを返すが、カウントは増やさない
+            console.warn(`[LiveStackingEngineAlpaca] No stars detected, skipping frame.`);
+            return null;
         }
 
-        // 2. 加算（回転と移動を考慮）
         const sum = this.sumBuffer!;
         const cx = w / 2;
         const cy = h / 2;
-        const cos = Math.cos(-angle); // 逆回転
+        const cos = Math.cos(-angle);
         const sin = Math.sin(-angle);
 
         // バイリニア補間を使用してスタッキング精度を向上
@@ -237,13 +219,11 @@ export class LiveStackingEngine {
 
         this.count++;
 
-        // 3. 加算平均によるノイズ低減と明るさ調整
         if (this.canvas) {
             this.canvas.width = w;
             this.canvas.height = h;
             const ctx = this.canvas.getContext('2d')!;
             const outData = ctx.createImageData(w, h);
-            
             const gain = this.brightnessFactor; 
             
             for (let i = 0; i < w * h; i++) {
@@ -253,34 +233,14 @@ export class LiveStackingEngine {
                 outData.data[i * 4 + 3] = 255;
             }
             ctx.putImageData(outData, 0, 0);
-            return this.canvas.toDataURL('image/jpeg', 0.85);
+            return this.canvas.toDataURL('image/jpeg', 0.9);
         }
         return null;
     }
 
-    /**
-     * スタッキングできない場合に、現在のフレームを単体で表示するためのヘルパー
-     */
-    private renderCurrentFrame(buffer: Uint8ClampedArray, w: number, h: number): string | null {
-        if (!this.canvas) return null;
-        this.canvas.width = w;
-        this.canvas.height = h;
-        const ctx = this.canvas.getContext('2d')!;
-        const outData = ctx.createImageData(w, h);
-        const gain = this.brightnessFactor;
-        for (let i = 0; i < w * h; i++) {
-            outData.data[i * 4] = Math.min(255, buffer[i * 4] * gain);
-            outData.data[i * 4 + 1] = Math.min(255, buffer[i * 4 + 1] * gain);
-            outData.data[i * 4 + 2] = Math.min(255, buffer[i * 4 + 2] * gain);
-            outData.data[i * 4 + 3] = 255;
-        }
-        ctx.putImageData(outData, 0, 0);
-        return this.canvas.toDataURL('image/jpeg', 0.85);
-    }
-
     private detectStars(buffer: Uint8ClampedArray, w: number, h: number): (Point & { val: number })[] {
         const stars: (Point & { val: number })[] = [];
-        const step = 6; 
+        const step = 8; 
         
         // 適応型の閾値計算（平均輝度に基づいて調整）
         let totalBrightness = 0;
@@ -290,7 +250,7 @@ export class LiveStackingEngine {
             samples++;
         }
         const avgBrightness = totalBrightness / samples;
-        const threshold = Math.max(30, avgBrightness + 50); // 最低30、平均+50を閾値とする
+        const threshold = Math.max(40, avgBrightness + 50); // 最低40、平均+50を閾値とする
 
         for (let y = step; y < h - step; y += step) {
             for (let x = step; x < w - step; x += step) {
@@ -346,12 +306,11 @@ export class LiveStackingEngine {
         const sorted = stars.sort((a, b) => b.val - a.val);
         
         for (const s of sorted) {
-            if (!uniqueStars.some(u => Math.hypot(u.x - s.x, u.y - s.y) < 12)) {
+            if (!uniqueStars.some(u => Math.hypot(u.x - s.x, u.y - s.y) < 20)) {
                 uniqueStars.push(s);
             }
             if (uniqueStars.length >= 50) break;
         }
-
         return uniqueStars;
     }
 }

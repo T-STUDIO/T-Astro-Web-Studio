@@ -270,9 +270,11 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     if (socket !== ws) return;
                     log('INDI WebSocket Connected');
                     
-                    // 修正：メインチャネルでのBLOBを無効化
+                    // 修正：メインチャネルでのBLOBを制御
                     if (mainChannelBlobsDisabled) {
                         sendRaw('<enableBLOB>Never</enableBLOB>');
+                    } else {
+                        sendRaw('<enableBLOB>Also</enableBLOB>');
                     }
                     
                     sendRaw('<getProperties version="1.7" />');
@@ -947,15 +949,37 @@ export const rawFitsToDisplay = (
                         else if (bitpix === -32) { for (let i = 0; i < numPixels; i++) { if (dataOffset + 4 > buffer.byteLength) break; target[i] = view.getFloat32(dataOffset, false) * bscale + bzero; dataOffset += 4; } }
                     }
                     let displayMin = 0; let displayRange = 255;
+                    const ch0 = channels[0];
                     if (bitpix === 8) displayRange = 255;
-                    else if (Math.abs(bitpix) === 16) displayRange = 65535;
+                    else if (Math.abs(bitpix) === 16) {
+                        // Auto-stretch for 16-bit: Find min/max in a sample
+                        let min = 65535, max = 0;
+                        const step = Math.max(1, Math.floor(numPixels / 1000));
+                        for(let i=0; i<numPixels; i+=step) {
+                            const v = ch0[i];
+                            if (v < min) min = v;
+                            if (v > max) max = v;
+                        }
+                        displayMin = min;
+                        displayRange = Math.max(1, max - min);
+                    }
                     else if (Math.abs(bitpix) === 32) displayRange = 4294967295;
-                    else if (bitpix === -32) { const sample = channels[0][Math.floor(numPixels/2)]; displayRange = sample > 1.0 ? 65535 : 1; }
+                    else if (bitpix === -32) { 
+                        let min = 1e10, max = -1e10;
+                        const step = Math.max(1, Math.floor(numPixels / 1000));
+                        for(let i=0; i<numPixels; i+=step) {
+                            const v = ch0[i];
+                            if (v < min) min = v;
+                            if (v > max) max = v;
+                        }
+                        displayMin = min;
+                        displayRange = Math.max(1e-10, max - min);
+                    }
                     const isRGB = (naxis3 === 3); let bayerPat = debayerPattern;
                     if (!isRGB && (!bayerPat || bayerPat === 'Auto')) bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
                     let code = -1; 
                     if (!isRGB) { if (bayerPat === 'RGGB') code = 0; else if (bayerPat === 'GBRG') code = 1; else if (bayerPat === 'GRBG') code = 2; else if (bayerPat === 'BGGR') code = 3; }
-                    const ch0 = channels[0]; const ch1 = isRGB ? channels[1] : null; const ch2 = isRGB ? channels[2] : null;
+                    const ch1 = isRGB ? channels[1] : null; const ch2 = isRGB ? channels[2] : null;
                     for (let y = 0; y < height; y++) {
                         const fitsY = height - 1 - y; const rowOffset = y * width; const fitsRowOffset = fitsY * width; const isEvenRow = (y % 2 === 0);
                         for (let x = 0; x < width; x++) {

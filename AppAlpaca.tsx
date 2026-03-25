@@ -198,6 +198,13 @@ const AppAlpaca: React.FC = () => {
                 return;
             }
         }
+
+        // 撮影モードがすべてOFFで、プレビュー読み込み中でもない場合は、遅れて届いた古いフレームとして無視する
+        if (!isLiveViewActive && !isVideoStreamActive && !isPreviewLoading) {
+            console.log("[AppAlpaca] Ignoring late image frame");
+            return;
+        }
+
         setLatestImage(url);
         setLatestImageFormat(format);
         setLatestImageMetadata(metadata || null);
@@ -215,7 +222,7 @@ const AppAlpaca: React.FC = () => {
         AstroService.setMessageCountCallback(null);
         AstroService.setCameraCapabilitiesCallback(null);
     };
-  }, [isCapturing]);
+  }, [isCapturing, isLiveViewActive, isVideoStreamActive, isPreviewLoading]);
 
   useEffect(() => {
     SettingsService.saveSettings({
@@ -232,13 +239,17 @@ const AppAlpaca: React.FC = () => {
   };
 
   const stopAllImaging = useCallback(() => {
-    if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopStream(); }
-    if (isVideoStreamActive) { setIsVideoStreamActive(false); AstroService.setVideoStream(false); }
-    if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
+    setIsLiveViewActive(false);
+    setIsVideoStreamActive(false);
+    setIsCapturing(false);
     setIsPreviewLoading(false);
+    AstroService.stopLoop();
+    AstroService.stopStream();
+    AstroService.stopCapture();
     setLatestImage(null);
     setLatestImageMetadata(null);
-  }, [isLiveViewActive, isVideoStreamActive, isCapturing]);
+    LiveStackingEngine.getInstance().stop();
+  }, [AstroService]);
 
   const handleMobileTabChange = (tab: TabType) => {
       setMobileActiveTab(tab);
@@ -311,6 +322,8 @@ const AppAlpaca: React.FC = () => {
           if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopStream(); }
           if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
           setIsPreviewLoading(false);
+          setLatestImage(null);
+          setLatestImageMetadata(null);
           setIsVideoStreamActive(true); 
           AstroService.setVideoStream(true); 
           setActiveView('Imaging'); 

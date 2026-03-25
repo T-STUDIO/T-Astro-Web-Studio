@@ -168,13 +168,20 @@ const App: React.FC = () => {
         if (isCapturing) {
             const stackedUrl = await LiveStackingEngine.getInstance().processNewFrame(url, metadata);
             if (stackedUrl) {
-              BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
+                BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
                 setLatestImage(stackedUrl);
                 setLatestImageFormat('jpeg');
                 setIsPreviewLoading(false);
-                return;
             }
+            return; // スタッキング中は生画像を表示しない（チラつき防止）
         }
+
+        // 撮影モードがすべてOFFで、プレビュー読み込み中でもない場合は、遅れて届いた古いフレームとして無視する
+        if (!isLiveViewActive && !isVideoStreamActive && !isPreviewLoading) {
+            console.log("[App] Ignoring late image frame");
+            return;
+        }
+
         setLatestImage(url);
         setLatestImageFormat(format);
         setLatestImageMetadata(metadata || null);
@@ -185,7 +192,7 @@ const App: React.FC = () => {
         AstroService.setImageReceivedCallback(null);
         AstroService.setTelescopePositionCallback(null);
     };
-  }, [isCapturing]);
+  }, [isCapturing, isLiveViewActive, isVideoStreamActive, isPreviewLoading]);
 
   useEffect(() => {
     SettingsService.saveSettings({
@@ -197,13 +204,17 @@ const App: React.FC = () => {
   }, [connectionSettings, planetariumSettings, exposure, gain, offset, binning, colorBalance, astrometryApiKey, plateSolverType, localSolverSettings, isAutoCenterEnabled, isAutoSyncLocationEnabled, sampSettings, location, savedLocations, savedConnections, savedApiKeys, savedLocalSolvers, savedSampSettings]);
 
   const stopAllImaging = useCallback(() => {
-    if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
-    if (isVideoStreamActive) { setIsVideoStreamActive(false); AstroService.setVideoStream(false); }
-    if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
+    setIsLiveViewActive(false);
+    setIsVideoStreamActive(false);
+    setIsCapturing(false);
     setIsPreviewLoading(false);
+    AstroService.stopLoop();
+    AstroService.setVideoStream(false);
+    AstroService.stopCapture();
     setLatestImage(null);
     setLatestImageMetadata(null);
-  }, [isLiveViewActive, isVideoStreamActive, isCapturing]);
+    LiveStackingEngine.getInstance().stop();
+  }, [AstroService]);
 
   const handleMobileTabChange = (tab: TabType) => {
       setMobileActiveTab(tab);
@@ -296,11 +307,8 @@ const App: React.FC = () => {
 
   const handleToggleVideoStream = () => {
       const targetState = !isVideoStreamActive;
+      stopAllImaging();
       if (targetState) {
-          // 他の撮影モードのみ停止し、動画を開始する「動作版」ロジック
-          if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
-          if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
-          setIsPreviewLoading(false);
           setIsVideoStreamActive(true); 
           AstroService.setVideoStream(true); 
           setActiveView('Imaging'); 

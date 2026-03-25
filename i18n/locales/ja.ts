@@ -298,6 +298,7 @@ export const ja = {
     colorBalanceR: '赤',
     colorBalanceG: '緑',
     colorBalanceB: '青',
+    brightness: '明るさ',
     startLiveStacking: 'ライブスタック開始',
     liveView: 'Loop',
     videoStream: 'ライブビュー',

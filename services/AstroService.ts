@@ -223,6 +223,23 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
          return;
     }
     
+    // CCD Simulator specific fixes for missing stars/parameters
+    if (cam === 'CCD Simulator') {
+        if (DriverConnection.hasProperty(cam, 'TELESCOPE_TYPE')) {
+            const focalLength = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH');
+            const aperture = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_APERTURE');
+            
+            if (focalLength === 0 || focalLength === null) {
+                console.log("[AstroService] Setting default focal length for CCD Simulator");
+                DriverConnection.updateDeviceSetting(cam, 'TELESCOPE_TYPE', { 'TELESCOPE_FOCAL_LENGTH': 1000 });
+            }
+            if (aperture === 0 || aperture === null) {
+                console.log("[AstroService] Setting default aperture for CCD Simulator");
+                DriverConnection.updateDeviceSetting(cam, 'TELESCOPE_TYPE', { 'TELESCOPE_APERTURE': 100 });
+            }
+        }
+    }
+
     if (!isStream) {
         await setVideoStream(false);
         // Wait a bit more for the camera to settle after stopping stream
@@ -259,6 +276,10 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     setCameraGain(cam, gain);
     setCameraOffset(cam, offset);
     
+    // Ensure BLOBs are enabled for the camera
+    DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
+    await sleep(100);
+
     DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
 };
 

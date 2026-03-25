@@ -26,7 +26,7 @@ import * as SettingsService from './services/SettingsService';
 import * as GoogleDriveService from './services/GoogleDriveService';
 import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
-import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine'; // New Import
+import { LiveStackingEngine } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
 import { MountController } from './components/MountController';
 import { AutoCenterService } from './services/AutoCenterService';
@@ -72,7 +72,6 @@ const App: React.FC = () => {
   const [gain, setGain] = useState(initialSettings.gain);
   const [offset, setOffset] = useState(initialSettings.offset);
   const [binning, setBinning] = useState(initialSettings.binning);
-  const [brightnessFactor, setBrightnessFactor] = useState(1.0);
   const [colorBalance, setColorBalance] = useState(initialSettings.colorBalance);
   
   const [astrometryApiKey, setAstrometryApiKey] = useState(initialSettings.astrometryApiKey);
@@ -157,31 +156,20 @@ const App: React.FC = () => {
   }, [isTimeRunning]);
 
   useEffect(() => {
-    setAstroService(AstroService);
-  }, []);
-
-  useEffect(() => {
-    AstroService.setImageReceivedCallback(async (url, format, metadata) => {
+    AstroService.setImageReceivedCallback((url, format, metadata) => {
       　// 画像をビューアーへ中継
     BroadcastService.getInstance().sendImage(url, metadata); 
         // スタッキング実行中の場合は、エンジンに画像を渡して合成された画像を受け取る
         if (isCapturing) {
-            const stackedUrl = await LiveStackingEngine.getInstance().processNewFrame(url, metadata);
+            const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
             if (stackedUrl) {
-                BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
+              BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
                 setLatestImage(stackedUrl);
                 setLatestImageFormat('jpeg');
                 setIsPreviewLoading(false);
+                return;
             }
-            return; // スタッキング中は生画像を表示しない（チラつき防止）
         }
-
-        // 撮影モードがすべてOFFで、プレビュー読み込み中でもない場合は、遅れて届いた古いフレームとして無視する
-        if (!isLiveViewActive && !isVideoStreamActive && !isPreviewLoading) {
-            console.log("[App] Ignoring late image frame");
-            return;
-        }
-
         setLatestImage(url);
         setLatestImageFormat(format);
         setLatestImageMetadata(metadata || null);
@@ -192,7 +180,7 @@ const App: React.FC = () => {
         AstroService.setImageReceivedCallback(null);
         AstroService.setTelescopePositionCallback(null);
     };
-  }, [isCapturing, isLiveViewActive, isVideoStreamActive, isPreviewLoading]);
+  }, [isCapturing]);
 
   useEffect(() => {
     SettingsService.saveSettings({
@@ -204,17 +192,13 @@ const App: React.FC = () => {
   }, [connectionSettings, planetariumSettings, exposure, gain, offset, binning, colorBalance, astrometryApiKey, plateSolverType, localSolverSettings, isAutoCenterEnabled, isAutoSyncLocationEnabled, sampSettings, location, savedLocations, savedConnections, savedApiKeys, savedLocalSolvers, savedSampSettings]);
 
   const stopAllImaging = useCallback(() => {
-    setIsLiveViewActive(false);
-    setIsVideoStreamActive(false);
-    setIsCapturing(false);
+    if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
+    if (isVideoStreamActive) { setIsVideoStreamActive(false); AstroService.setVideoStream(false); }
+    if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
     setIsPreviewLoading(false);
-    AstroService.stopLoop();
-    AstroService.setVideoStream(false);
-    AstroService.stopCapture();
     setLatestImage(null);
     setLatestImageMetadata(null);
-    LiveStackingEngine.getInstance().stop();
-  }, [AstroService]);
+  }, [isLiveViewActive, isVideoStreamActive, isCapturing]);
 
   const handleMobileTabChange = (tab: TabType) => {
       setMobileActiveTab(tab);
@@ -268,16 +252,7 @@ const App: React.FC = () => {
   const handleLoadFromDisk = async (file: File) => {
     try {
       const s = await SettingsService.importSettingsFromFile(file);
-      
-      // Prevent accidental redirection by forcing the driver to INDI if we are on the INDI page
-      const connectionSettings = { ...s.connectionSettings };
-      if (connectionSettings.driver !== 'INDI') {
-          console.log(`[App] Overriding loaded driver '${connectionSettings.driver}' to 'INDI' to prevent redirection.`);
-          connectionSettings.driver = 'INDI';
-      }
-
-      setConnectionSettings(connectionSettings); 
-      setPlanetariumSettings(s.planetariumSettings);
+      setConnectionSettings(s.connectionSettings); setPlanetariumSettings(s.planetariumSettings);
       setExposure(s.exposure); setGain(s.gain); setOffset(s.offset); setBinning(s.binning); setColorBalance(s.colorBalance);
       setAstrometryApiKey(s.astrometryApiKey); setPlateSolverType(s.plateSolverType); setLocalSolverSettings(s.localSolverSettings);
       setIsAutoCenterEnabled(s.isAutoCenterEnabled); setIsAutoSyncLocationEnabled(s.isAutoSyncLocationEnabled);
@@ -298,11 +273,6 @@ const App: React.FC = () => {
     AstroService.updateOffset(val);
   };
 
-  const handleSetBrightness = (val: number) => {
-    setBrightnessFactor(val);
-    LiveStackingEngine.getInstance().setBrightness(val);
-  };
-
   const handleToggleLiveView = () => {
       const targetState = !isLiveViewActive;
       stopAllImaging();
@@ -316,8 +286,11 @@ const App: React.FC = () => {
 
   const handleToggleVideoStream = () => {
       const targetState = !isVideoStreamActive;
-      stopAllImaging();
       if (targetState) {
+          // 他の撮影モードのみ停止し、動画を開始する「動作版」ロジック
+          if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
+          if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
+          setIsPreviewLoading(false);
           setIsVideoStreamActive(true); 
           AstroService.setVideoStream(true); 
           setActiveView('Imaging'); 
@@ -466,21 +439,8 @@ const App: React.FC = () => {
                 isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
                 onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                 sampStatus={sampStatus}
-                sampSettings={sampSettings}
-                onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                onConnectSamp={async () => { 
-                  if (sampStatus === 'Connected') {
-                    SampService.disconnect();
-                  } else {
-                    setSampStatus('Connecting'); 
-                    await SampService.connect(sampSettings);
-                  }
-                }}
-                onConnectVirtualSamp={() => {
-                  setSampStatus('Connecting');
-                  SampService.connectInternal((status) => setSampStatus(status), sampSettings);
-                }}
-                onDisconnectSamp={() => SampService.disconnect()}
+                onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); setSampStatus('Connected'); }}
+                onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
                 isCapturing={isCapturing}
                 captureProgress={captureProgress}
                 selectedObject={selectedObject}
@@ -525,7 +485,6 @@ const App: React.FC = () => {
                         exposure={exposure} onSetExposure={setExposure}
                         gain={gain} onSetGain={handleSetGain}
                         offset={offset} onSetOffset={handleSetOffset}
-                        brightness={brightnessFactor} onSetBrightness={handleSetBrightness}
                         binning={binning} onSetBinning={setBinning}
                         colorBalance={colorBalance} onSetColorBalance={setColorBalance}
                         isLiveViewActive={isLiveViewActive} onToggleLiveView={handleToggleLiveView}
@@ -543,15 +502,7 @@ const App: React.FC = () => {
                         sampStatus={sampStatus}
                         sampSettings={sampSettings}
                         onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                        onConnectSamp={async () => { 
-                          setSampStatus('Connecting'); 
-                          await SampService.connect(sampSettings); 
-                        }}
-                        onConnectVirtualSamp={() => {
-                          setSampStatus('Connecting');
-                          SampService.connectInternal((status) => setSampStatus(status), sampSettings);
-                        }}
-                        onDisconnectSamp={() => SampService.disconnect()}
+                        onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}

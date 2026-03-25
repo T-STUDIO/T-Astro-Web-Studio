@@ -294,7 +294,7 @@ const SettingsPanel = memo((props: any) => {
                 <Button onClick={onConnectSamp} disabled={sampStatus === 'Connecting'} variant="secondary" className="flex-1 text-xs" type="button" title={t('tooltips.samp')}>
                     {sampStatus === 'Connecting' ? t('samp.status.connecting') : t('controlPanel.connectSampHub')}
                 </Button>
-                <Button onClick={onConnectVirtualSamp} disabled={sampStatus === 'Connected' || sampStatus === 'Connecting'} variant="secondary" className="flex-1 text-xs" type="button" title="Start an internal SAMP hub on this server for inter-app communication.">
+                <Button onClick={onConnectVirtualSamp} disabled={sampStatus === 'Connected' || sampStatus === 'Connecting'} variant="secondary" className="flex-1 text-xs" type="button" title="Simulate a SAMP hub for testing.">
                     {t('controlPanel.connectVirtualSamp')}
                 </Button>
             </div>
@@ -328,7 +328,8 @@ const ImagingPanel = memo((props: any) => {
     const { 
         connectionStatus, isLiveViewActive, onToggleLiveView, exposure, gain, offset, binning, colorBalance,
         onSetExposure, onSetGain, onSetOffset, onSetBinning, onSetColorBalance, onPreview, isCapturing, onStartCapture, onStopCapture,
-        indiDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings, connectionSettings
+        indiDevices, isPreviewLoading, onToggleVideoStream, isVideoStreamActive, onOpenDeviceSettings, connectionSettings,
+        captureProgress, brightness, onSetBrightness
     } = props;
 
     const devices = (indiDevices || []) as INDIDevice[];
@@ -438,6 +439,7 @@ const ImagingPanel = memo((props: any) => {
              <RangeSlider id="exposure" label={t('controlPanel.exposureTime')} title={t('tooltips.exposure')} value={exposure} min={1} max={60000} step={100} onChange={onSetExposure} unit="ms" />
              <RangeSlider id="gain" label={t('controlPanel.gain')} title={t('tooltips.gain')} value={gain} min={0} max={500} step={1} onChange={onSetGain} onAfterChange={(val) => { const cam = AstroService.getActiveCamera(); if (cam && connectionStatus === 'Connected') AstroService.updateDeviceSetting(cam, 'CCD_GAIN', { 'GAIN': val }); }} />
              <RangeSlider id="offset" label={t('controlPanel.offset')} title={t('tooltips.offset')} value={offset} min={0} max={255} step={1} onChange={onSetOffset} onAfterChange={(val) => { const cam = AstroService.getActiveCamera(); if (cam && connectionStatus === 'Connected') AstroService.updateDeviceSetting(cam, 'CCD_OFFSET', { 'OFFSET': val }); }} />
+             <RangeSlider id="brightness" label={t('controlPanel.brightness')} title="Adjust the brightness of the stacked image." value={brightness} min={0.1} max={5.0} step={0.1} onChange={onSetBrightness} />
         </div>
         
         <div className="space-y-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
@@ -486,6 +488,22 @@ const ImagingPanel = memo((props: any) => {
                 </div>
             )}
             <p className="text-[10px] text-slate-500 leading-tight">{t('tooltips.liveStacking')}</p>
+            {isCapturing && (
+                <div className="bg-slate-900/80 p-2 rounded border border-red-900/30 mb-2 flex flex-col gap-1">
+                    <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Stacking Progress</span>
+                        <span className="text-xs font-mono text-white">
+                            {captureProgress.count} / {captureProgress.total === 0 ? '∞' : captureProgress.total}
+                        </span>
+                    </div>
+                    <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                        <div 
+                            className="bg-red-600 h-full transition-all duration-500" 
+                            style={{ width: captureProgress.total === 0 ? '100%' : `${Math.min(100, (captureProgress.count / captureProgress.total) * 100)}%` }}
+                        />
+                    </div>
+                </div>
+            )}
             {!isCapturing ? (<Button onClick={onStartCapture} disabled={isVideoStreamActive} className="w-full" type="button" title={t('tooltips.liveStacking')}><CameraIcon className="w-5 h-5" /> {t('controlPanel.startLiveStacking')}</Button>) : (<Button onClick={onStopCapture} variant="danger" className="w-full" type="button" title="Stop the active live stacking session."><StopIcon className="w-5 h-5" /> {t('controlPanel.stopCapture')}</Button>)}
         </div>
         <FocuserControl isConnected={connectionStatus === 'Connected'} />

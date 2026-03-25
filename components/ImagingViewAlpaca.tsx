@@ -515,7 +515,26 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
             </div>
         )}
         {((isCapturing || isLiveViewActive || isPreviewLoading) && !externalImage && !loadedImage) && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20"><div className="flex flex-col items-center gap-3"><div className="w-8 h-8 border-4 border-t-red-500 border-slate-700 rounded-full animate-spin"></div><span className="text-slate-400 animate-pulse text-sm font-mono">{isPreviewLoading ? t('controlPanel.preview') + "..." : t('imagingView.waitingForStream')}</span></div></div>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-t-red-500 border-slate-700 rounded-full animate-spin"></div>
+                    <span className="text-slate-400 animate-pulse text-sm font-mono">
+                        {isPreviewLoading ? t('controlPanel.preview') + "..." : t('imagingView.waitingForStream')}
+                    </span>
+                </div>
+            </div>
+        )}
+        
+        {isCapturing && captureProgress && captureProgress.count > 0 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/80 px-4 py-2 rounded-full border border-red-500/50 backdrop-blur-md z-50 flex items-center gap-3 shadow-2xl animate-fadeIn pointer-events-none">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                <span className="text-xs md:text-sm font-mono font-bold text-slate-200">
+                    {t('imagingView.liveStackingInProgress')}
+                </span>
+                <span className="text-xs md:text-sm font-mono text-red-400 font-bold">
+                    {t('imagingView.frame', { count: captureProgress.count, total: captureProgress.total || '∞' })}
+                </span>
+            </div>
         )}
         {!loadedImage && !externalImage && !isCapturing && !isLiveViewActive && !isPreviewLoading && (<div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><div className="text-slate-500 mb-4">{t('imagingView.noTarget')}</div></div>)}
         {decodeError && (<div className="absolute top-4 left-4 bg-red-900/80 px-3 py-1 rounded border border-red-500 flex items-center gap-2 pointer-events-none z-40"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span><span className="text-xs text-red-200 font-mono font-bold">{t('imagingView.decodingError')}</span></div>)}

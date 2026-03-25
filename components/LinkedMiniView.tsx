@@ -69,6 +69,11 @@ export const LinkedMiniView: React.FC<LinkedMiniViewProps> = (props) => {
           <div className={`text-white text-[9px] px-2 py-0.5 rounded shadow-lg font-black tracking-tighter backdrop-blur-md border border-white/10 ${isActivityRunning ? 'bg-red-600 animate-pulse' : 'bg-slate-800 opacity-80'}`}>
             {props.isLiveViewActive || props.isVideoStreamActive ? 'LIVE' : isActivityRunning ? 'BUSY' : 'STANDBY'}
           </div>
+          {props.isCapturing && props.captureProgress && (
+            <div className="bg-red-950/80 text-red-400 text-[9px] px-2 py-0.5 rounded shadow-lg font-black tracking-tighter border border-red-500/30 backdrop-blur-md">
+              {props.captureProgress.count} / {props.captureProgress.total === 0 ? '∞' : props.captureProgress.total}
+            </div>
+          )}
           {props.latestImage && !isActivityRunning && (
             <div className="bg-blue-600 text-white text-[9px] px-2 py-0.5 rounded shadow-lg font-black tracking-tighter border border-blue-400/50 backdrop-blur-md">
               SYNCED

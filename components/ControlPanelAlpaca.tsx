@@ -18,6 +18,7 @@ import { FocuserControlAlpaca } from './FocuserControlAlpaca';
 import { RefreshCw } from 'lucide-react';
 import * as AstroService from '../services/AstroServiceAlpaca';
 import * as GoogleDriveService from '../services/GoogleDriveService';
+import { LiveStackingEngine } from '../services/LiveStackingEngine';
 import AlpacaDiscoveryService, { DiscoveryResult } from '../services/AlpacaDiscoveryService';
 import * as SettingsService from '../services/SettingsService';
 import { AlpacaDevice } from '../services/AlpacaClientService';
@@ -429,6 +430,19 @@ const ImagingPanel = memo((props: any) => {
              <RangeSlider id="exposure" label={t('controlPanel.exposureTime')} title={t('tooltips.exposure')} value={exposure} min={1} max={60000} step={100} onChange={onSetExposure} unit="ms" />
              <RangeSlider id="gain" label={t('controlPanel.gain')} title={t('tooltips.gain')} value={gain} min={0} max={500} step={1} onChange={onSetGain} onAfterChange={(val) => { const cam = AstroService.getActiveCamera(); if (cam && connectionStatus === 'Connected') AstroService.updateDeviceSetting(cam, 'CCD_GAIN', { 'GAIN': val }); }} />
              <RangeSlider id="offset" label={t('controlPanel.offset')} title={t('tooltips.offset')} value={offset} min={0} max={255} step={1} onChange={onSetOffset} onAfterChange={(val) => { const cam = AstroService.getActiveCamera(); if (cam && connectionStatus === 'Connected') AstroService.updateDeviceSetting(cam, 'CCD_OFFSET', { 'OFFSET': val }); }} />
+             <RangeSlider 
+                id="brightness" 
+                label={t('controlPanel.brightness')} 
+                title={t('tooltips.brightness')} 
+                value={props.brightness} 
+                min={-100} 
+                max={100} 
+                step={1} 
+                onChange={props.onSetBrightness} 
+                onAfterChange={(val) => {
+                  LiveStackingEngine.getInstance().setBrightness(val);
+                }}
+              />
         </div>
         
         <div className="space-y-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">

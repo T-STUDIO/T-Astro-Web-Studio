@@ -157,28 +157,31 @@ const App: React.FC = () => {
 
   useEffect(() => {
     AstroService.setImageReceivedCallback((url, format, metadata) => {
-      　// 画像をビューアーへ中継
-    BroadcastService.getInstance().sendImage(url, metadata); 
-        // スタッキング実行中の場合は、エンジンに画像を渡して合成された画像を受け取る
-        if (isCapturing) {
-            const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
-            if (stackedUrl) {
-              BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
-                setLatestImage(stackedUrl);
-                setLatestImageFormat('jpeg');
-                setIsPreviewLoading(false);
-                return;
-            }
+      // Broadcast image to viewer
+      BroadcastService.getInstance().sendImage(url, metadata); 
+      
+      // If stacking is active, process frame through stacking engine
+      if (isCapturing) {
+        const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
+        if (stackedUrl) {
+          BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
+          setLatestImage(stackedUrl);
+          setLatestImageFormat('jpeg');
+          setIsPreviewLoading(false);
+          return;
         }
-        setLatestImage(url);
-        setLatestImageFormat(format);
-        setLatestImageMetadata(metadata || null);
-        setIsPreviewLoading(false);
+      }
+      
+      // Update latest image for preview/loop/video modes
+      setLatestImage(url);
+      setLatestImageFormat(format);
+      setLatestImageMetadata(metadata || null);
+      setIsPreviewLoading(false);
     });
     AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
     return () => {
-        AstroService.setImageReceivedCallback(null);
-        AstroService.setTelescopePositionCallback(null);
+      AstroService.setImageReceivedCallback(null);
+      AstroService.setTelescopePositionCallback(null);
     };
   }, [isCapturing]);
 

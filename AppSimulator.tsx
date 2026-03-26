@@ -169,11 +169,12 @@ const AppSimulator: React.FC = () => {
     AstroService.setImageReceivedCallback(async (url, format, metadata) => {
     BroadcastService.getInstance().sendImage(url, metadata); 
         if (isCapturing) {
-            const stackedUrl = await LiveStackingEngine.getInstance().processNewFrame(url, metadata);
-            if (stackedUrl) {
-              BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
-                setLatestImage(stackedUrl);
+            const result = await LiveStackingEngine.getInstance().processNewFrame(url, metadata);
+            if (result) {
+                BroadcastService.getInstance().sendImage(result.url, metadata); 
+                setLatestImage(result.url);
                 setLatestImageFormat('jpeg');
+                setCaptureProgress(prev => ({ ...prev, count: result.count }));
                 setIsPreviewLoading(false);
                 return;
             }

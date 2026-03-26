@@ -26,8 +26,10 @@ import * as SettingsService from './services/SettingsService';
 import * as GoogleDriveService from './services/GoogleDriveService';
 import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
-import { LiveStackingEngine } from './services/LiveStackingEngine'; // New Import
+import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
+
+setAstroService(AstroService);
 import { MountController } from './components/MountController';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
@@ -62,6 +64,8 @@ const App: React.FC = () => {
   const [isVideoStreamActive, setIsVideoStreamActive] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const isCapturingRef = useRef(false);
+  useEffect(() => { isCapturingRef.current = isCapturing; }, [isCapturing]);
   const [captureProgress, setCaptureProgress] = useState({ count: 0, total: 10 });
   
   const [latestImage, setLatestImage] = useState<string | null>(null);
@@ -157,22 +161,25 @@ const App: React.FC = () => {
 
   useEffect(() => {
     AstroService.setImageReceivedCallback((url, format, metadata) => {
-      // Broadcast image to viewer
+      // 画像をビューアーへ中継
       BroadcastService.getInstance().sendImage(url, metadata); 
       
-      // If stacking is active, process frame through stacking engine
-      if (isCapturing) {
-        const stackedUrl = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
-        if (stackedUrl) {
-          BroadcastService.getInstance().sendImage(stackedUrl, metadata); 
-          setLatestImage(stackedUrl);
-          setLatestImageFormat('jpeg');
-          setIsPreviewLoading(false);
+      // スタッキング実行中の場合は、エンジンに画像を渡して合成された画像を受け取る
+      if (isCapturingRef.current) {
+          // Defer processing to avoid blocking the main thread and UI updates
+          setTimeout(() => {
+              const result = LiveStackingEngine.getInstance().processNewFrame(url, metadata);
+              if (result) {
+                  BroadcastService.getInstance().sendImage(result.url, metadata); 
+                  setLatestImage(result.url);
+                  setLatestImageFormat('jpeg');
+                  setCaptureProgress(prev => ({ ...prev, count: result.count }));
+                  setIsPreviewLoading(false);
+              }
+          }, 0);
           return;
-        }
       }
       
-      // Update latest image for preview/loop/video modes
       setLatestImage(url);
       setLatestImageFormat(format);
       setLatestImageMetadata(metadata || null);

@@ -948,31 +948,56 @@ export const rawFitsToDisplay = (
                         else if (bitpix === 32) { for (let i = 0; i < numPixels; i++) { if (dataOffset + 4 > buffer.byteLength) break; target[i] = view.getInt32(dataOffset, false) * bscale + bzero; dataOffset += 4; } } 
                         else if (bitpix === -32) { for (let i = 0; i < numPixels; i++) { if (dataOffset + 4 > buffer.byteLength) break; target[i] = view.getFloat32(dataOffset, false) * bscale + bzero; dataOffset += 4; } }
                     }
-                    let displayMin = 0; let displayRange = 255;
+                    // Robust histogram analysis for proper display range calculation
+                    let displayMin = 0;
+                    let displayMax = 255;
                     const ch0 = channels[0];
-                    if (bitpix === 8) displayRange = 255;
-                    else if (Math.abs(bitpix) === 16) displayRange = 65535;
-                    else if (Math.abs(bitpix) === 32) displayRange = 4294967295;
+                    
+                    // Determine theoretical range based on bitpix
+                    if (bitpix === 8) displayMax = 255;
+                    else if (bitpix === 16) displayMax = 65535;
+                    else if (bitpix === 32) displayMax = 4294967295;
                     else if (bitpix === -32) {
-                        // For float data, we check if it's 0-1 or 0-255 or 0-65535
-                        let maxVal = 0;
-                        for (let i = 0; i < Math.min(ch0.length, 10000); i++) {
+                        // For float data, auto-detect range from actual data
+                        let minVal = Infinity;
+                        let maxVal = -Infinity;
+                        const sampleSize = Math.min(ch0.length, 5000);
+                        for (let i = 0; i < sampleSize; i++) {
+                            if (ch0[i] < minVal) minVal = ch0[i];
                             if (ch0[i] > maxVal) maxVal = ch0[i];
                         }
-                        if (maxVal > 255) displayRange = 65535;
-                        else if (maxVal > 1.0) displayRange = 255;
-                        else displayRange = 1.0;
+                        if (minVal !== Infinity && maxVal !== -Infinity) {
+                            displayMin = minVal;
+                            displayMax = maxVal;
+                        } else {
+                            displayMax = 1.0;
+                        }
                     }
                     
-                    // Simple auto-stretch: if the image is too dark, reduce displayRange
-                    let actualMax = 0;
-                    const sampleSize = Math.min(ch0.length, 5000);
+                    // Robust histogram analysis for auto-stretch
+                    let actualMin = Infinity;
+                    let actualMax = -Infinity;
+                    const sampleSize = Math.min(ch0.length, 10000);
                     for (let i = 0; i < sampleSize; i++) {
-                        if (ch0[i] > actualMax) actualMax = ch0[i];
+                        const val = ch0[i];
+                        if (val < actualMin) actualMin = val;
+                        if (val > actualMax) actualMax = val;
                     }
-                    if (actualMax > 0 && actualMax < displayRange * 0.1) {
-                        displayRange = actualMax * 1.2; // Stretch to fit
+                    
+                    // Adjust display range to actual data range with margin
+                    if (actualMin !== Infinity && actualMax !== -Infinity && actualMax > actualMin) {
+                        const dataRange = actualMax - actualMin;
+                        displayMin = Math.max(displayMin, actualMin - dataRange * 0.01);
+                        displayMax = Math.min(displayMax, actualMax + dataRange * 0.01);
                     }
+                    
+                    // Ensure valid range
+                    if (displayMax <= displayMin) {
+                        displayMin = 0;
+                        displayMax = 255;
+                    }
+                    
+                    const displayRange = displayMax - displayMin;
                     const isRGB = (naxis3 === 3); let bayerPat = debayerPattern;
                     if (!isRGB && (!bayerPat || bayerPat === 'Auto')) bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
                     let code = -1; 
@@ -983,22 +1008,40 @@ export const rawFitsToDisplay = (
                         for (let x = 0; x < width; x++) {
                             const canvasIdx = (rowOffset + x) * 4; const pixelIdx = fitsRowOffset + x;
                             let r, g, b;
-                            if (isRGB && ch1 && ch2) { r = ((ch0[pixelIdx] - displayMin) / displayRange) * 255; g = ((ch1[pixelIdx] - displayMin) / displayRange) * 255; b = ((ch2[pixelIdx] - displayMin) / displayRange) * 255; } 
+                            if (isRGB && ch1 && ch2) { 
+                                r = Math.max(0, Math.min(255, ((ch0[pixelIdx] - displayMin) / displayRange) * 255)); 
+                                g = Math.max(0, Math.min(255, ((ch1[pixelIdx] - displayMin) / displayRange) * 255)); 
+                                b = Math.max(0, Math.min(255, ((ch2[pixelIdx] - displayMin) / displayRange) * 255)); 
+                            } 
                             else {
-                                const val = ch0[pixelIdx]; const norm = ((val - displayMin) / displayRange) * 255; r = norm; g = norm; b = norm;
+                                const val = ch0[pixelIdx]; 
+                                const norm = Math.max(0, Math.min(255, ((val - displayMin) / displayRange) * 255)); 
+                                r = norm; g = norm; b = norm;
+                                
                                 if (code !== -1) {
-                                    const isEvenCol = (x % 2 === 0); let pixelColor = 0; 
+                                    const isEvenCol = (x % 2 === 0); 
+                                    let pixelColor = 0; 
                                     if (code === 0) pixelColor = isEvenRow ? (isEvenCol ? 0 : 1) : (isEvenCol ? 1 : 2);
                                     else if (code === 1) pixelColor = isEvenRow ? (isEvenCol ? 1 : 2) : (isEvenCol ? 0 : 1);
                                     else if (code === 2) pixelColor = isEvenRow ? (isEvenCol ? 1 : 0) : (isEvenCol ? 2 : 1);
                                     else if (code === 3) pixelColor = isEvenRow ? (isEvenCol ? 2 : 1) : (isEvenCol ? 1 : 0);
-                                    if (pixelColor === 0) { r = norm; g = 0; b = 0; } else if (pixelColor === 1) { r = 0; g = norm; b = 0; } else { r = 0; g = 0; b = norm; }
+                                    if (pixelColor === 0) { r = norm; g = 0; b = 0; } 
+                                    else if (pixelColor === 1) { r = 0; g = norm; b = 0; } 
+                                    else { r = 0; g = 0; b = norm; }
                                 }
                             }
-                            rawRgbaBuffer[canvasIdx] = r; rawRgbaBuffer[canvasIdx + 1] = g; rawRgbaBuffer[canvasIdx + 2] = b; rawRgbaBuffer[canvasIdx + 3] = 255;
+                            rawRgbaBuffer[canvasIdx] = r; 
+                            rawRgbaBuffer[canvasIdx + 1] = g; 
+                            rawRgbaBuffer[canvasIdx + 2] = b; 
+                            rawRgbaBuffer[canvasIdx + 3] = 255;
                         }
                     }
-                    headers['rawBuffer'] = rawRgbaBuffer; headers['rawWidth'] = width; headers['rawHeight'] = height; return { url: 'raw-data-available', headers };
+                    headers['rawBuffer'] = rawRgbaBuffer; 
+                    headers['rawWidth'] = width; 
+                    headers['rawHeight'] = height; 
+                    headers['displayMin'] = displayMin;
+                    headers['displayMax'] = displayMax;
+                    return { url: 'raw-data-available', headers };
                 }
             } catch (e) { }
         }

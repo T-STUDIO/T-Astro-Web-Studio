@@ -223,6 +223,9 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
          return;
     }
     
+    // Clear buffers before starting new capture to ensure stability
+    DriverConnection.clearBuffer();
+    
     // CCD Simulator specific fixes for missing stars/parameters
     if (cam === 'CCD Simulator') {
         if (DriverConnection.hasProperty(cam, 'TELESCOPE_TYPE')) {
@@ -276,9 +279,9 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     setCameraGain(cam, gain);
     setCameraOffset(cam, offset);
     
-    // Ensure BLOBs are enabled for the camera
-    DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
-    await sleep(100);
+    // Ensure BLOBs are enabled for the camera ONLY if not using separate channel
+    // DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
+    // await sleep(100);
 
     DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
 };

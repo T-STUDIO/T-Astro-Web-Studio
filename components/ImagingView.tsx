@@ -120,6 +120,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
   const hasFitImageRef = useRef<{w: number, h: number} | null>(null);
   const [showHistogram, setShowHistogram] = useState(false);
   const [histogramData, setHistogramData] = useState<HistogramStats | null>(null);
+  const lastHistogramUpdateRef = useRef<number>(0);
   const [blackPoint, setBlackPoint] = useState(0);
   const [midPoint, setMidPoint] = useState(1.0);
   const [whitePoint, setWhitePoint] = useState(255);
@@ -205,43 +206,57 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       }
   }, [showAnnotations, nativeAnnotations, solverImageDimensions]);
 
-  const applyLutAndDraw = useCallback((ctx: CanvasRenderingContext2D, imageData: ImageData) => {
-      const data = imageData.data;
-      const rMult = colorBalance.r / 128; const gMult = colorBalance.g / 128; const bMult = colorBalance.b / 128;
-      
-      const histR = new Array(256).fill(0);
-      const histG = new Array(256).fill(0);
-      const histB = new Array(256).fill(0);
-      
-      const lut = new Uint8Array(256);
-      for (let i = 0; i < 256; i++) {
-          if (i <= blackPoint) lut[i] = 0;
-          else if (i >= whitePoint) lut[i] = 255;
-          else { const norm = (i - blackPoint) / (whitePoint - blackPoint); const val = Math.pow(norm, 1 / midPoint) * 255; lut[i] = Math.max(0, Math.min(255, val)); }
-      }
-      
-      const len = data.length; 
-      const histStep = len > 4000000 ? 4 : 1; 
-      
-      for (let i = 0; i < len; i += 4) {
-          const srcR = swapRB ? data[i+2] : data[i]; const srcG = data[i+1]; const srcB = swapRB ? data[i] : data[i+2];
-          let r = Math.min(255, Math.floor(srcR * rMult)); 
-          let g = Math.min(255, Math.floor(srcG * gMult)); 
-          let b = Math.min(255, Math.floor(srcB * bMult));
-          
-          if ((i / 4) % histStep === 0) { 
-              histR[r]++; histG[g]++; histB[b]++; 
-          }
-          
-          data[i] = lut[r]; data[i+1] = lut[g]; data[i+2] = lut[b]; data[i+3] = 255; 
-      }
-      
-      const max = Math.max(...histR.slice(1,255), ...histG.slice(1,255), ...histB.slice(1,255)) || 1; 
-      setHistogramData({ r: histR, g: histG, b: histB, max });
-      
-      ctx.putImageData(imageData, 0, 0); 
-      drawOverlays(ctx, imageData.width, imageData.height);
-  }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, drawOverlays, swapRB]);
+    const applyLutAndDraw = useCallback((ctx: CanvasRenderingContext2D, imageData: ImageData) => {
+        const data = imageData.data;
+        const rMult = colorBalance.r / 128; const gMult = colorBalance.g / 128; const bMult = colorBalance.b / 128;
+        
+        const lut = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) {
+            if (i <= blackPoint) lut[i] = 0;
+            else if (i >= whitePoint) lut[i] = 255;
+            else { 
+                const range = whitePoint - blackPoint;
+                const norm = range > 0 ? (i - blackPoint) / range : 0; 
+                const val = Math.pow(norm, 1 / midPoint) * 255; 
+                lut[i] = Math.max(0, Math.min(255, val)); 
+            }
+        }
+        
+        const view = new Uint32Array(data.buffer);
+        const pixelCount = view.length;
+        
+        if (showHistogram) {
+            const histR = new Array(256).fill(0);
+            const histG = new Array(256).fill(0);
+            const histB = new Array(256).fill(0);
+            const histStep = pixelCount > 1000000 ? 16 : 4; 
+
+            for (let i = 0; i < pixelCount; i++) {
+                const pixel = view[i];
+                const r = Math.min(255, ((pixel & 0xFF) * rMult) | 0);
+                const g = Math.min(255, (((pixel >> 8) & 0xFF) * gMult) | 0);
+                const b = Math.min(255, (((pixel >> 16) & 0xFF) * bMult) | 0);
+                
+                if (i % histStep === 0) {
+                    histR[r]++; histG[g]++; histB[b]++;
+                }
+                view[i] = (255 << 24) | (lut[b] << 16) | (lut[g] << 8) | lut[r];
+            }
+            const max = Math.max(...histR.slice(1,255), ...histG.slice(1,255), ...histB.slice(1,255)) || 1; 
+            setHistogramData({ r: histR, g: histG, b: histB, max });
+        } else {
+            for (let i = 0; i < pixelCount; i++) {
+                const pixel = view[i];
+                const r = Math.min(255, ((pixel & 0xFF) * rMult) | 0);
+                const g = Math.min(255, (((pixel >> 8) & 0xFF) * gMult) | 0);
+                const b = Math.min(255, (((pixel >> 16) & 0xFF) * bMult) | 0);
+                view[i] = (255 << 24) | (lut[b] << 16) | (lut[g] << 8) | lut[r];
+            }
+        }
+        
+        ctx.putImageData(imageData, 0, 0); 
+        drawOverlays(ctx, imageData.width, imageData.height);
+    }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, drawOverlays, swapRB, showHistogram]);
 
   const renderRawFrame = useCallback((sourceBuffer: Uint8ClampedArray, width: number, height: number) => {
       if (!canvasRef.current || width <= 0 || height <= 0) return;
@@ -300,7 +315,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       } else if (loadedImage) {
           processImage();
       }
-  }, [externalImage, externalMetadata, renderRawFrame, renderMjpegFrame, loadedImage, processImage, isCapturing, isLiveViewActive, isPreviewLoading, showAnnotations, imageTick]); 
+  }, [externalImage, externalMetadata, renderRawFrame, renderMjpegFrame, loadedImage, processImage, isCapturing, isLiveViewActive, isPreviewLoading, showAnnotations, imageTick, blackPoint, whitePoint, midPoint]); 
 
   useEffect(() => {
       if (!loadedImage || loadedImage === 'raw-data-available') return;
@@ -493,11 +508,11 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
         <canvas ref={canvasRef} className="absolute top-0 left-0 origin-top-left rendering-pixelated" style={{ transform: `translate(${tX}px, ${tY}px) scale(${zoom}) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})` }} />
         {showHistogram && histogramData && !isMini && (
             <div 
-                className="absolute top-20 right-2 md:right-4 bg-slate-900/90 p-3 rounded-lg border border-slate-700 shadow-xl w-72 z-40 pointer-events-auto backdrop-blur-md animate-fadeIn flex flex-col gap-2"
+                className="absolute top-16 right-2 md:right-4 bg-slate-900/95 p-2 rounded-lg border border-slate-700 shadow-xl w-60 md:w-64 z-40 pointer-events-auto backdrop-blur-md animate-fadeIn flex flex-col gap-1 max-h-[80vh] overflow-y-auto scrollbar-hide"
                 {...stopProp}
             >
-                <div className="flex justify-between items-center border-b border-slate-700 pb-1 mb-1"><span className="text-xs font-bold text-slate-300 flex items-center gap-2"><HistogramIcon className="w-3 h-3" />{t('imagingView.histogram')}</span><button onClick={() => setShowHistogram(false)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-700"><CloseIcon className="w-4 h-4" /></button></div>
-                <div className="flex items-end w-full h-32 gap-px opacity-90 border-b border-slate-700 pb-1 mb-1 relative overflow-hidden">
+                <div className="flex justify-between items-center border-b border-slate-700 pb-1 mb-1"><span className="text-[10px] font-bold text-slate-300 flex items-center gap-1"><HistogramIcon className="w-3 h-3" />{t('imagingView.histogram')}</span><button onClick={() => setShowHistogram(false)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-700"><CloseIcon className="w-4 h-4" /></button></div>
+                <div className="flex items-end w-full h-20 md:h-24 gap-px opacity-90 border-b border-slate-700 pb-1 mb-1 relative overflow-hidden">
                     <svg width="100%" height="100%" viewBox="0 0 256 100" preserveAspectRatio="none">
                         <path d={`M0,100 ${histogramData.r.map((v, i) => `L${i},${100 - (v / histogramData.max) * 100}`).join(' ')} L255,100`} fill="rgba(239, 68, 68, 0.5)" />
                         <path d={`M0,100 ${histogramData.g.map((v, i) => `L${i},${100 - (v / histogramData.max) * 100}`).join(' ')} L255,100`} fill="rgba(34, 197, 94, 0.5)" style={{mixBlendMode: 'screen'}} />
@@ -507,7 +522,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
                 <div className="space-y-1">
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.blackPoint')}</span><span>{blackPoint}</span></div>
                     <input type="range" min="0" max="255" value={blackPoint} onChange={(e) => setBlackPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
-                    <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.midTones')}</span><span>{midPoint.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.midTones')} (γ)</span><span>{midPoint.toFixed(2)}</span></div>
                     <input type="range" min="0.1" max="3.0" step="0.05" value={midPoint} onChange={(e) => setMidPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.whitePoint')}</span><span>{whitePoint}</span></div>
                     <input type="range" min="0" max="255" value={whitePoint} onChange={(e) => setWhitePoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
@@ -520,6 +535,25 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
         )}
         {!loadedImage && !externalImage && !isCapturing && !isLiveViewActive && !isPreviewLoading && (<div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><div className="text-slate-500 mb-4">{t('imagingView.noTarget')}</div></div>)}
         {decodeError && (<div className="absolute top-4 left-4 bg-red-900/80 px-3 py-1 rounded border border-red-500 flex items-center gap-2 pointer-events-none z-40"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span><span className="text-xs text-red-200 font-mono font-bold">{t('imagingView.decodingError')}</span></div>)}
+        
+        {isCapturing && captureProgress && (
+            <div className="absolute top-4 left-4 z-40 pointer-events-none flex flex-col gap-1">
+                <div className="bg-black/60 backdrop-blur-md border border-red-500/50 px-3 py-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[120px]">
+                    <div className="flex justify-between items-center gap-4">
+                        <span className="text-[10px] font-black text-red-500 tracking-widest uppercase italic">Stacking</span>
+                        <span className="text-xs font-mono text-white font-bold">
+                            {captureProgress.count} / {captureProgress.total === 0 ? '∞' : captureProgress.total}
+                        </span>
+                    </div>
+                    <div className="w-full bg-slate-800/50 h-1 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                            className="bg-red-600 h-full transition-all duration-500 shadow-[0_0_8px_rgba(220,38,38,0.5)]" 
+                            style={{ width: captureProgress.total === 0 ? '100%' : `${Math.min(100, (captureProgress.count / captureProgress.total) * 100)}%` }}
+                        />
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
 
        {!isMini && (

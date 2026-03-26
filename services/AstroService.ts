@@ -224,7 +224,10 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     }
     
     // Clear buffers before starting new capture to ensure stability
-    DriverConnection.clearBuffer();
+    // But avoid clearing during Loop/Stream to prevent dropping frames
+    if (!isStream) {
+        DriverConnection.clearBuffer();
+    }
     
     // CCD Simulator specific fixes for missing stars/parameters
     if (cam === 'CCD Simulator') {
@@ -243,73 +246,25 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
         }
     }
 
+    // 以前の安定したコードに近い形に戻す。過剰な待機を削除。
     if (!isStream) {
-        await setVideoStream(false);
-        // Wait a bit more for the camera to settle after stopping stream
-        await sleep(300);
-        const ready = await waitForCameraIdle(5000);
-        if (!ready) {
-            console.warn("[AstroService] Camera is still busy after timeout, attempting to abort...");
-            stopCapture();
-            await sleep(500);
-            const secondReady = await waitForCameraIdle(3000);
-            if (!secondReady) {
-                console.error("[AstroService] Camera failed to become idle. Aborting capture.");
-                return;
-            }
-        }
-    }
-
-    if (DriverConnection.hasProperty(cam, 'CCD_VIDEO_STREAM')) {
-         const isStreamOn = DriverConnection.getSwitchValue(cam, 'CCD_VIDEO_STREAM', 'STREAM_ON');
-         if (isStreamOn) {
-             DriverConnection.updateDeviceSetting(cam, 'CCD_VIDEO_STREAM', { 'STREAM_OFF': true });
-             if (!isStream) await sleep(200); 
-         }
-    }
-
-    if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
-         const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
-         if (!isCompressed) {
-             DriverConnection.updateDeviceSetting(cam, 'CCD_COMPRESSION', { 'CCD_COMPRESS': true });
-             await sleep(500); 
-         }
+        setVideoStream(false);
     }
 
     setCameraGain(cam, gain);
     setCameraOffset(cam, offset);
     
-    // Ensure BLOBs are enabled for the camera ONLY if not using separate channel
-    // DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
-    // await sleep(100);
-
     DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
 };
 
 export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {
     let count = 0;
-    await waitForCameraIdle(5000);
-
     const loop = async () => {
         if(count >= 10) { done(); return; }
         
-        const isReady = await waitForCameraIdle(30000); 
-        if (!isReady) {
-            done();
-            return;
-        }
-
         await capturePreview(exp, gain, offset, true);
-        await sleep(exp + 200); 
-        const downloadDone = await waitForCameraIdle(30000); 
-        
-        if (!downloadDone) {
-             console.warn("Frame download timed out...");
-        } else {
-             count++;
-             cb(count);
-        }
-
+        count++;
+        cb(count);
         setTimeout(loop, 100); 
     };
     loop();
@@ -324,33 +279,42 @@ export const stopCapture = () => {
 let isLooping = false;
 let loopTimeout: ReturnType<typeof setTimeout> | null = null;
 
+export const startLiveStacking = (exp: number, gain: number, offset: number) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) {
+        isLooping = true; // ライブスタックもループフラグを共有
+        const loop = async () => {
+            if (!isLooping) return;
+            try {
+                await capturePreview(exp, gain, offset, true); 
+            } catch (e) {
+                console.error("[AstroService] LiveStack capture error:", e);
+            }
+            if (isLooping) {
+                loopTimeout = setTimeout(loop, 50); 
+            }
+        };
+        loop();
+    }
+};
+
+export const stopLiveStacking = () => {
+    stopLoop();
+};
+
 export const startLoop = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
-        // Ensure Video Stream is OFF when starting LOOP
-        setVideoStream(false);
-        
         isLooping = true;
-        if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
-             const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
-             if (!isCompressed) {
-                 DriverConnection.updateDeviceSetting(cam, 'CCD_COMPRESSION', { 'CCD_COMPRESS': true });
-             }
-        }
-
         const loop = async () => {
             if (!isLooping) return;
-            const ready = await waitForCameraIdle(5000);
-            if (!isLooping) return; // Check again after wait
-            if (ready) {
-                try {
-                    await capturePreview(exp, gain, offset, true); 
-                } catch (e) {
-                    console.error("[AstroService] Loop capture error:", e);
-                }
+            try {
+                await capturePreview(exp, gain, offset, true); 
+            } catch (e) {
+                console.error("[AstroService] Loop capture error:", e);
             }
             if (isLooping) {
-                loopTimeout = setTimeout(loop, 500); 
+                loopTimeout = setTimeout(loop, 50); 
             }
         };
         loop();

@@ -143,6 +143,18 @@ export const getNumericValue = (dev: string, prop: string, element: string): num
     return (el && typeof el.value === 'number') ? el.value : null;
 };
 
+export const getSwitchValue = (dev: string, prop: string, element: string): boolean => {
+    if (currentSettings.driver === 'Simulator') {
+        return AstroServiceSimulator.getSwitchValue(dev, prop, element);
+    }
+    const d = discoveredIndiDevices.get(dev);
+    if (!d) return false;
+    const vec = d.properties.get(prop);
+    if (!vec || vec.type !== 'Switch') return false;
+    const el = vec.elements.get(element);
+    return el ? (el.value === true || el.value === 'On') : false;
+};
+
 export const getDevicesWithProperty = (propName: string): string[] => {
     const names: string[] = [];
     for (const [name, dev] of discoveredIndiDevices) {
@@ -609,14 +621,6 @@ export const updateDeviceSetting = (dev: string, prop: string, val: any) => {
     }
 };
 
-export const getSwitchValue = (dev: string, prop: string, el: string): boolean => {
-    const d = discoveredIndiDevices.get(dev);
-    if (!d) return false;
-    const vec = d.properties.get(prop);
-    if (!vec || vec.type !== 'Switch') return false;
-    return vec.elements.get(el)?.value === true;
-};
-
 const parseStream = (chunk: string) => {
     messageBuffer += chunk;
     let loopGuard = 0;
@@ -977,63 +981,63 @@ export const rawFitsToDisplay = (
                     // Robust histogram analysis for auto-stretch
                     let actualMin = Infinity;
                     let actualMax = -Infinity;
-                    const sampleSize = Math.min(ch0.length, 10000);
-                    for (let i = 0; i < sampleSize; i++) {
-                        const val = ch0[i];
-                        if (val < actualMin) actualMin = val;
-                        if (val > actualMax) actualMax = val;
-                    }
                     
-                    // Adjust display range to actual data range with margin
-                    if (actualMin !== Infinity && actualMax !== -Infinity && actualMax > actualMin) {
-                        const dataRange = actualMax - actualMin;
-                        displayMin = Math.max(displayMin, actualMin - dataRange * 0.01);
-                        displayMax = Math.min(displayMax, actualMax + dataRange * 0.01);
-                    }
+                    // 以前の高速ロジックに復元：
+                    // 16bitなら単純シフトで8bit化。これが最も速く、かつヒストグラムで調整可能な「素」の状態。
+                    const is16Bit = (bitpix === 16);
+                    const shift = is16Bit ? 8 : 0;
                     
-                    // Ensure valid range
-                    if (displayMax <= displayMin) {
-                        displayMin = 0;
-                        displayMax = 255;
-                    }
-                    
-                    const displayRange = displayMax - displayMin;
-                    const isRGB = (naxis3 === 3); let bayerPat = debayerPattern;
+                    const isRGB = (naxis3 === 3); 
+                    let bayerPat = debayerPattern;
                     if (!isRGB && (!bayerPat || bayerPat === 'Auto')) bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
+                    
                     let code = -1; 
-                    if (!isRGB) { if (bayerPat === 'RGGB') code = 0; else if (bayerPat === 'GBRG') code = 1; else if (bayerPat === 'GRBG') code = 2; else if (bayerPat === 'BGGR') code = 3; }
-                    const ch1 = isRGB ? channels[1] : null; const ch2 = isRGB ? channels[2] : null;
-                    for (let y = 0; y < height; y++) {
-                        const fitsY = height - 1 - y; const rowOffset = y * width; const fitsRowOffset = fitsY * width; const isEvenRow = (y % 2 === 0);
+                    if (!isRGB) { 
+                        if (bayerPat === 'RGGB') code = 0; 
+                        else if (bayerPat === 'GBRG') code = 1; 
+                        else if (bayerPat === 'GRBG') code = 2; 
+                        else if (bayerPat === 'BGGR') code = 3; 
+                    }
+                    
+                    const ch1 = isRGB ? channels[1] : null; 
+                    const ch2 = isRGB ? channels[2] : null;
+                    const pixelView = new Uint32Array(rawRgbaBuffer.buffer);
+                    
+                    for (let fitsY = 0; fitsY < height; fitsY++) {
+                        const canvasY = height - 1 - fitsY;
+                        const rowOffset = fitsY * width;
+                        const canvasRowOffset = canvasY * width;
+                        const isEvenRow = (fitsY & 1) === 0;
+
                         for (let x = 0; x < width; x++) {
-                            const canvasIdx = (rowOffset + x) * 4; const pixelIdx = fitsRowOffset + x;
+                            const i = rowOffset + x;
+                            const canvasIdx = canvasRowOffset + x;
+                            
                             let r, g, b;
-                            if (isRGB && ch1 && ch2) { 
-                                r = Math.max(0, Math.min(255, ((ch0[pixelIdx] - displayMin) / displayRange) * 255)); 
-                                g = Math.max(0, Math.min(255, ((ch1[pixelIdx] - displayMin) / displayRange) * 255)); 
-                                b = Math.max(0, Math.min(255, ((ch2[pixelIdx] - displayMin) / displayRange) * 255)); 
-                            } 
-                            else {
-                                const val = ch0[pixelIdx]; 
-                                const norm = Math.max(0, Math.min(255, ((val - displayMin) / displayRange) * 255)); 
-                                r = norm; g = norm; b = norm;
+                            if (isRGB && ch1 && ch2) {
+                                r = ch0[i] >> shift;
+                                g = ch1[i] >> shift;
+                                b = ch2[i] >> shift;
+                            } else {
+                                const val = ch0[i] >> shift;
+                                r = g = b = val;
                                 
                                 if (code !== -1) {
-                                    const isEvenCol = (x % 2 === 0); 
-                                    let pixelColor = 0; 
+                                    const isEvenCol = (x & 1) === 0;
+                                    let pixelColor = 0;
                                     if (code === 0) pixelColor = isEvenRow ? (isEvenCol ? 0 : 1) : (isEvenCol ? 1 : 2);
                                     else if (code === 1) pixelColor = isEvenRow ? (isEvenCol ? 1 : 2) : (isEvenCol ? 0 : 1);
                                     else if (code === 2) pixelColor = isEvenRow ? (isEvenCol ? 1 : 0) : (isEvenCol ? 2 : 1);
                                     else if (code === 3) pixelColor = isEvenRow ? (isEvenCol ? 2 : 1) : (isEvenCol ? 1 : 0);
-                                    if (pixelColor === 0) { r = norm; g = 0; b = 0; } 
-                                    else if (pixelColor === 1) { r = 0; g = norm; b = 0; } 
-                                    else { r = 0; g = 0; b = norm; }
+                                    
+                                    if (pixelColor === 0) { g = 0; b = 0; }
+                                    else if (pixelColor === 1) { r = 0; b = 0; }
+                                    else { r = 0; g = 0; }
                                 }
                             }
-                            rawRgbaBuffer[canvasIdx] = r; 
-                            rawRgbaBuffer[canvasIdx + 1] = g; 
-                            rawRgbaBuffer[canvasIdx + 2] = b; 
-                            rawRgbaBuffer[canvasIdx + 3] = 255;
+                            
+                            // ABGR format (little-endian)
+                            pixelView[canvasIdx] = (255 << 24) | (b << 16) | (g << 8) | r;
                         }
                     }
                     headers['rawBuffer'] = rawRgbaBuffer; 

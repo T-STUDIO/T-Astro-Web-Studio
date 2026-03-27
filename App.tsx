@@ -205,7 +205,7 @@ const App: React.FC = () => {
     if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
     if (isVideoStreamActive) { setIsVideoStreamActive(false); AstroService.setVideoStream(false); }
     if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
-    setIsPreviewLoading(false);
+    // setIsPreviewLoading(false); // Do not clear here, let the specific action handle it
     setLatestImage(null);
     setLatestImageMetadata(null);
   }, [isLiveViewActive, isVideoStreamActive, isCapturing]);
@@ -312,10 +312,21 @@ const App: React.FC = () => {
   };
 
   const handlePreview = async () => {
-      stopAllImaging(); setIsPreviewLoading(true); setActiveView('Imaging'); setMobileActiveTab('imaging_view');
+      stopAllImaging(); 
+      setIsPreviewLoading(true); 
+      setActiveView('Imaging'); 
+      setMobileActiveTab('imaging_view');
+      
       try {
+          // プレビュー実行。画像受信コールバックでsetIsPreviewLoading(false)が呼ばれる。
           await AstroService.capturePreview(exposure, gain, offset);
-      } finally {
+          
+          // 安全策：30秒経っても画像が来ない場合はローディングを解除
+          setTimeout(() => {
+              setIsPreviewLoading(false);
+          }, 30000);
+      } catch (error) {
+          console.error("Preview failed:", error);
           setIsPreviewLoading(false);
       }
   };

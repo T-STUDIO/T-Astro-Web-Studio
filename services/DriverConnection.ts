@@ -949,6 +949,7 @@ export const rawFitsToDisplay = (
                     const view = new DataView(buffer);
                     let minVal = Infinity;
                     let maxVal = -Infinity;
+                    let sumVal = 0;
                     for (let c = 0; c < numChannels; c++) {
                         const target = channels[c];
                         if (bitpix === 8) { 
@@ -957,6 +958,7 @@ export const rawFitsToDisplay = (
                                 const v = u8[dataOffset++] * bscale + bzero;
                                 target[i] = v;
                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                sumVal += v;
                             } 
                         } 
                         else if (bitpix === 16) { 
@@ -965,6 +967,7 @@ export const rawFitsToDisplay = (
                                 const v = view.getInt16(dataOffset, false) * bscale + bzero;
                                 target[i] = v; dataOffset += 2;
                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                sumVal += v;
                             } 
                         } 
                         else if (bitpix === 32) { 
@@ -973,6 +976,7 @@ export const rawFitsToDisplay = (
                                 const v = view.getInt32(dataOffset, false) * bscale + bzero;
                                 target[i] = v; dataOffset += 4;
                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                sumVal += v;
                             } 
                         } 
                         else if (bitpix === -32) { 
@@ -981,39 +985,114 @@ export const rawFitsToDisplay = (
                                 const v = view.getFloat32(dataOffset, false) * bscale + bzero;
                                 target[i] = v; dataOffset += 4;
                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                sumVal += v;
                             } 
-                        }
+                        } 
                     }
+                    
                     if (maxVal <= minVal) {
                         minVal = 0;
                         maxVal = (bitpix === 8) ? 255 : (Math.abs(bitpix) === 16 ? 65535 : 1);
                     }
+
+                    // 輝度計算の改善：ノイズまみれや真っ黒を防ぐためのより堅牢なスケーリング
+                    const avgVal = sumVal / (numPixels * numChannels);
                     let displayMin = minVal;
-                    let displayRange = maxVal - minVal;
-                    if (displayRange === 0) displayRange = 1;
-                    const isRGB = (naxis3 === 3); let bayerPat = debayerPattern;
-                    if (!isRGB && (!bayerPat || bayerPat === 'Auto')) bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
+                    let displayMax = maxVal;
+
+                    // 16ビットデータや浮動小数点データの場合、統計情報に基づいて表示範囲を調整
+                    if (Math.abs(bitpix) === 16 || bitpix === -32) {
+                        // 背景レベル（平均値付近）を基準に、低輝度側の情報を引き出す
+                        displayMin = Math.max(minVal, avgVal * 0.5);
+                        // 上限を抑えてコントラストを確保（平均の数倍程度）
+                        displayMax = Math.min(maxVal, avgVal * 8);
+                        
+                        // 範囲が狭すぎる場合の最低限の幅を確保
+                        const minWidth = (Math.abs(bitpix) === 16) ? 1000 : 0.05;
+                        if (displayMax - displayMin < minWidth) {
+                            displayMax = displayMin + minWidth * 5;
+                        }
+                    }
+
+                    let displayRange = displayMax - displayMin;
+                    if (displayRange <= 0) displayRange = 1;
+                    
+                    const isRGB = (naxis3 === 3); 
+                    let bayerPat = debayerPattern;
+                    if (!isRGB && (!bayerPat || bayerPat === 'Auto')) {
+                        bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
+                    }
+                    
                     let code = -1; 
-                    if (!isRGB) { if (bayerPat === 'RGGB') code = 0; else if (bayerPat === 'GBRG') code = 1; else if (bayerPat === 'GRBG') code = 2; else if (bayerPat === 'BGGR') code = 3; }
-                    const ch0 = channels[0]; const ch1 = isRGB ? channels[1] : null; const ch2 = isRGB ? channels[2] : null;
+                    if (!isRGB) { 
+                        if (bayerPat === 'RGGB') code = 0; 
+                        else if (bayerPat === 'GBRG') code = 1; 
+                        else if (bayerPat === 'GRBG') code = 2; 
+                        else if (bayerPat === 'BGGR') code = 3; 
+                    }
+                    
+                    const ch0 = channels[0]; 
+                    const ch1 = isRGB ? channels[1] : null; 
+                    const ch2 = isRGB ? channels[2] : null;
+                    
+                    const invRange = 1.0 / displayRange;
+                    const sqrtInvRange = Math.sqrt(invRange);
+                    const isHighBit = (Math.abs(bitpix) >= 16);
+
                     for (let y = 0; y < height; y++) {
-                        const fitsY = height - 1 - y; const rowOffset = y * width; const fitsRowOffset = fitsY * width; const isEvenRow = (y % 2 === 0);
+                        const fitsY = height - 1 - y; 
+                        const rowOffset = y * width; 
+                        const fitsRowOffset = fitsY * width; 
+                        const isEvenRow = (y % 2 === 0);
+                        
                         for (let x = 0; x < width; x++) {
-                            const canvasIdx = (rowOffset + x) * 4; const pixelIdx = fitsRowOffset + x;
+                            const canvasIdx = (rowOffset + x) << 2; 
+                            const pixelIdx = fitsRowOffset + x;
                             let r, g, b;
-                            if (isRGB && ch1 && ch2) { r = ((ch0[pixelIdx] - displayMin) / displayRange) * 255; g = ((ch1[pixelIdx] - displayMin) / displayRange) * 255; b = ((ch2[pixelIdx] - displayMin) / displayRange) * 255; } 
-                            else {
-                                const val = ch0[pixelIdx]; const norm = ((val - displayMin) / displayRange) * 255; r = norm; g = norm; b = norm;
+                            
+                            if (isRGB && ch1 && ch2) {
+                                let rv = ch0[pixelIdx];
+                                let gv = ch1[pixelIdx];
+                                let bv = ch2[pixelIdx];
+                                
+                                if (isHighBit) {
+                                    r = Math.sqrt(Math.max(0, rv - displayMin)) * sqrtInvRange * 255;
+                                    g = Math.sqrt(Math.max(0, gv - displayMin)) * sqrtInvRange * 255;
+                                    b = Math.sqrt(Math.max(0, bv - displayMin)) * sqrtInvRange * 255;
+                                } else {
+                                    r = (rv - displayMin) * invRange * 255;
+                                    g = (gv - displayMin) * invRange * 255;
+                                    b = (bv - displayMin) * invRange * 255;
+                                }
+                            } else {
+                                const val = ch0[pixelIdx];
+                                let norm;
+                                
+                                if (isHighBit) {
+                                    norm = Math.sqrt(Math.max(0, val - displayMin)) * sqrtInvRange * 255;
+                                } else {
+                                    norm = (val - displayMin) * invRange * 255;
+                                }
+                                
+                                r = norm; g = norm; b = norm;
+                                
                                 if (code !== -1) {
-                                    const isEvenCol = (x % 2 === 0); let pixelColor = 0; 
+                                    const isEvenCol = (x % 2 === 0); 
+                                    let pixelColor = 0; 
                                     if (code === 0) pixelColor = isEvenRow ? (isEvenCol ? 0 : 1) : (isEvenCol ? 1 : 2);
                                     else if (code === 1) pixelColor = isEvenRow ? (isEvenCol ? 1 : 2) : (isEvenCol ? 0 : 1);
                                     else if (code === 2) pixelColor = isEvenRow ? (isEvenCol ? 1 : 0) : (isEvenCol ? 2 : 1);
                                     else if (code === 3) pixelColor = isEvenRow ? (isEvenCol ? 2 : 1) : (isEvenCol ? 1 : 0);
-                                    if (pixelColor === 0) { r = norm; g = 0; b = 0; } else if (pixelColor === 1) { r = 0; g = norm; b = 0; } else { r = 0; g = 0; b = norm; }
+                                    
+                                    if (pixelColor === 0) { r = norm; g = norm * 0.2; b = norm * 0.2; } 
+                                    else if (pixelColor === 1) { r = norm * 0.2; g = norm; b = norm * 0.2; } 
+                                    else { r = norm * 0.2; g = norm * 0.2; b = norm; }
                                 }
                             }
-                            rawRgbaBuffer[canvasIdx] = r; rawRgbaBuffer[canvasIdx + 1] = g; rawRgbaBuffer[canvasIdx + 2] = b; rawRgbaBuffer[canvasIdx + 3] = 255;
+                            rawRgbaBuffer[canvasIdx] = r; 
+                            rawRgbaBuffer[canvasIdx + 1] = g; 
+                            rawRgbaBuffer[canvasIdx + 2] = b; 
+                            rawRgbaBuffer[canvasIdx + 3] = 255;
                         }
                     }
                     headers['rawBuffer'] = rawRgbaBuffer; headers['rawWidth'] = width; headers['rawHeight'] = height; return { url: 'raw-data-available', headers };

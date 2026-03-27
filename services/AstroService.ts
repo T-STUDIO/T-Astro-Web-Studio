@@ -360,10 +360,13 @@ export const startLoop = (exp: number, gain: number, offset: number) => {
 
         const loop = async () => {
             if (!isLooping) return;
+            
+            // カメラがアイドル状態になるのを待つ
             const ready = await waitForCameraIdle(5000);
+            if (!isLooping) return; // 待機中に停止された場合は終了
+
             if (ready) {
                 try {
-                    // Use actual parameters instead of hardcoded 200, 300, 0
                     await capturePreview(exp, gain, offset, true); 
                     // 画像が届くまで待機（またはタイムアウト）
                     await waitForImage(exp + 10000);
@@ -371,6 +374,7 @@ export const startLoop = (exp: number, gain: number, offset: number) => {
                     console.error("[AstroService] Loop capture error:", e);
                 }
             }
+            
             if (isLooping) {
                 loopTimeout = setTimeout(loop, 200); 
             }

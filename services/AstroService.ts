@@ -4,6 +4,11 @@ import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import * as DriverConnection from './DriverConnection';
 import { BlobTransportService } from './BlobTransportService';
 
+// 画像受信通知をDriverConnectionに登録
+DriverConnection.setImageProcessedCallback(() => {
+    notifyImageReceived();
+});
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const setAppData = (loc: LocationData | null, time: Date | null) => {
@@ -255,6 +260,12 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     setCameraOffset(cam, offset);
     
     DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
+    
+    // 静止画（プレビュー）の場合は画像が届くまで待機する
+    // これにより、App.tsxのsetIsPreviewLoading(false)が画像受信後に実行されるようになる
+    if (!isStream) {
+        await waitForImage(exp + 10000);
+    }
 };
 
 export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {
@@ -273,25 +284,56 @@ export const startCapture = async (exp: number, gain: number, offset: number, co
 export const stopCapture = () => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='CCD_ABORT_EXPOSURE'><oneSwitch name='ABORT'>On</oneSwitch></newSwitchVector>`);
-    setTimeout(() => DriverConnection.clearBuffer(), 100); 
+    DriverConnection.clearBuffer(); 
 };
 
 let isLooping = false;
 let loopTimeout: ReturnType<typeof setTimeout> | null = null;
+let imageResolve: (() => void) | null = null;
+
+/**
+ * 画像受信を通知する（DriverConnectionから呼び出される想定）
+ */
+export const notifyImageReceived = () => {
+    if (imageResolve) {
+        const resolve = imageResolve;
+        imageResolve = null;
+        resolve();
+    }
+};
+
+/**
+ * 画像受信を待機する
+ */
+const waitForImage = (timeoutMs: number = 30000) => {
+    return new Promise<void>((resolve) => {
+        imageResolve = resolve;
+        setTimeout(() => {
+            if (imageResolve === resolve) {
+                imageResolve = null;
+                resolve(); // タイムアウトしても次へ進める
+            }
+        }, timeoutMs);
+    });
+};
 
 export const startLiveStacking = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
-        isLooping = true; // ライブスタックもループフラグを共有
+        isLooping = true; 
         const loop = async () => {
             if (!isLooping) return;
             try {
+                // 撮影コマンド送信
                 await capturePreview(exp, gain, offset, true); 
+                // 画像が届くまで待機（またはタイムアウト）
+                // 露出時間 + 余裕を持って待機
+                await waitForImage(exp + 5000);
             } catch (e) {
                 console.error("[AstroService] LiveStack capture error:", e);
             }
             if (isLooping) {
-                loopTimeout = setTimeout(loop, 50); 
+                loopTimeout = setTimeout(loop, 100); 
             }
         };
         loop();
@@ -305,16 +347,32 @@ export const stopLiveStacking = () => {
 export const startLoop = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
+        // Ensure Video Stream is OFF when starting LOOP
+        setVideoStream(false);
+        
         isLooping = true;
+        if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
+             const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
+             if (!isCompressed) {
+                 DriverConnection.updateDeviceSetting(cam, 'CCD_COMPRESSION', { 'CCD_COMPRESS': true });
+             }
+        }
+
         const loop = async () => {
             if (!isLooping) return;
-            try {
-                await capturePreview(exp, gain, offset, true); 
-            } catch (e) {
-                console.error("[AstroService] Loop capture error:", e);
+            const ready = await waitForCameraIdle(5000);
+            if (ready) {
+                try {
+                    // Use actual parameters instead of hardcoded 200, 300, 0
+                    await capturePreview(exp, gain, offset, true); 
+                    // 画像が届くまで待機（またはタイムアウト）
+                    await waitForImage(exp + 10000);
+                } catch (e) {
+                    console.error("[AstroService] Loop capture error:", e);
+                }
             }
             if (isLooping) {
-                loopTimeout = setTimeout(loop, 50); 
+                loopTimeout = setTimeout(loop, 200); 
             }
         };
         loop();
@@ -326,6 +384,10 @@ export const stopLoop = () => {
     if (loopTimeout) {
         clearTimeout(loopTimeout);
         loopTimeout = null;
+    }
+    if (imageResolve) {
+        imageResolve();
+        imageResolve = null;
     }
     stopCapture();
     setTimeout(() => DriverConnection.clearBuffer(), 100); 

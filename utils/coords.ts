@@ -63,6 +63,37 @@ export const decimalToSexagesimal = (val: number, isLongitude: boolean = false):
 };
 
 /**
+ * Converts decimal degrees to Right Ascension string (HMS).
+ * e.g., 83.8208 -> "05h 35m 17s"
+ */
+export const degreesToHms = (degrees: number): string => {
+    let ra = (degrees / 15) % 24;
+    if (ra < 0) ra += 24;
+    
+    const h = Math.floor(ra);
+    const m = Math.floor((ra - h) * 60);
+    const s = Math.floor(((ra - h) * 60 - m) * 60);
+    
+    return `${h.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
+};
+
+/**
+ * Converts decimal degrees to Declination string (DMS).
+ * e.g., -5.3911 -> "-05° 23′ 28″"
+ */
+export const degreesToDms = (degrees: number): string => {
+    const isNegative = degrees < 0;
+    const absDeg = Math.abs(degrees);
+    
+    const d = Math.floor(absDeg);
+    const m = Math.floor((absDeg - d) * 60);
+    const s = Math.floor(((absDeg - d) * 60 - m) * 60);
+    
+    const sign = isNegative ? '-' : '+';
+    return `${sign}${d.toString().padStart(2, '0')}° ${m.toString().padStart(2, '0')}′ ${s.toString().padStart(2, '0')}″`;
+};
+
+/**
  * Converts sexagesimal string format (dd:mm:ss.s) to decimal degrees.
  */
 export const sexagesimalToDecimal = (input: string): number => {

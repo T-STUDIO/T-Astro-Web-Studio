@@ -166,7 +166,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             if (onSelectObject) {
                 onSelectObject(match as any);
                 if (match && (match as any).ra !== undefined && (match as any).dec !== undefined) {
-                    AstroService.syncSkyCoord((match as any).ra, (match as any).dec);
+                    const raVal = hmsToDegrees((match as any).ra);
+                    const decVal = dmsToDegrees((match as any).dec);
+                    AstroService.syncSkyCoord(raVal, decVal);
                 }
             }
             const lst = calculateLST(effLocation.longitude, effTime);
@@ -470,8 +472,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     else if (onSelectObject) { 
                         onSelectObject(bestMatch); 
                         if (bestMatch && bestMatch.ra !== undefined && bestMatch.dec !== undefined) {
-                            const raVal = typeof bestMatch.ra === 'string' ? parseFloat(bestMatch.ra) : bestMatch.ra;
-                            const decVal = typeof bestMatch.dec === 'string' ? parseFloat(bestMatch.dec) : bestMatch.dec;
+                            const raVal = hmsToDegrees(bestMatch.ra);
+                            const decVal = dmsToDegrees(bestMatch.dec);
                             AstroService.syncSkyCoord(raVal, decVal);
                         }
                     }

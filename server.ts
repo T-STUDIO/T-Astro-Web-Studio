@@ -322,18 +322,6 @@ async function startServer() {
             callback(null, target ? target.metadata : {});
         });
 
-        // Set XML-RPC Callback
-        xmlRpcServer.on('samp.hub.setXmlrpcCallback', (err: any, params: any[], callback: any) => {
-            const privateKey = params[0];
-            const url = params[1];
-            const client = getClientByPk(privateKey);
-            if (client) {
-                client.xmlrpcUrl = url;
-                console.log(`[SAMP Hub] Callback URL set for ${client.id}: ${url}`);
-            }
-            callback(null, "");
-        });
-
         // Notify All (Broadcast)
         xmlRpcServer.on('samp.hub.notifyAll', (err: any, params: any[], callback: any) => {
             const privateKey = params[0];
@@ -345,19 +333,8 @@ async function startServer() {
             const mtype = message['samp.mtype'];
             console.log(`[SAMP Hub] Broadcast from ${sender.id}: ${mtype}`);
             
-            // Broadcast to all other clients that have a callback URL
-            for (const [id, client] of sampClients.entries()) {
-                if (id !== sender.id && client.xmlrpcUrl) {
-                    try {
-                        const targetClient = xmlrpc.createClient(client.xmlrpcUrl);
-                        targetClient.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any) => {
-                            if (err) console.error(`[SAMP Hub] Failed to notify client ${id}:`, err.message || String(err));
-                        });
-                    } catch (e: any) {
-                        console.error(`[SAMP Hub] Error creating client for ${id}:`, e.message);
-                    }
-                }
-            }
+            // In a real hub, we would iterate over clients and call their receiveNotification
+            // For this internal hub, we acknowledge the broadcast.
             callback(null, "");
         });
 

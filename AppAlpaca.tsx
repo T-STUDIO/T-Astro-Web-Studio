@@ -28,11 +28,10 @@ import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
 import { LiveStackingEngineAlpaca as LiveStackingEngine, setAstroService } from './services/LiveStackingEngineAlpaca';
 import { CELESTIAL_OBJECTS } from './constants';
-import { EXTENDED_DSO_CATALOG } from './utils/dsoCatalog';
 import { MountControllerAlpaca } from './components/MountControllerAlpaca';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
-import { hmsToDegrees, dmsToDegrees, degreesToHms, degreesToDms } from './utils/coords';
+import { hmsToDegrees, dmsToDegrees } from './utils/coords';
 
 const AppAlpaca: React.FC = () => {
   const { t, language } = useTranslation();
@@ -41,7 +40,6 @@ const AppAlpaca: React.FC = () => {
 
   const [activeView, setActiveView] = useState<View>('Planetarium');
   const [selectedObject, setSelectedObject] = useState<CelestialObject | null>(null);
-  const [planetariumCenterRequest, setPlanetariumCenterRequest] = useState(0);
   const [slewStatus, setSlewStatus] = useState<SlewStatus>('Idle');
   const [planetariumSettings, setPlanetariumSettings] = useState<PlanetariumSettings>(initialSettings.planetariumSettings);
   const [location, setLocation] = useState<LocationData | null>(initialSettings.location);
@@ -150,12 +148,16 @@ const AppAlpaca: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (sampStatus === 'Connected' && selectedObject) {
-      const ra = hmsToDegrees(selectedObject.ra);
-      const dec = dmsToDegrees(selectedObject.dec);
-      SampService.sendSkyCoord(ra, dec);
+    if (sampStatus === 'Connected') {
+      if (telescopePosition) {
+        SampService.sendSkyCoord(telescopePosition.ra, telescopePosition.dec);
+      } else if (selectedObject) {
+        const ra = hmsToDegrees(selectedObject.ra);
+        const dec = dmsToDegrees(selectedObject.dec);
+        SampService.sendSkyCoord(ra, dec);
+      }
     }
-  }, [sampStatus, selectedObject]);
+  }, [sampStatus, telescopePosition, selectedObject]);
 
   useEffect(() => {
     if (!isAutoSyncLocationEnabled) return;
@@ -209,43 +211,6 @@ const AppAlpaca: React.FC = () => {
         setIsPreviewLoading(false);
     });
     AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
-    AstroService.setSampSkyCoordReceivedCallback((ra, dec) => {
-        // 最も近い天体を検索
-        const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
-        let bestMatch: CelestialObject | null = null;
-        let minDistance = 1.0; // 1度以内
-
-        allObjects.forEach(obj => {
-            const objRa = hmsToDegrees(obj.ra);
-            const objDec = dmsToDegrees(obj.dec);
-            const dist = Math.hypot(objRa - ra, objDec - dec);
-            if (dist < minDistance) {
-                minDistance = dist;
-                bestMatch = obj;
-            }
-        });
-
-        if (bestMatch) {
-            setSelectedObject(bestMatch);
-            setPlanetariumCenterRequest(prev => prev + 1);
-            addLog('logs.sampObjectSelected', { name: bestMatch.name }, 'info');
-        } else {
-            // 天体が見つからない場合はカスタム天体として扱う
-            const customObj: CelestialObject = {
-                id: `samp-${Date.now()}`,
-                name: `SAMP Target (${ra.toFixed(2)}, ${dec.toFixed(2)})`,
-                nameJa: `SAMP ターゲット (${ra.toFixed(2)}, ${dec.toFixed(2)})`,
-                type: 'Star',
-                ra: degreesToHms(ra),
-                dec: degreesToDms(dec),
-                magnitude: 0
-            };
-            setSelectedObject(customObj);
-            setPlanetariumCenterRequest(prev => prev + 1);
-            addLog('logs.sampPointSelected', { ra: ra.toFixed(2), dec: dec.toFixed(2) }, 'info');
-        }
-        setActiveView('Planetarium');
-    });
     AstroService.setDeviceCallback(devs => setAlpacaDevices(devs));
     AstroService.setMessageCountCallback(count => setAlpacaMessageCount(count));
     AstroService.setCameraCapabilitiesCallback(caps => setCameraCapabilities(caps));
@@ -253,7 +218,6 @@ const AppAlpaca: React.FC = () => {
     return () => {
         AstroService.setImageReceivedCallback(null);
         AstroService.setTelescopePositionCallback(null);
-        AstroService.setSampSkyCoordReceivedCallback(null);
         AstroService.setDeviceCallback(null);
         AstroService.setMessageCountCallback(null);
         AstroService.setCameraCapabilitiesCallback(null);
@@ -562,11 +526,7 @@ const AppAlpaca: React.FC = () => {
                         location={location}
                         isConnected={connectionStatus === 'Connected'}
                         onSlew={handleSlew}
-                        onCenter={(obj) => {
-                          setSelectedObject(obj);
-                          setPlanetariumCenterRequest(prev => prev + 1);
-                        }}
-                        centerRequest={planetariumCenterRequest}
+                        onCenter={setSelectedObject}
                         isLiveViewActive={isLiveViewActive}
                         isVideoStreamActive={isVideoStreamActive}
                         isPreviewLoading={isPreviewLoading}

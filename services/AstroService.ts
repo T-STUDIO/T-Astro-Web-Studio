@@ -14,29 +14,21 @@ DriverConnection.setImageProcessedCallback(() => {
 let onTelescopePositionUpdate: ((pos: TelescopePosition) => void) | null = null;
 export const setTelescopePositionCallback = (cb: typeof onTelescopePositionUpdate) => onTelescopePositionUpdate = cb;
 
+let onSampSkyCoordReceived: ((ra: number, dec: number) => void) | null = null;
+export const setSampSkyCoordReceivedCallback = (cb: typeof onSampSkyCoordReceived) => onSampSkyCoordReceived = cb;
+
 // SAMPからの座標受信時の処理
 sampService.setSkyCoordCallback((ra, dec) => {
-    console.log(`[AstroService] Synchronizing from SAMP: RA=${ra}, Dec=${dec}`);
-    // 望遠鏡の現在位置として通知（表示の更新）
-    if (onTelescopePositionUpdate) {
-        onTelescopePositionUpdate({ ra, dec });
-    }
-    // 必要に応じて、シミュレータ等のターゲットも更新する
-    const mock = DriverConnection.getSimulatorMock();
-    if (mock && mock.connected) {
-        // シミュレータの場合は即座にその位置へ移動させる（同期）
-        mock.sync(ra, dec);
+    console.log(`[AstroService] Received selection from SAMP: RA=${ra}, Dec=${dec}`);
+    // UI側（App.tsx等）へ通知し、選択状態を更新させる
+    if (onSampSkyCoordReceived) {
+        onSampSkyCoordReceived(ra, dec);
     }
 });
 
-// 望遠鏡の座標更新時にSAMPへ通知
+// 望遠鏡の座標更新時の処理（SAMP送信は行わない）
 DriverConnection.setTelescopePositionCallback((pos) => {
     if (onTelescopePositionUpdate) onTelescopePositionUpdate(pos);
-    // SAMPが接続されていれば座標を送信
-    if (sampService.isConnected()) {
-        // SAMPのcoord.pointAt.skyはRA/Decともに度(degrees)を期待する
-        sampService.sendSkyCoord(pos.ra, pos.dec);
-    }
 });
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

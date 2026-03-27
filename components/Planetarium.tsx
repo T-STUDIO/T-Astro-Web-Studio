@@ -10,6 +10,7 @@ import { SearchIcon } from './icons/SearchIcon';
 import { CrosshairIcon } from './icons/CrosshairIcon';
 import { StarIcon } from './icons/StarIcon';
 import { TelescopeIcon } from './icons/TelescopeIcon';
+import * as AstroService from '../services/AstroService';
 import { useTranslation } from '../contexts/LanguageContext';
 import { getRealStarCatalog } from '../utils/starCatalog';
 import { BACKGROUND_STARS } from '../utils/starGenerator';
@@ -162,7 +163,12 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         );
 
         if (match) {
-            if (onSelectObject) onSelectObject(match as any);
+            if (onSelectObject) {
+                onSelectObject(match as any);
+                if (match && (match as any).ra !== undefined && (match as any).dec !== undefined) {
+                    AstroService.syncSkyCoord((match as any).ra, (match as any).dec);
+                }
+            }
             const lst = calculateLST(effLocation.longitude, effTime);
             const { alt, az } = raDecToAzAlt(match.raDeg, match.decDeg, effLocation.latitude, lst);
             setViewAz(az); setViewAlt(alt);
@@ -461,7 +467,14 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 if (bestMatch) {
                     const isDoubleClick = (now - lastClickTimeRef.current) < 300; lastClickTimeRef.current = now;
                     if (isDoubleClick && onCenter) { onCenter(bestMatch); }
-                    else if (onSelectObject) { onSelectObject(bestMatch); }
+                    else if (onSelectObject) { 
+                        onSelectObject(bestMatch); 
+                        if (bestMatch && bestMatch.ra !== undefined && bestMatch.dec !== undefined) {
+                            const raVal = typeof bestMatch.ra === 'string' ? parseFloat(bestMatch.ra) : bestMatch.ra;
+                            const decVal = typeof bestMatch.dec === 'string' ? parseFloat(bestMatch.dec) : bestMatch.dec;
+                            AstroService.syncSkyCoord(raVal, decVal);
+                        }
+                    }
                 } else { lastClickTimeRef.current = now; }
             }
         }

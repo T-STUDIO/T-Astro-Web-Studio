@@ -1,24 +1,6 @@
 import { CelestialObject, MountSpeed, LocationData, TelescopePosition, SimulatorSettings, INDIVector, INDIDevice } from '../types';
 import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import AstroSimulatorService from './AstroSimulatorService';
-import * as sampService from './sampService';
-
-let onSampSkyCoordReceived: ((ra: number, dec: number) => void) | null = null;
-export const setSampSkyCoordReceivedCallback = (cb: typeof onSampSkyCoordReceived) => onSampSkyCoordReceived = cb;
-
-// SAMPからの座標受信時の処理
-sampService.setSkyCoordCallback((ra, dec) => {
-    console.log(`[AstroServiceSimulator] Received selection from SAMP: RA=${ra}, Dec=${dec}`);
-    if (onSampSkyCoordReceived) {
-        onSampSkyCoordReceived(ra, dec);
-    }
-});
-
-export const syncSkyCoord = (ra: number, dec: number) => {
-    if (sampService.isConnected()) {
-        sampService.sendSkyCoord(ra, dec);
-    }
-};
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 

@@ -4,31 +4,9 @@ import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import * as DriverConnection from './DriverConnection';
 import { BlobTransportService } from './BlobTransportService';
 
-import * as sampService from './sampService';
-
 // 画像受信通知をDriverConnectionに登録
 DriverConnection.setImageProcessedCallback(() => {
     notifyImageReceived();
-});
-
-let onTelescopePositionUpdate: ((pos: TelescopePosition) => void) | null = null;
-export const setTelescopePositionCallback = (cb: typeof onTelescopePositionUpdate) => onTelescopePositionUpdate = cb;
-
-let onSampSkyCoordReceived: ((ra: number, dec: number) => void) | null = null;
-export const setSampSkyCoordReceivedCallback = (cb: typeof onSampSkyCoordReceived) => onSampSkyCoordReceived = cb;
-
-// SAMPからの座標受信時の処理
-sampService.setSkyCoordCallback((ra, dec) => {
-    console.log(`[AstroService] Received selection from SAMP: RA=${ra}, Dec=${dec}`);
-    // UI側（App.tsx等）へ通知し、選択状態を更新させる
-    if (onSampSkyCoordReceived) {
-        onSampSkyCoordReceived(ra, dec);
-    }
-});
-
-// 望遠鏡の座標更新時の処理（SAMP送信は行わない）
-DriverConnection.setTelescopePositionCallback((pos) => {
-    if (onTelescopePositionUpdate) onTelescopePositionUpdate(pos);
 });
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -46,20 +24,11 @@ export const setAppData = (loc: LocationData | null, time: Date | null) => {
 export { 
     diagnoseConnection, 
     setLogCallback, getDebugLogs,
-    setImageReceivedCallback, setIndiDeviceCallback, setIndiMessageCountCallback, setFocuserUpdateCallback, setMountLocationCallback, setMountTimeCallback,
+    setImageReceivedCallback, setTelescopePositionCallback, setIndiDeviceCallback, setIndiMessageCountCallback, setFocuserUpdateCallback, setMountLocationCallback, setMountTimeCallback,
     updateDeviceSetting, getActiveCamera, getActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice, disconnectIndiDevice, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
     getIndiDevices, getActiveCameraParams as getCameraParams,
     sendRaw
 } from './DriverConnection';
-
-/**
- * 任意の座標をSAMPへ同期します（手動選択時など）
- */
-export const syncSkyCoord = (ra: number, dec: number) => {
-    if (sampService.isConnected()) {
-        sampService.sendSkyCoord(ra, dec);
-    }
-};
 
 /**
  * 接続ロジックを拡張：メインチャネルとBLOBチャネルを分離して接続します。

@@ -33,6 +33,7 @@ export const getDebugLogs = () => [...debugLogs];
 let onIndiDeviceUpdate: ((devices: INDIDevice[]) => void) | null = null;
 let onIndiMessageCount: ((count: number) => void) | null = null;
 let onImageReceived: ((dataUrl: string, format: string, metadata?: Record<string, any>) => void) | null = null;
+let onImageProcessed: (() => void) | null = null;
 let onTelescopePositionUpdate: ((pos: TelescopePosition) => void) | null = null;
 let onFocuserUpdate: ((position: number, step?: number) => void) | null = null;
 let onMountLocationUpdate: ((loc: LocationData) => void) | null = null;
@@ -53,6 +54,7 @@ export const setIndiDeviceCallback = (cb: typeof onIndiDeviceUpdate) => {
 };
 export const setIndiMessageCountCallback = (cb: typeof onIndiMessageCount) => onIndiMessageCount = cb;
 export const setImageReceivedCallback = (cb: typeof onImageReceived) => onImageReceived = cb;
+export const setImageProcessedCallback = (cb: () => void) => onImageProcessed = cb;
 export const setTelescopePositionCallback = (cb: typeof onTelescopePositionUpdate) => onTelescopePositionUpdate = cb;
 export const setFocuserUpdateCallback = (cb: typeof onFocuserUpdate) => onFocuserUpdate = cb;
 export const setMountLocationCallback = (cb: typeof onMountLocationUpdate) => onMountLocationUpdate = cb;
@@ -945,107 +947,76 @@ export const rawFitsToDisplay = (
                     const channels: Float32Array[] = [];
                     for(let c=0; c<numChannels; c++) channels.push(new Float32Array(numPixels));
                     const view = new DataView(buffer);
+                    let minVal = Infinity;
+                    let maxVal = -Infinity;
                     for (let c = 0; c < numChannels; c++) {
                         const target = channels[c];
-                        if (bitpix === 8) { for (let i = 0; i < numPixels; i++) { if (dataOffset >= buffer.byteLength) break; target[i] = u8[dataOffset++] * bscale + bzero; } } 
-                        else if (bitpix === 16) { for (let i = 0; i < numPixels; i++) { if (dataOffset + 2 > buffer.byteLength) break; target[i] = view.getInt16(dataOffset, false) * bscale + bzero; dataOffset += 2; } } 
-                        else if (bitpix === 32) { for (let i = 0; i < numPixels; i++) { if (dataOffset + 4 > buffer.byteLength) break; target[i] = view.getInt32(dataOffset, false) * bscale + bzero; dataOffset += 4; } } 
-                        else if (bitpix === -32) { for (let i = 0; i < numPixels; i++) { if (dataOffset + 4 > buffer.byteLength) break; target[i] = view.getFloat32(dataOffset, false) * bscale + bzero; dataOffset += 4; } }
-                    }
-                    // Robust histogram analysis for proper display range calculation
-                    let displayMin = 0;
-                    let displayMax = 255;
-                    const ch0 = channels[0];
-                    
-                    // Determine theoretical range based on bitpix
-                    if (bitpix === 8) displayMax = 255;
-                    else if (bitpix === 16) displayMax = 65535;
-                    else if (bitpix === 32) displayMax = 4294967295;
-                    else if (bitpix === -32) {
-                        // For float data, auto-detect range from actual data
-                        let minVal = Infinity;
-                        let maxVal = -Infinity;
-                        const sampleSize = Math.min(ch0.length, 5000);
-                        for (let i = 0; i < sampleSize; i++) {
-                            if (ch0[i] < minVal) minVal = ch0[i];
-                            if (ch0[i] > maxVal) maxVal = ch0[i];
+                        if (bitpix === 8) { 
+                            for (let i = 0; i < numPixels; i++) { 
+                                if (dataOffset >= buffer.byteLength) break; 
+                                const v = u8[dataOffset++] * bscale + bzero;
+                                target[i] = v;
+                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                            } 
+                        } 
+                        else if (bitpix === 16) { 
+                            for (let i = 0; i < numPixels; i++) { 
+                                if (dataOffset + 2 > buffer.byteLength) break; 
+                                const v = view.getInt16(dataOffset, false) * bscale + bzero;
+                                target[i] = v; dataOffset += 2;
+                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                            } 
+                        } 
+                        else if (bitpix === 32) { 
+                            for (let i = 0; i < numPixels; i++) { 
+                                if (dataOffset + 4 > buffer.byteLength) break; 
+                                const v = view.getInt32(dataOffset, false) * bscale + bzero;
+                                target[i] = v; dataOffset += 4;
+                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                            } 
+                        } 
+                        else if (bitpix === -32) { 
+                            for (let i = 0; i < numPixels; i++) { 
+                                if (dataOffset + 4 > buffer.byteLength) break; 
+                                const v = view.getFloat32(dataOffset, false) * bscale + bzero;
+                                target[i] = v; dataOffset += 4;
+                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                            } 
                         }
-                        if (minVal !== Infinity && maxVal !== -Infinity) {
-                            displayMin = minVal;
-                            displayMax = maxVal;
-                        } else {
-                            displayMax = 1.0;
-                        }
                     }
-                    
-                    // Robust histogram analysis for auto-stretch
-                    let actualMin = Infinity;
-                    let actualMax = -Infinity;
-                    
-                    // 以前の高速ロジックに復元：
-                    // 16bitなら単純シフトで8bit化。これが最も速く、かつヒストグラムで調整可能な「素」の状態。
-                    const is16Bit = (bitpix === 16);
-                    const shift = is16Bit ? 8 : 0;
-                    
-                    const isRGB = (naxis3 === 3); 
-                    let bayerPat = debayerPattern;
+                    if (maxVal <= minVal) {
+                        minVal = 0;
+                        maxVal = (bitpix === 8) ? 255 : (Math.abs(bitpix) === 16 ? 65535 : 1);
+                    }
+                    let displayMin = minVal;
+                    let displayRange = maxVal - minVal;
+                    if (displayRange === 0) displayRange = 1;
+                    const isRGB = (naxis3 === 3); let bayerPat = debayerPattern;
                     if (!isRGB && (!bayerPat || bayerPat === 'Auto')) bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
-                    
                     let code = -1; 
-                    if (!isRGB) { 
-                        if (bayerPat === 'RGGB') code = 0; 
-                        else if (bayerPat === 'GBRG') code = 1; 
-                        else if (bayerPat === 'GRBG') code = 2; 
-                        else if (bayerPat === 'BGGR') code = 3; 
-                    }
-                    
-                    const ch1 = isRGB ? channels[1] : null; 
-                    const ch2 = isRGB ? channels[2] : null;
-                    const pixelView = new Uint32Array(rawRgbaBuffer.buffer);
-                    
-                    for (let fitsY = 0; fitsY < height; fitsY++) {
-                        const canvasY = height - 1 - fitsY;
-                        const rowOffset = fitsY * width;
-                        const canvasRowOffset = canvasY * width;
-                        const isEvenRow = (fitsY & 1) === 0;
-
+                    if (!isRGB) { if (bayerPat === 'RGGB') code = 0; else if (bayerPat === 'GBRG') code = 1; else if (bayerPat === 'GRBG') code = 2; else if (bayerPat === 'BGGR') code = 3; }
+                    const ch0 = channels[0]; const ch1 = isRGB ? channels[1] : null; const ch2 = isRGB ? channels[2] : null;
+                    for (let y = 0; y < height; y++) {
+                        const fitsY = height - 1 - y; const rowOffset = y * width; const fitsRowOffset = fitsY * width; const isEvenRow = (y % 2 === 0);
                         for (let x = 0; x < width; x++) {
-                            const i = rowOffset + x;
-                            const canvasIdx = canvasRowOffset + x;
-                            
+                            const canvasIdx = (rowOffset + x) * 4; const pixelIdx = fitsRowOffset + x;
                             let r, g, b;
-                            if (isRGB && ch1 && ch2) {
-                                r = ch0[i] >> shift;
-                                g = ch1[i] >> shift;
-                                b = ch2[i] >> shift;
-                            } else {
-                                const val = ch0[i] >> shift;
-                                r = g = b = val;
-                                
+                            if (isRGB && ch1 && ch2) { r = ((ch0[pixelIdx] - displayMin) / displayRange) * 255; g = ((ch1[pixelIdx] - displayMin) / displayRange) * 255; b = ((ch2[pixelIdx] - displayMin) / displayRange) * 255; } 
+                            else {
+                                const val = ch0[pixelIdx]; const norm = ((val - displayMin) / displayRange) * 255; r = norm; g = norm; b = norm;
                                 if (code !== -1) {
-                                    const isEvenCol = (x & 1) === 0;
-                                    let pixelColor = 0;
+                                    const isEvenCol = (x % 2 === 0); let pixelColor = 0; 
                                     if (code === 0) pixelColor = isEvenRow ? (isEvenCol ? 0 : 1) : (isEvenCol ? 1 : 2);
                                     else if (code === 1) pixelColor = isEvenRow ? (isEvenCol ? 1 : 2) : (isEvenCol ? 0 : 1);
                                     else if (code === 2) pixelColor = isEvenRow ? (isEvenCol ? 1 : 0) : (isEvenCol ? 2 : 1);
                                     else if (code === 3) pixelColor = isEvenRow ? (isEvenCol ? 2 : 1) : (isEvenCol ? 1 : 0);
-                                    
-                                    if (pixelColor === 0) { g = 0; b = 0; }
-                                    else if (pixelColor === 1) { r = 0; b = 0; }
-                                    else { r = 0; g = 0; }
+                                    if (pixelColor === 0) { r = norm; g = 0; b = 0; } else if (pixelColor === 1) { r = 0; g = norm; b = 0; } else { r = 0; g = 0; b = norm; }
                                 }
                             }
-                            
-                            // ABGR format (little-endian)
-                            pixelView[canvasIdx] = (255 << 24) | (b << 16) | (g << 8) | r;
+                            rawRgbaBuffer[canvasIdx] = r; rawRgbaBuffer[canvasIdx + 1] = g; rawRgbaBuffer[canvasIdx + 2] = b; rawRgbaBuffer[canvasIdx + 3] = 255;
                         }
                     }
-                    headers['rawBuffer'] = rawRgbaBuffer; 
-                    headers['rawWidth'] = width; 
-                    headers['rawHeight'] = height; 
-                    headers['displayMin'] = displayMin;
-                    headers['displayMax'] = displayMax;
-                    return { url: 'raw-data-available', headers };
+                    headers['rawBuffer'] = rawRgbaBuffer; headers['rawWidth'] = width; headers['rawHeight'] = height; return { url: 'raw-data-available', headers };
                 }
             } catch (e) { }
         }

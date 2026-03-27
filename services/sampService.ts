@@ -14,10 +14,15 @@ declare global {
 }
 
 let statusCallback: ((status: SampStatus, metadata?: any) => void) | null = null;
+let skyCoordCallback: ((ra: number, dec: number) => void) | null = null;
 let connector: any = null;
 
 export const setCallback = (cb: (status: SampStatus, metadata?: any) => void) => {
     statusCallback = cb;
+};
+
+export const setSkyCoordCallback = (cb: (ra: number, dec: number) => void) => {
+    skyCoordCallback = cb;
 };
 
 export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
@@ -52,16 +57,10 @@ export const connect = async (settings: SampSettings) => {
 
     const host = settings.host || 'localhost';
     const port = settings.port || 21012;
-    // Standard SAMP hub URL is usually the root or /xmlrpc
+    // Standard SAMP hub URL for Web Profile
     const hubUrl = `http://${host}:${port}/`;
     
-    // Use proxy for SAMP to bypass CORS only if on HTTPS
-    const isHttps = window.location.protocol === 'https:';
-    const proxyUrl = isHttps 
-        ? `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(hubUrl)}`
-        : hubUrl;
-    
-    console.log(`[SAMP] Connecting to hub at: ${hubUrl} ${isHttps ? '(via proxy)' : '(direct)'}`);
+    console.log(`[SAMP] Connecting to hub at: ${hubUrl}`);
     if (statusCallback) statusCallback('Connecting');
 
     const meta = {
@@ -71,16 +70,14 @@ export const connect = async (settings: SampSettings) => {
     };
 
     try {
-        // Connector handles the Web Profile (CORS, etc.)
-        // We use the proxy URL as the hub URL
+        // Connector handles the Web Profile
         connector = new window.samp.Connector(meta);
         
-        // Manually set the hub URL on the connector's client
+        // Override hub URL if specified
         if (connector.client) {
-            connector.client.hubUrl = proxyUrl;
+            connector.client.hubUrl = hubUrl;
         }
         
-        // Set up connection change listener
         connector.onConnectionChange = (isConnected: boolean) => {
             console.log(`[SAMP] Connection changed: ${isConnected}`);
             if (statusCallback) {
@@ -88,16 +85,37 @@ export const connect = async (settings: SampSettings) => {
             }
         };
 
-        // Register with the hub
+        // メッセージ受信ハンドラ
+        connector.onMessage = (senderId: string, message: any) => {
+            const mtype = message["samp.mtype"];
+            if (mtype === "coord.pointAt.sky") {
+                const params = message["samp.params"];
+                const ra = parseFloat(params.ra);
+                const dec = parseFloat(params.dec);
+                if (!isNaN(ra) && !isNaN(dec) && skyCoordCallback) {
+                    console.log(`[SAMP] Received coord.pointAt.sky from ${senderId}: RA=${ra}, Dec=${dec}`);
+                    skyCoordCallback(ra, dec);
+                }
+            }
+            return {}; // 応答が必要な場合はここにデータを返す
+        };
+
+        // 購読するメッセージタイプを登録
+        connector.subscriptions = {
+            "coord.pointAt.sky": {}
+        };
+
+        // Attempt to register
         connector.register();
         
-        // Timeout for connection
+        // Check for connection success
         setTimeout(() => {
             if (connector && !connector.connection && statusCallback) {
-                console.warn("[SAMP] Connection timeout");
-                statusCallback('Error', { error: 'Connection timeout. Is Aladin/SAMP Hub running with Web Profile enabled?' });
+                console.warn("[SAMP] Connection timeout. Trying to resolve hub...");
+                // Fallback to resolveHub if direct registration didn't work immediately
+                connector.resolveHub();
             }
-        }, 5000);
+        }, 3000);
     } catch (e: any) {
         console.error("[SAMP] Connection error:", e);
         if (statusCallback) statusCallback('Error', { error: e.message });

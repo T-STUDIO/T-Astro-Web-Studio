@@ -28,6 +28,8 @@ import * as SampService from './services/sampService';
 import { DEFAULT_SIMULATOR_SETTINGS } from './services/SimulatorService';
 import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine';
 import { CELESTIAL_OBJECTS } from './constants';
+import { EXTENDED_DSO_CATALOG } from './utils/dsoCatalog';
+import { hmsToDegrees, dmsToDegrees, degreesToHms, degreesToDms } from './utils/coords';
 import { MountControllerSimulator } from './components/MountControllerSimulator';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
@@ -39,6 +41,7 @@ const AppSimulator: React.FC = () => {
 
   const [activeView, setActiveView] = useState<View>('Planetarium');
   const [selectedObject, setSelectedObject] = useState<CelestialObject | null>(null);
+  const [planetariumCenterRequest, setPlanetariumCenterRequest] = useState(0);
   const [slewStatus, setSlewStatus] = useState<SlewStatus>('Idle');
   const [planetariumSettings, setPlanetariumSettings] = useState<PlanetariumSettings>(initialSettings.planetariumSettings);
   const [location, setLocation] = useState<LocationData | null>(initialSettings.location);
@@ -156,8 +159,49 @@ const AppSimulator: React.FC = () => {
 
   useEffect(() => {
     AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
+    
+    // SAMPからの座標受信時の処理
+    AstroService.setSampSkyCoordReceivedCallback((ra, dec) => {
+        // 最も近い天体を検索
+        const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
+        let bestMatch: CelestialObject | null = null;
+        let minDistance = 1.0; // 1度以内
+
+        allObjects.forEach(obj => {
+            const objRa = hmsToDegrees(obj.ra);
+            const objDec = dmsToDegrees(obj.dec);
+            const dist = Math.hypot(objRa - ra, objDec - dec);
+            if (dist < minDistance) {
+                minDistance = dist;
+                bestMatch = obj;
+            }
+        });
+
+        if (bestMatch) {
+            setSelectedObject(bestMatch);
+            setPlanetariumCenterRequest(prev => prev + 1);
+            addLog('logs.sampObjectSelected', { name: bestMatch.name }, 'info');
+        } else {
+            // 天体が見つからない場合はカスタム天体として扱う
+            const customObj: CelestialObject = {
+                id: `samp-${Date.now()}`,
+                name: `SAMP Target (${ra.toFixed(2)}, ${dec.toFixed(2)})`,
+                nameJa: `SAMP ターゲット (${ra.toFixed(2)}, ${dec.toFixed(2)})`,
+                type: 'Star',
+                ra: degreesToHms(ra),
+                dec: degreesToDms(dec),
+                magnitude: 0
+            };
+            setSelectedObject(customObj);
+            setPlanetariumCenterRequest(prev => prev + 1);
+            addLog('logs.sampPointSelected', { ra: ra.toFixed(2), dec: dec.toFixed(2) }, 'info');
+        }
+        setActiveView('Planetarium');
+    });
+
     return () => {
         AstroService.setTelescopePositionCallback(null);
+        AstroService.setSampSkyCoordReceivedCallback(null);
     };
   }, []);
 
@@ -188,6 +232,14 @@ const AppSimulator: React.FC = () => {
         AstroService.setImageReceivedCallback(null);
     };
   }, [isCapturing]);
+
+  useEffect(() => {
+    if (sampStatus === 'Connected' && selectedObject) {
+      const ra = hmsToDegrees(selectedObject.ra);
+      const dec = dmsToDegrees(selectedObject.dec);
+      SampService.sendSkyCoord(ra, dec);
+    }
+  }, [sampStatus, selectedObject]);
 
   useEffect(() => {
     AstroService.updateSimulatorSettings(simulatorSettings);
@@ -480,6 +532,7 @@ const AppSimulator: React.FC = () => {
                         captureProgress={captureProgress}
                         selectedObject={selectedObject}
                         onSelectObject={setSelectedObject}
+                        planetariumCenterRequest={planetariumCenterRequest}
                         slewStatus={slewStatus}
                         planetariumSettings={planetariumSettings}
                         onAnnotationClick={handleShowGeminiInfo}

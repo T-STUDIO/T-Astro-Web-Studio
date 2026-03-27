@@ -28,6 +28,8 @@ import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
 import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
+import { EXTENDED_DSO_CATALOG } from './utils/dsoCatalog';
+import { hmsToDegrees, dmsToDegrees, degreesToHms, degreesToDms } from './utils/coords';
 
 setAstroService(AstroService);
 import { MountController } from './components/MountController';
@@ -41,6 +43,7 @@ const App: React.FC = () => {
 
   const [activeView, setActiveView] = useState<View>('Planetarium');
   const [selectedObject, setSelectedObject] = useState<CelestialObject | null>(null);
+  const [planetariumCenterRequest, setPlanetariumCenterRequest] = useState(0);
   const [slewStatus, setSlewStatus] = useState<SlewStatus>('Idle');
   const [planetariumSettings, setPlanetariumSettings] = useState<PlanetariumSettings>(initialSettings.planetariumSettings);
   const [location, setLocation] = useState<LocationData | null>(initialSettings.location);
@@ -186,11 +189,59 @@ const App: React.FC = () => {
       setIsPreviewLoading(false);
     });
     AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
+    
+    // SAMPからの座標受信時の処理
+    AstroService.setSampSkyCoordReceivedCallback((ra, dec) => {
+        // 最も近い天体を検索
+        const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
+        let bestMatch: CelestialObject | null = null;
+        let minDistance = 1.0; // 1度以内
+
+        allObjects.forEach(obj => {
+            const objRa = hmsToDegrees(obj.ra);
+            const objDec = dmsToDegrees(obj.dec);
+            const dist = Math.hypot(objRa - ra, objDec - dec);
+            if (dist < minDistance) {
+                minDistance = dist;
+                bestMatch = obj;
+            }
+        });
+
+        if (bestMatch) {
+            setSelectedObject(bestMatch);
+            setPlanetariumCenterRequest(prev => prev + 1);
+            addLog('logs.sampObjectSelected', { name: bestMatch.name }, 'info');
+        } else {
+            // 天体が見つからない場合はカスタム天体として扱う（必要に応じて）
+            const customObj: CelestialObject = {
+                id: `samp-${Date.now()}`,
+                name: `SAMP Target (${ra.toFixed(2)}, ${dec.toFixed(2)})`,
+                nameJa: `SAMP ターゲット (${ra.toFixed(2)}, ${dec.toFixed(2)})`,
+                type: 'Star',
+                ra: degreesToHms(ra),
+                dec: degreesToDms(dec),
+                magnitude: 0
+            };
+            setSelectedObject(customObj);
+            setPlanetariumCenterRequest(prev => prev + 1);
+            addLog('logs.sampPointSelected', { ra: ra.toFixed(2), dec: dec.toFixed(2) }, 'info');
+        }
+    });
+
     return () => {
       AstroService.setImageReceivedCallback(null);
       AstroService.setTelescopePositionCallback(null);
+      AstroService.setSampSkyCoordReceivedCallback(null);
     };
-  }, [isCapturing]);
+  }, [isCapturing, addLog]);
+
+  useEffect(() => {
+    if (sampStatus === 'Connected' && selectedObject) {
+      const ra = hmsToDegrees(selectedObject.ra);
+      const dec = dmsToDegrees(selectedObject.dec);
+      SampService.sendSkyCoord(ra, dec);
+    }
+  }, [sampStatus, selectedObject]);
 
   useEffect(() => {
     SettingsService.saveSettings({
@@ -560,10 +611,11 @@ const App: React.FC = () => {
                         slewStatus={slewStatus}
                         planetariumSettings={planetariumSettings}
                         onAnnotationClick={handleShowGeminiInfo}
+                        centerRequest={planetariumCenterRequest}
                         location={location}
                         isConnected={connectionStatus === 'Connected'}
                         onSlew={handleSlew}
-                        onCenter={setSelectedObject}
+                        onCenter={(obj) => { setSelectedObject(obj); setPlanetariumCenterRequest(prev => prev + 1); }}
                         isLiveViewActive={isLiveViewActive}
                         isVideoStreamActive={isVideoStreamActive}
                         isPreviewLoading={isPreviewLoading}

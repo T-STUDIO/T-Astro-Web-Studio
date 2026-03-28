@@ -338,6 +338,24 @@ const AppSimulator: React.FC = () => {
     });
   };
 
+  const onConnectSamp = (settings: SampSettings) => {
+    setSampSettings(settings);
+    SampService.connect(settings, (status) => {
+      setSampStatus(status);
+    });
+  };
+
+  const onConnectVirtualSamp = () => {
+    SampService.connectInternal(sampSettings, (status) => {
+      setSampStatus(status);
+    });
+  };
+
+  const onDisconnectSamp = () => {
+    SampService.disconnect();
+    setSampStatus('Disconnected');
+  };
+
   const handleShowGeminiInfo = async (name: string) => {
       const obj = CELESTIAL_OBJECTS.find(o => o.name === name) || selectedObject;
       if (!obj) return;
@@ -435,15 +453,9 @@ const AppSimulator: React.FC = () => {
                         sampStatus={sampStatus}
                         sampSettings={sampSettings}
                         onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                        onConnectSamp={async () => { 
-                          setSampStatus('Connecting'); 
-                          await SampService.connect(sampSettings); 
-                        }}
-                        onConnectVirtualSamp={() => {
-                          setSampStatus('Connecting');
-                          SampService.connectInternal((status) => setSampStatus(status), sampSettings);
-                        }}
-                        onDisconnectSamp={() => SampService.disconnect()}
+                        onConnectSamp={onConnectSamp}
+                        onConnectVirtualSamp={onConnectVirtualSamp}
+                        onDisconnectSamp={onDisconnectSamp}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}

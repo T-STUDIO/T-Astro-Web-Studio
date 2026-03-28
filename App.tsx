@@ -364,6 +364,24 @@ const App: React.FC = () => {
     });
   };
 
+  const onConnectSamp = (settings: SampSettings) => {
+    setSampSettings(settings);
+    SampService.connect(settings, (status) => {
+      setSampStatus(status);
+    });
+  };
+
+  const onConnectVirtualSamp = () => {
+    SampService.connectInternal(sampSettings, (status) => {
+      setSampStatus(status);
+    });
+  };
+
+  const onDisconnectSamp = () => {
+    SampService.disconnect();
+    setSampStatus('Disconnected');
+  };
+
   const handleShowGeminiInfo = async (name: string) => {
       const obj = CELESTIAL_OBJECTS.find(o => o.name === name) || selectedObject;
       if (!obj) return;
@@ -460,8 +478,9 @@ const App: React.FC = () => {
                 isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
                 onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                 sampStatus={sampStatus}
-                onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); setSampStatus('Connected'); }}
-                onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
+                onConnectSamp={() => onConnectSamp(sampSettings)}
+                onConnectVirtualSamp={onConnectVirtualSamp}
+                onDisconnectSamp={onDisconnectSamp}
                 isCapturing={isCapturing}
                 captureProgress={captureProgress}
                 selectedObject={selectedObject}
@@ -523,7 +542,9 @@ const App: React.FC = () => {
                         sampStatus={sampStatus}
                         sampSettings={sampSettings}
                         onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                        onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
+                        onConnectSamp={onConnectSamp}
+                        onConnectVirtualSamp={onConnectVirtualSamp}
+                        onDisconnectSamp={onDisconnectSamp}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}

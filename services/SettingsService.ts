@@ -12,6 +12,7 @@ export interface AppSettings {
     offset: number;
     binning: number;
     colorBalance: { r: number, g: number, b: number };
+    brightnessFactor: number;
     astrometryApiKey: string;
     plateSolverType: PlateSolverType;
     localSolverSettings: LocalSolverSettings;
@@ -31,7 +32,7 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
     connectionSettings: {
         driver: 'INDI',
-        host: 'localhost',
+        host: '',
         port: 7624,
         serverType: 'local'
     },
@@ -58,16 +59,17 @@ const DEFAULT_SETTINGS: AppSettings = {
     offset: 10,
     binning: 1,
     colorBalance: { r: 128, g: 128, b: 128 },
+    brightnessFactor: 1.0,
     astrometryApiKey: '',
     plateSolverType: 'Remote',
     localSolverSettings: {
-        host: 'localhost',
+        host: '',
         port: 6000
     },
     isAutoCenterEnabled: false,
     isAutoSyncLocationEnabled: true, 
     sampSettings: {
-        host: 'localhost',
+        host: '',
         port: 8080
     },
     location: null,

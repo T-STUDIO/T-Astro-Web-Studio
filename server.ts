@@ -219,8 +219,10 @@ async function startServer() {
                 }
 
                 console.log(`[SAMP Hub] Method call: ${methodName}`);
-                if (this.listenerCount(methodName) > 0) {
-                    this.emit(methodName, null, params, (err: any, value: any) => {
+                const listeners = this.listeners(methodName);
+                if (listeners.length > 0) {
+                    const listener = listeners[0] as any;
+                    listener(null, params, (err: any, value: any) => {
                         let xml = null;
                         if (err !== null) {
                             xml = Serializer.serializeFault(err);

@@ -25,9 +25,57 @@ const getSamp = () => {
 };
 
 const ensureXmlRpcRequest = () => {
-    const samp = getSamp();
-    if (samp && samp.XmlRpcRequest && typeof window !== 'undefined' && !(window as any).XmlRpcRequest) {
-        (window as any).XmlRpcRequest = samp.XmlRpcRequest;
+    if (typeof window !== 'undefined') {
+        const globalReq = (window as any).XmlRpcRequest;
+        // Check if XmlRpcRequest is missing or broken (missing toXml)
+        if (!globalReq || !globalReq.prototype || typeof globalReq.prototype.toXml !== 'function') {
+            console.log("[SAMP] Defining/Fixing XmlRpcRequest globally...");
+            
+            const XmlRpcRequest = function(this: any, methodName: string, params: any[]) {
+                this.methodName = methodName;
+                this.params = params;
+            };
+            
+            XmlRpcRequest.prototype.toXml = function() {
+                const s = getSamp();
+                // Try to use the library's serializer if available
+                if (s && s.XmlRpcSerializer && typeof s.XmlRpcSerializer.serializeRequest === 'function') {
+                    return s.XmlRpcSerializer.serializeRequest(this.methodName, this.params);
+                }
+                
+                // Manual serialization fallback if library serializer is missing
+                const serializeValue = (v: any): string => {
+                    if (typeof v === 'string') return `<string>${v.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</string>`;
+                    if (typeof v === 'number') return `<int>${v}</int>`;
+                    if (typeof v === 'boolean') return `<boolean>${v ? '1' : '0'}</boolean>`;
+                    if (Array.isArray(v)) {
+                        return `<array><data>${v.map(item => `<value>${serializeValue(item)}</value>`).join('')}</data></array>`;
+                    }
+                    if (typeof v === 'object' && v !== null) {
+                        let struct = '<struct>';
+                        for (const key in v) {
+                            struct += `<member><name>${key}</name><value>${serializeValue(v[key])}</value></member>`;
+                        }
+                        struct += '</struct>';
+                        return struct;
+                    }
+                    return `<string>${String(v)}</string>`;
+                };
+
+                let xml = '<?xml version="1.0"?><methodCall>';
+                xml += `<methodName>${this.methodName}</methodName>`;
+                xml += '<params>';
+                if (this.params && Array.isArray(this.params)) {
+                    for (const p of this.params) {
+                        xml += `<param><value>${serializeValue(p)}</value></param>`;
+                    }
+                }
+                xml += '</params></methodCall>';
+                return xml;
+            };
+            
+            (window as any).XmlRpcRequest = XmlRpcRequest;
+        }
     }
 };
 

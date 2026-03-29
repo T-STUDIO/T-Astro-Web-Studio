@@ -15,7 +15,7 @@ export class AlpacaBridge {
     private isConnecting = false;
     private uiLogger: ((msg: string) => void) | null = null;
     private indiSender: ((xml: string) => void) | null = null; 
-    private targetHost: string = '';
+    private targetHost: string = 'localhost';
 
     public static getInstance(): AlpacaBridge {
         if (!AlpacaBridge.instance) AlpacaBridge.instance = new AlpacaBridge();
@@ -38,7 +38,11 @@ export class AlpacaBridge {
     }
 
     public setTargetHost(host: string) {
-        const finalHost = host || '';
+        let finalHost = host;
+        if (!finalHost || finalHost === 'localhost' || finalHost === '127.0.0.1') {
+            finalHost = window.location.hostname || '127.0.0.1';
+        }
+        
         if (this.targetHost !== finalHost) {
             this.targetHost = finalHost;
             if (this.isStarted) {
@@ -87,8 +91,7 @@ export class AlpacaBridge {
         if (!this.isStarted || this.isConnecting || (this.relaySocket && this.relaySocket.readyState <= 1)) return;
         
         this.isConnecting = true;
-        const host = this.targetHost || 'localhost';
-        const wsUrl = `ws://${host}:11112`;
+        const wsUrl = `ws://${this.targetHost}:11112`;
 
         try {
             const ws = new WebSocket(wsUrl);

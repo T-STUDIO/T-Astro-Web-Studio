@@ -25,58 +25,79 @@ const getSamp = () => {
 };
 
 const ensureXmlRpcRequest = () => {
-    if (typeof window !== 'undefined') {
-        const globalReq = (window as any).XmlRpcRequest;
-        // Check if XmlRpcRequest is missing or broken (missing toXml)
-        if (!globalReq || !globalReq.prototype || typeof globalReq.prototype.toXml !== 'function') {
-            console.log("[SAMP] Defining/Fixing XmlRpcRequest globally...");
-            
-            const XmlRpcRequest = function(this: any, methodName: string, params: any[]) {
-                this.methodName = methodName;
-                this.params = params;
-            };
-            
-            XmlRpcRequest.prototype.toXml = function() {
-                const s = getSamp();
-                // Try to use the library's serializer if available
-                if (s && s.XmlRpcSerializer && typeof s.XmlRpcSerializer.serializeRequest === 'function') {
-                    return s.XmlRpcSerializer.serializeRequest(this.methodName, this.params);
+    if (typeof window === 'undefined') return;
+    
+    const samp = getSamp();
+    
+    // Define a robust XmlRpcRequest implementation
+    const MyXmlRpcRequest = function(this: any, methodName: string, params: any[]) {
+        this.methodName = methodName;
+        this.params = params;
+    };
+    
+    MyXmlRpcRequest.prototype.toXml = function() {
+        const s = getSamp();
+        // Try to use the library's serializer if available
+        if (s && s.XmlRpcSerializer && typeof s.XmlRpcSerializer.serializeRequest === 'function') {
+            return s.XmlRpcSerializer.serializeRequest(this.methodName, this.params);
+        }
+        
+        // Manual serialization fallback
+        const serializeValue = (v: any): string => {
+            if (typeof v === 'string') return `<string>${v.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</string>`;
+            if (typeof v === 'number') return `<int>${v}</int>`;
+            if (typeof v === 'boolean') return `<boolean>${v ? '1' : '0'}</boolean>`;
+            if (Array.isArray(v)) {
+                return `<array><data>${v.map(item => `<value>${serializeValue(item)}</value>`).join('')}</data></array>`;
+            }
+            if (typeof v === 'object' && v !== null) {
+                let struct = '<struct>';
+                for (const key in v) {
+                    struct += `<member><name>${key}</name><value>${serializeValue(v[key])}</value></member>`;
                 }
-                
-                // Manual serialization fallback if library serializer is missing
-                const serializeValue = (v: any): string => {
-                    if (typeof v === 'string') return `<string>${v.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</string>`;
-                    if (typeof v === 'number') return `<int>${v}</int>`;
-                    if (typeof v === 'boolean') return `<boolean>${v ? '1' : '0'}</boolean>`;
-                    if (Array.isArray(v)) {
-                        return `<array><data>${v.map(item => `<value>${serializeValue(item)}</value>`).join('')}</data></array>`;
-                    }
-                    if (typeof v === 'object' && v !== null) {
-                        let struct = '<struct>';
-                        for (const key in v) {
-                            struct += `<member><name>${key}</name><value>${serializeValue(v[key])}</value></member>`;
-                        }
-                        struct += '</struct>';
-                        return struct;
-                    }
-                    return `<string>${String(v)}</string>`;
-                };
+                struct += '</struct>';
+                return struct;
+            }
+            return `<string>${String(v)}</string>`;
+        };
 
-                let xml = '<?xml version="1.0"?><methodCall>';
-                xml += `<methodName>${this.methodName}</methodName>`;
-                xml += '<params>';
-                if (this.params && Array.isArray(this.params)) {
-                    for (const p of this.params) {
-                        xml += `<param><value>${serializeValue(p)}</value></param>`;
-                    }
-                }
-                xml += '</params></methodCall>';
-                return xml;
+        let xml = '<?xml version="1.0"?><methodCall>';
+        xml += `<methodName>${this.methodName}</methodName>`;
+        xml += '<params>';
+        if (this.params && Array.isArray(this.params)) {
+            for (const p of this.params) {
+                xml += `<param><value>${serializeValue(p)}</value></param>`;
+            }
+        }
+        xml += '</params></methodCall>';
+        return xml;
+    };
+
+    // Force it onto window and samp object
+    (window as any).XmlRpcRequest = MyXmlRpcRequest;
+    if (samp) {
+        // If samp.XmlRpcRequest exists, ensure its prototype has toXml
+        if (samp.XmlRpcRequest) {
+            if (samp.XmlRpcRequest.prototype && typeof samp.XmlRpcRequest.prototype.toXml !== 'function') {
+                samp.XmlRpcRequest.prototype.toXml = MyXmlRpcRequest.prototype.toXml;
+            }
+        } else {
+            samp.XmlRpcRequest = MyXmlRpcRequest;
+        }
+        
+        // Also ensure XmlRpcClient uses a working hubUrl if it's already instantiated
+        if (samp.XmlRpcClient && samp.XmlRpcClient.prototype && !samp.XmlRpcClient.prototype._fixed) {
+            const originalExecute = samp.XmlRpcClient.prototype.execute;
+            samp.XmlRpcClient.prototype.execute = function(methodName: string, params: any[], callback: any) {
+                // Ensure XmlRpcRequest is available before each call
+                if (!(window as any).XmlRpcRequest) (window as any).XmlRpcRequest = MyXmlRpcRequest;
+                return originalExecute.apply(this, [methodName, params, callback]);
             };
-            
-            (window as any).XmlRpcRequest = XmlRpcRequest;
+            samp.XmlRpcClient.prototype._fixed = true;
         }
     }
+    
+    console.log("[SAMP] XmlRpcRequest ensured globally and on samp object.");
 };
 
 export const setCallback = (cb: (status: SampStatus, metadata?: any) => void) => {
@@ -152,11 +173,10 @@ export const connect = async (settings: SampSettings) => {
         ensureXmlRpcRequest();
         
         // Connector handles the Web Profile (CORS, etc.)
-        // We use the proxy URL as the hub URL
-        connector = new samp.Connector(meta);
+        // Pass hubUrl in options to ensure it's used from the start
+        connector = new samp.Connector(meta, { "samp.hub.xmlrpc.url": proxyUrl });
         
-        // CRITICAL: Set hubUrl on the connector itself AND its client
-        // samp.js Connector uses this.hubUrl internally during register()
+        // Fallback for older versions or if constructor didn't pick it up
         connector.hubUrl = proxyUrl;
         if (connector.client) {
             connector.client.hubUrl = proxyUrl;

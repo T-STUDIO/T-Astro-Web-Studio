@@ -16,20 +16,38 @@ declare global {
 let statusCallback: ((status: SampStatus, metadata?: any) => void) | null = null;
 let connector: any = null;
 
+const getSamp = () => {
+    const s = window.samp || (window.module && window.module.exports);
+    if (s && !window.samp) {
+        window.samp = s;
+    }
+    return s;
+};
+
+const ensureXmlRpcRequest = () => {
+    const samp = getSamp();
+    if (samp && samp.XmlRpcRequest && typeof window !== 'undefined' && !(window as any).XmlRpcRequest) {
+        (window as any).XmlRpcRequest = samp.XmlRpcRequest;
+    }
+};
+
 export const setCallback = (cb: (status: SampStatus, metadata?: any) => void) => {
     statusCallback = cb;
 };
 
 export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
     statusCallback = cb;
-    if (window.samp && !connector) {
+    const samp = getSamp();
+    ensureXmlRpcRequest();
+    
+    if (samp && !connector) {
         const meta = {
             "samp.name": "T-Astro Web Studio",
             "samp.description.text": "Web-based Astronomy Control Center",
             "samp.icon.url": window.location.origin + "/favicon.ico"
         };
         // Connector handles the Web Profile (CORS, etc.)
-        connector = new window.samp.Connector(meta);
+        connector = new samp.Connector(meta);
         
         // Set up connection change listener
         connector.onConnectionChange = (isConnected: boolean) => {
@@ -42,7 +60,10 @@ export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
 };
 
 export const connect = async (settings: SampSettings) => {
-    if (!window.samp) {
+    const samp = getSamp();
+    ensureXmlRpcRequest();
+    
+    if (!samp) {
         console.error("[SAMP] Library not loaded");
         if (statusCallback) statusCallback('Error', { error: 'SAMP library not loaded' });
         return;
@@ -79,9 +100,10 @@ export const connect = async (settings: SampSettings) => {
     };
 
     try {
+        const samp = getSamp();
         // Connector handles the Web Profile (CORS, etc.)
         // We use the proxy URL as the hub URL
-        connector = new window.samp.Connector(meta);
+        connector = new samp.Connector(meta);
         
         // Manually set the hub URL on the connector's client
         if (connector.client) {
@@ -120,10 +142,11 @@ export const disconnect = async () => {
 };
 
 export const sendSkyCoord = async (ra: number, dec: number) => {
-    if (connector && connector.connection) {
+    const samp = getSamp();
+    if (connector && connector.connection && samp) {
         console.log(`[SAMP] Sending coord: RA=${ra}, Dec=${dec}`);
         try {
-            const msg = new window.samp.Message("coord.pointAt.sky", {
+            const msg = new samp.Message("coord.pointAt.sky", {
                 ra: ra.toString(),
                 dec: dec.toString()
             });
@@ -155,7 +178,10 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
     statusCallback = cb;
     if (statusCallback) statusCallback('Connecting');
 
-    if (!window.samp) {
+    const samp = getSamp();
+    ensureXmlRpcRequest();
+
+    if (!samp) {
         console.error("[SAMP] Library not loaded");
         if (statusCallback) statusCallback('Error', { error: 'SAMP library not loaded' });
         return;
@@ -179,7 +205,11 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         };
 
         // 2. Create connector and override hub URL
-        connector = new window.samp.Connector(meta);
+        if (!samp.Connector) {
+            throw new Error('SAMP library components not found');
+        }
+
+        connector = new samp.Connector(meta);
         
         // Use the exact URL provided by the server
         if (connector.client) {
@@ -195,14 +225,18 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
 
         // 3. Register using the secret we got
         // We use the XmlRpcClient directly to ensure we connect to the correct server IP
-        const client = new window.samp.XmlRpcClient(hubUrl);
+        if (!samp.XmlRpcClient) {
+            throw new Error('SAMP XmlRpcClient not found');
+        }
+        const client = new samp.XmlRpcClient(hubUrl);
+        
         client.execute("samp.hub.register", [secret], (err: any, result: any) => {
             if (err) {
                 console.error("[SAMP] Internal registration failed:", err);
                 if (statusCallback) statusCallback('Error', { error: 'Registration failed: ' + err.message });
             } else {
                 console.log("[SAMP] Internal registration successful", result);
-                const conn = new window.samp.Connection(client, result["samp.private-key"]);
+                const conn = new samp.Connection(client, result["samp.private-key"]);
                 connector.connection = conn;
                 if (statusCallback) statusCallback('Connected');
                 

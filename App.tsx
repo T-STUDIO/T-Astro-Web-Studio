@@ -138,6 +138,15 @@ const App: React.FC = () => {
   }, [location, connectionStatus, addLog]);
 
   useEffect(() => {
+    SampService.init((status) => {
+      setSampStatus(status);
+    });
+    return () => {
+      SampService.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isAutoSyncLocationEnabled) return;
     const isConnectedNow = connectionStatus === 'Connected';
     const wasDisconnected = prevConnectionStatus.current !== 'Connected';
@@ -523,7 +532,23 @@ const App: React.FC = () => {
                         sampStatus={sampStatus}
                         sampSettings={sampSettings}
                         onSampSettingsChange={(s) => setSampSettings(prev => ({ ...prev, ...s }))}
-                        onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); }}
+                        onConnectSamp={async () => { 
+                          if (sampStatus === 'Connected') {
+                            SampService.disconnect();
+                          } else {
+                            setSampStatus('Connecting'); 
+                            await SampService.connect(sampSettings);
+                          }
+                        }}
+                        onConnectVirtualSamp={() => {
+                          setSampStatus('Connecting');
+                          SampService.connectInternal((status) => setSampStatus(status), sampSettings);
+                        }}
+                        onDisconnectSamp={() => SampService.disconnect()}
+                        savedSampSettings={savedSampSettings}
+                        onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
+                        onUpdateSavedSampSettings={(idx, settings) => setSavedSampSettings(prev => { const n = [...prev]; n[idx].settings = settings; return n; })}
+                        onDeleteSampSettings={(idx) => setSavedSampSettings(prev => prev.filter((_, i) => i !== idx))}
                         onSaveToDisk={handleSaveToDisk}
                         onLoadFromDisk={handleLoadFromDisk}
                         savedLocations={savedLocations} onSaveLocation={(name, data) => setSavedLocations(prev => [...prev, { name, data }])}
@@ -536,7 +561,6 @@ const App: React.FC = () => {
                         onDeleteApiKey={(idx) => setSavedApiKeys(prev => prev.filter((_, i) => i !== idx))}
                         savedLocalSolvers={savedLocalSolvers} onSaveLocalSolver={(name, settings) => setSavedLocalSolvers(prev => [...prev, { name, settings }])}
                         onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
-                        savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}

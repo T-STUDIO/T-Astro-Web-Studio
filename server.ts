@@ -301,6 +301,18 @@ async function startServer() {
             callback(null, "");
         });
 
+        // Set XML-RPC Callback
+        xmlRpcServer.on('samp.hub.setXmlrpcCallback', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const url = params[1];
+            const client = getClientByPk(privateKey);
+            if (client) {
+                client.xmlrpcUrl = url;
+                console.log(`[SAMP Hub] XML-RPC callback set for ${client.id}: ${url}`);
+            }
+            callback(null, "");
+        });
+
         // Get Registered Clients
         xmlRpcServer.on('samp.hub.getRegisteredClients', (err: any, params: any[], callback: any) => {
             const privateKey = params[0];
@@ -333,9 +345,87 @@ async function startServer() {
             const mtype = message['samp.mtype'];
             console.log(`[SAMP Hub] Broadcast from ${sender.id}: ${mtype}`);
             
-            // In a real hub, we would iterate over clients and call their receiveNotification
-            // For this internal hub, we acknowledge the broadcast.
+            // Broadcast to all other clients
+            for (const client of sampClients.values()) {
+                if (client.id !== sender.id && client.xmlrpcUrl) {
+                    // Check if client is subscribed to this mtype
+                    if (client.subscriptions[mtype] || client.subscriptions['*']) {
+                        const clientRpc = xmlrpc.createClient(client.xmlrpcUrl);
+                        clientRpc.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any, res: any) => {
+                            if (err) console.error(`[SAMP Hub] Error notifying client ${client.id}:`, err);
+                        });
+                    }
+                }
+            }
+            
             callback(null, "");
+        });
+
+        // Notify (Direct)
+        xmlRpcServer.on('samp.hub.notify', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const recipientId = params[1];
+            const message = params[2];
+            
+            const sender = getClientByPk(privateKey);
+            if (!sender) return callback(new Error('Invalid private key'), null);
+
+            const recipient = sampClients.get(recipientId);
+            if (recipient && recipient.xmlrpcUrl) {
+                const clientRpc = xmlrpc.createClient(recipient.xmlrpcUrl);
+                clientRpc.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any, res: any) => {
+                    if (err) console.error(`[SAMP Hub] Error notifying client ${recipient.id}:`, err);
+                });
+            }
+            callback(null, "");
+        });
+
+        // Call (Direct)
+        xmlRpcServer.on('samp.hub.call', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const recipientId = params[1];
+            const msgTag = params[2];
+            const message = params[3];
+            
+            const sender = getClientByPk(privateKey);
+            if (!sender) return callback(new Error('Invalid private key'), null);
+
+            const recipient = sampClients.get(recipientId);
+            if (recipient && recipient.xmlrpcUrl) {
+                const clientRpc = xmlrpc.createClient(recipient.xmlrpcUrl);
+                clientRpc.methodCall('samp.client.receiveCall', [sender.id, msgTag, message], (err: any, res: any) => {
+                    if (err) console.error(`[SAMP Hub] Error calling client ${recipient.id}:`, err);
+                });
+            }
+            callback(null, "msg-" + Math.random().toString(36).substring(7));
+        });
+
+        // Call All
+        xmlRpcServer.on('samp.hub.callAll', (err: any, params: any[], callback: any) => {
+            const privateKey = params[0];
+            const msgTag = params[1];
+            const message = params[2];
+            
+            const sender = getClientByPk(privateKey);
+            if (!sender) return callback(new Error('Invalid private key'), null);
+
+            const mtype = message['samp.mtype'];
+            console.log(`[SAMP Hub] Call All from ${sender.id}: ${mtype}`);
+            
+            const responses: Record<string, any> = {};
+            
+            for (const client of sampClients.values()) {
+                if (client.id !== sender.id && client.xmlrpcUrl) {
+                    if (client.subscriptions[mtype] || client.subscriptions['*']) {
+                        const clientRpc = xmlrpc.createClient(client.xmlrpcUrl);
+                        clientRpc.methodCall('samp.client.receiveCall', [sender.id, msgTag, message], (err: any, res: any) => {
+                            if (err) console.error(`[SAMP Hub] Error calling client ${client.id}:`, err);
+                        });
+                    }
+                }
+            }
+            
+            callback(null, responses);
         });
 
         // Mount the XML-RPC server to Express

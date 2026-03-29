@@ -495,7 +495,10 @@ const AppAlpaca: React.FC = () => {
                         onDeleteApiKey={(idx) => setSavedApiKeys(prev => prev.filter((_, i) => i !== idx))}
                         savedLocalSolvers={savedLocalSolvers} onSaveLocalSolver={(name, settings) => setSavedLocalSolvers(prev => [...prev, { name, settings }])}
                         onDeleteLocalSolver={(idx) => setSavedLocalSolvers(prev => prev.filter((_, i) => i !== idx))}
-                        savedSampSettings={savedSampSettings} onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
+                        savedSampSettings={savedSampSettings} 
+                        onSaveSampSettings={(name, settings) => setSavedSampSettings(prev => [...prev, { name, settings }])}
+                        onUpdateSavedSampSettings={(idx, settings) => setSavedSampSettings(prev => { const n = [...prev]; n[idx].settings = settings; return n; })}
+                        onDeleteSampSettings={(idx) => setSavedSampSettings(prev => prev.filter((_, i) => i !== idx))}
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onOpenAlpacaControlPanel={() => setIsAlpacaControlPanelOpen(true)}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}

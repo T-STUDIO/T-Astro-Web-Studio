@@ -64,7 +64,7 @@ export const setMountTimeCallback = (cb: typeof onMountTimeUpdate) => onMountTim
 let socket: WebSocket | null = null;
 let messageBuffer = "";
 let messageCount = 0;
-let currentSettings: ConnectionSettings = { driver: 'Simulator', host: '', port: 7624, serverType: 'local' };
+let currentSettings: ConnectionSettings = { driver: 'Simulator', host: 'localhost', port: 7624, serverType: 'local' };
 
 // --- Optimized Chunked Buffering State ---
 let recvChunks: Uint8Array[] = [];
@@ -257,7 +257,7 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
     }
 
     if (settings.driver === 'INDI') {
-        let rawHost = settings.host || 'localhost';
+        let rawHost = settings.host;
         let protocol = 'ws';
         const protoMatch = rawHost.match(/^([a-z0-9]+):\/\//i);
         if (protoMatch) {

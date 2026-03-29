@@ -32,7 +32,7 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
     connectionSettings: {
         driver: 'INDI',
-        host: '',
+        host: 'localhost',
         port: 7624,
         serverType: 'local'
     },
@@ -63,13 +63,13 @@ const DEFAULT_SETTINGS: AppSettings = {
     astrometryApiKey: '',
     plateSolverType: 'Remote',
     localSolverSettings: {
-        host: '',
+        host: 'localhost',
         port: 6000
     },
     isAutoCenterEnabled: false,
     isAutoSyncLocationEnabled: true, 
     sampSettings: {
-        host: '',
+        host: 'localhost',
         port: 8080
     },
     location: null,

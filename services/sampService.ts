@@ -33,8 +33,7 @@ export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
     }
 };
 
-export const connect = async (settings: SampSettings, cb?: (status: SampStatus, metadata?: any) => void) => {
-    if (cb) statusCallback = cb;
+export const connect = async (settings: SampSettings) => {
     if (!window.samp) {
         console.error("[SAMP] Library not loaded");
         if (statusCallback) statusCallback('Error', { error: 'SAMP library not loaded' });
@@ -142,9 +141,9 @@ export const connectMock = (cb: (status: SampStatus, metadata?: any) => void) =>
     }, 1000);
 }
 
-export const connectInternal = async (settings: SampSettings, cb?: (status: SampStatus, metadata?: any) => void) => {
+export const connectInternal = async (cb: (status: SampStatus, metadata?: any) => void, settings: SampSettings) => {
     console.log("[SAMP] Connecting to Internal Hub...");
-    if (cb) statusCallback = cb;
+    statusCallback = cb;
     if (statusCallback) statusCallback('Connecting');
 
     if (!window.samp) {

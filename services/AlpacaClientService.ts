@@ -78,7 +78,7 @@ export class AlpacaClientService {
 
     public async connect(settings: ConnectionSettings): Promise<boolean> {
         // Construct base URL for Alpaca API
-        let host = settings.host || 'localhost';
+        let host = settings.host;
         let port = settings.port;
         
         // Handle cases where host might include protocol or port

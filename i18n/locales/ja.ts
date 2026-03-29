@@ -180,6 +180,7 @@ export const ja = {
       deviceInfo: 'デバイス情報'
   },
   controlPanel: {
+    equipment: '機材',
     tabs: {
         equipment: '機材',
         imaging: '撮影制御',

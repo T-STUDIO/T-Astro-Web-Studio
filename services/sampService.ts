@@ -101,11 +101,15 @@ export const connect = async (settings: SampSettings) => {
 
     try {
         const samp = getSamp();
+        ensureXmlRpcRequest();
+        
         // Connector handles the Web Profile (CORS, etc.)
         // We use the proxy URL as the hub URL
         connector = new samp.Connector(meta);
         
-        // Manually set the hub URL on the connector's client
+        // CRITICAL: Set hubUrl on the connector itself AND its client
+        // samp.js Connector uses this.hubUrl internally during register()
+        connector.hubUrl = proxyUrl;
         if (connector.client) {
             connector.client.hubUrl = proxyUrl;
         }
@@ -212,6 +216,7 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         connector = new samp.Connector(meta);
         
         // Use the exact URL provided by the server
+        connector.hubUrl = hubUrl;
         if (connector.client) {
             connector.client.hubUrl = hubUrl;
         }

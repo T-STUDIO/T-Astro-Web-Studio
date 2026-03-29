@@ -30,6 +30,14 @@ export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
         };
         // Connector handles the Web Profile (CORS, etc.)
         connector = new window.samp.Connector(meta);
+        
+        // Set up connection change listener
+        connector.onConnectionChange = (isConnected: boolean) => {
+            console.log(`[SAMP] Connection changed: ${isConnected}`);
+            if (statusCallback) {
+                statusCallback(isConnected ? 'Connected' : 'Disconnected');
+            }
+        };
     }
 };
 
@@ -119,7 +127,8 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
                 ra: ra.toString(),
                 dec: dec.toString()
             });
-            connector.connection.notifyAll([msg]);
+            // Standard SAMP notifyAll takes a message object, not an array
+            connector.connection.notifyAll(msg);
         } catch (e) {
             console.error("[SAMP] Failed to send coordinates:", e);
         }

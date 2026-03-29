@@ -34,6 +34,8 @@ import { MountController } from './components/MountController';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
 
+import { hmsToDegrees, dmsToDegrees } from './utils/coords';
+
 const App: React.FC = () => {
   const { t, language } = useTranslation();
 
@@ -145,6 +147,18 @@ const App: React.FC = () => {
       SampService.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (sampStatus === 'Connected') {
+      if (telescopePosition) {
+        SampService.sendSkyCoord(telescopePosition.ra, telescopePosition.dec);
+      } else if (selectedObject) {
+        const ra = hmsToDegrees(selectedObject.ra);
+        const dec = dmsToDegrees(selectedObject.dec);
+        SampService.sendSkyCoord(ra, dec);
+      }
+    }
+  }, [sampStatus, telescopePosition, selectedObject]);
 
   useEffect(() => {
     if (!isAutoSyncLocationEnabled) return;

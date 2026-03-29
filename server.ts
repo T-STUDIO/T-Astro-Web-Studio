@@ -7,10 +7,29 @@ import dgram from 'dgram';
 import url from 'url';
 import path from 'path';
 import * as xmlrpc from 'xmlrpc';
-// @ts-ignore
-import Deserializer from 'xmlrpc/lib/deserializer.js';
-// @ts-ignore
-import Serializer from 'xmlrpc/lib/serializer.js';
+// Use createRequire to import CommonJS modules that don't export correctly in ESM
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+let Deserializer: any;
+let Serializer: any;
+
+try {
+    // Try to get them from the main xmlrpc object first
+    Deserializer = (xmlrpc as any).Deserializer;
+    Serializer = (xmlrpc as any).Serializer;
+    
+    // If not found, try to require them directly
+    if (!Deserializer) {
+        Deserializer = require('xmlrpc/lib/deserializer.js');
+    }
+    if (!Serializer) {
+        Serializer = require('xmlrpc/lib/serializer.js');
+    }
+} catch (e) {
+    console.error('[Server] Error loading xmlrpc components:', e);
+}
+
 import EventEmitter from 'events';
 
 console.log('[Server] Starting T-Astro Web Studio...');

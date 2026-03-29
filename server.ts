@@ -193,11 +193,12 @@ async function startServer() {
 
     // --- SAMP Web Profile Registration ---
     app.post('/samp-registration', (req, res) => {
-        console.log('[SAMP Hub] Registration request received');
         const protocol = req.headers['x-forwarded-proto'] || req.protocol;
         const host = req.get('host');
+        const hubUrl = `${protocol}://${host}/api/samp/xmlrpc`;
+        console.log(`[SAMP Hub] Registration request received. Returning hubUrl: ${hubUrl}`);
         res.json({
-            "samp.hub.xmlrpc.url": `${protocol}://${host}/api/samp/xmlrpc`,
+            "samp.hub.xmlrpc.url": hubUrl,
             "samp.secret": sampHubSecret,
             "samp.private-key": "t-astro-private-" + Math.random().toString(36).substring(7)
         });
@@ -246,6 +247,13 @@ async function startServer() {
         console.log('[SAMP Hub] Initializing XML-RPC server...');
         xmlRpcServer = new SampXmlRpcHub();
         console.log('[SAMP Hub] XML-RPC server initialized successfully');
+        
+        // Verify components
+        if (!Serializer || !Deserializer) {
+            console.error('[SAMP Hub] WARNING: Serializer or Deserializer is missing. XML-RPC will not work.');
+        } else {
+            console.log('[SAMP Hub] XML-RPC Serializer/Deserializer loaded.');
+        }
     } catch (e: any) {
         console.error('[SAMP Hub] Critical Error during initialization:', e.message);
     }

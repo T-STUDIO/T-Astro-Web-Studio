@@ -728,13 +728,7 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
             if (statusCallback) statusCallback('Error', { error: 'Registration failed' });
         });
 
-        // タイムアウト監視
-        setTimeout(() => {
-            if (connector && !connector.connection && statusCallback) {
-                console.warn("[SAMP] Internal connection timeout");
-                statusCallback('Error', { error: 'Internal Hub connection timeout.' });
-            }
-        }, 10000);
+
         
     } catch (e: any) {
         console.error("[SAMP] Internal connection error:", e);

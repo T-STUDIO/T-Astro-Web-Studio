@@ -546,7 +546,19 @@ export const disconnect = async () => {
 };
 
 export const sendSkyCoord = async (ra: number, dec: number) => {
-    const conn = connector?.connection;
+    // connector.connection が直接取れない場合、少し待つか
+    // connector 自体が存在しているかを確認する
+    let conn = connector?.connection;
+    
+    // もし connection がまだ null なら、最大 500ms だけ 50ms 毎にリトライする
+    if (!conn) {
+        for (let i = 0; i < 10; i++) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            conn = connector?.connection;
+            if (conn) break;
+        }
+    }
+
     const client = conn?.client;
 
     if (conn && client) {
@@ -559,10 +571,7 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
                     "dec": dec.toString()
                 }
             };
-
-            console.log(`[SAMP] Sending coord: RA=${ra}, Dec=${dec}`);
-
-            // パッチ済みの execute を直接実行
+            // ...以下、実行処理（変更なし）
             client.execute("samp.hub.notifyAll", [pk, msg], 
                 () => console.log("[SAMP] Success: coord.pointAt.sky"),
                 (err: any) => console.error("[SAMP] Failed:", err)
@@ -571,11 +580,12 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
             console.error("[SAMP] Logic error inside sendSkyCoord:", e);
         }
     } else {
-        console.warn("[SAMP] Cannot send coord: Connection not fully established.");
+        console.warn("[SAMP] Cannot send coord: Connection not fully established. (Timed out)");
     }
 };
 
 export const isConnected = (): boolean => {
+    // connector が存在し、かつ内部に connection が生成されていることを厳密にチェック
     return !!(connector && connector.connection);
 };
 

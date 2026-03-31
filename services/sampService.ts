@@ -232,13 +232,29 @@ const patchSampLibrary = () => {
 
     // 4.5 Patch Connection.prototype.call to bypass XmlRpc.checkParams
     if (samp.Connection) {
-        samp.Connection.prototype.call = function(methodName: string, params: any[], success: any, error: any) {
-            // Bypass XmlRpc.checkParams(params, methodName) which is buggy in samp.js
-            const fullParams = [this.privateKey].concat(params);
-            this.client.execute(methodName, fullParams, success, error);
-        };
-        console.log("[SAMP Patch] samp.Connection.prototype.call patched");
-    }
+    // 1. バリデーションの根源を断つ
+    samp.Connection.prototype.checkParams = () => true;
+
+    // 2. notifyAll などの動的メソッドを「生のexecute」へ強制転送するよう上書き
+   const sampMethods = ["notifyAll", "notify", "callAndWait", "callAllAndWait"];
+   sampMethods.forEach(method => {
+    samp.Connection.prototype[method] = function() {
+        const args = Array.from(arguments); 
+        // args[0] は message オブジェクト
+        // args[1] は成功コールバック (success)
+        // args[2] は失敗コールバック (error)
+        
+        const pk = this.privateKey;
+        const hubMethodName = "samp.hub." + method;
+        
+        console.log(`[SAMP Patch] Forced Redirect: ${method} -> execute(${hubMethodName})`);
+        
+        // ★修正点: 第二引数の配列には [pk, message] のみを入れる
+        return this.client.execute(hubMethodName, [pk, args[0]], args[1], args[2]);
+    };
+});
+    console.log("[SAMP Patch] Connection prototype methods (notifyAll etc.) fully overridden");
+}
 
     // 5. Patch checkParams to be a no-op everywhere to avoid signature mismatch errors
     const noopCheck = function() { 
@@ -246,20 +262,16 @@ const patchSampLibrary = () => {
     };
     
     const patchObject = (obj: any) => {
-        if (!obj) return;
-        try {
-            if (typeof obj.checkParams === 'function') {
-                obj.checkParams = noopCheck;
-            }
-            if (obj.prototype && typeof obj.prototype.checkParams === 'function') {
-                obj.prototype.checkParams = noopCheck;
-            }
-            // Also check for static checkParams
-            if (obj.checkParams && typeof obj.checkParams !== 'function') {
-                obj.checkParams = noopCheck;
-            }
-        } catch (e) {}
-    };
+    if (!obj) return;
+    try {
+        // 静的メソッドの無効化
+        obj.checkParams = () => true;
+        // プロトタイプ（インスタンス用）の無効化
+        if (obj.prototype) {
+            obj.prototype.checkParams = () => true;
+        }
+    } catch (e) {}
+};
 
     patchObject(samp.XmlRpc);
     patchObject(samp.XmlRpcRequest);
@@ -536,9 +548,7 @@ export const disconnect = async () => {
 export const sendSkyCoord = async (ra: number, dec: number) => {
     const samp = getSamp();
     if (connector && connector.connection && samp) {
-        console.log(`[SAMP] Sending coord: RA=${ra}, Dec=${dec}`);
         try {
-            // メッセージオブジェクトの定義
             const msg = {
                 "samp.mtype": "coord.pointAt.sky",
                 "samp.params": {
@@ -548,22 +558,19 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
                 }
             };
 
-            // samp.js の内部チェックを回避するため、notifyAll を直接実行
             const pk = connector.connection.privateKey;
             const client = connector.connection.client;
 
-            // samp.hub.notifyAll(privateKey, message)
-            client.execute("samp.hub.notifyAll", [pk, msg], (result: any) => {
-                console.log("[SAMP] Coordinates sent successfully via direct call");
-            }, (err: any) => {
-                console.error("[SAMP] Failed to send coordinates (Hub error):", err);
-            });
+            // 重要: ライブラリの connection.notifyAll を使わず、
+            // パッチを当てた client.execute を直接叩く
+            client.execute("samp.hub.notifyAll", [pk, msg], 
+                () => console.log("[SAMP] Success: coord.pointAt.sky"),
+                (err: any) => console.error("[SAMP] Failed:", err)
+            );
 
         } catch (e) {
-            console.error("[SAMP] Failed to send coordinates (Logic error):", e);
+            console.error("[SAMP] Logic error:", e);
         }
-    } else {
-        console.warn("[SAMP] Not connected, cannot send coordinates");
     }
 };
 

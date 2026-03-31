@@ -7,26 +7,16 @@ import dgram from 'dgram';
 import url from 'url';
 import path from 'path';
 import fs from 'fs';
-import * as xmlrpc from 'xmlrpc';
-// Use createRequire to import CommonJS modules that don't export correctly in ESM
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
+const xmlrpc = require('xmlrpc');
 
 let Deserializer: any;
 let Serializer: any;
 
 try {
-    // Try to get them from the main xmlrpc object first
-    Deserializer = (xmlrpc as any).Deserializer;
-    Serializer = (xmlrpc as any).Serializer;
-    
-    // If not found, try to require them directly
-    if (!Deserializer) {
-        Deserializer = require('xmlrpc/lib/deserializer.js');
-    }
-    if (!Serializer) {
-        Serializer = require('xmlrpc/lib/serializer.js');
-    }
+    Deserializer = xmlrpc.Deserializer || require('xmlrpc/lib/deserializer.js');
+    Serializer = xmlrpc.Serializer || require('xmlrpc/lib/serializer.js');
 } catch (e) {
     console.error('[Server] Error loading xmlrpc components:', e);
 }
@@ -45,6 +35,7 @@ const BIND_HOST = cmdHost || '0.0.0.0';  // ★ 修正: LAN環境用に '0.0.0.0
 const PORT = cmdPort || (process.env.PORT ? parseInt(process.env.PORT) : 6002);
 const ALPACA_PORT = 11111;
 const WS_PORT = 11112;
+const SAMP_WS_PORT = 31000;
 const DISCOVERY_PORT = 32227;
 
 // --- SAMP Hub State ---
@@ -56,8 +47,46 @@ interface SampClient {
     subscriptions: any;
 }
 
-const sampClients = new Map<string, SampClient>();
+let sampClients = new Map<string, SampClient>();
 const sampHubSecret = 't-astro-samp-secret-fixed';
+
+// WebSocket Server for SAMP Client Proxy
+let sampWss: WebSocketServer | null = null;
+const sampWsClients = new Map<string, WebSocket>(); // clientId -> WebSocket
+
+// Track external Hub connections where our server is the client
+const externalHubConnections = new Map<string, {
+    hubUrl: string;
+    privateKey: string;
+    selfId: string;
+    client: any;
+}>();
+
+function createXmlRpcClient(urlStr: string) {
+    console.log(`[Server] Creating XML-RPC client for: ${urlStr}`);
+    try {
+        const u = new URL(urlStr);
+        const options = {
+            host: u.hostname,
+            port: parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80),
+            path: u.pathname + u.search
+        };
+        console.log(`[Server] XML-RPC client options:`, options);
+        
+        if (typeof xmlrpc.createClient !== 'function') {
+            console.error('[Server] xmlrpc.createClient is not a function! xmlrpc object:', typeof xmlrpc, Object.keys(xmlrpc));
+            throw new Error('xmlrpc.createClient is not a function');
+        }
+        
+        return xmlrpc.createClient(options);
+    } catch (e) {
+        console.warn(`[Server] URL parsing failed or createClient error for ${urlStr}:`, e);
+        if (typeof xmlrpc.createClient === 'function') {
+            return xmlrpc.createClient(urlStr as any);
+        }
+        throw e;
+    }
+}
 
 async function startServer() {
     const app = express();
@@ -212,6 +241,9 @@ async function startServer() {
         }
 
         handleRequest(req: any, res: any) {
+            const url = new URL(req.url, `http://${req.headers.host}`);
+            const proxyId = url.searchParams.get('proxyId');
+            
             const deserializer = new Deserializer();
             deserializer.deserializeMethodCall(req, (error: any, methodName: string, params: any[]) => {
                 if (error) {
@@ -220,7 +252,7 @@ async function startServer() {
                     return res.end();
                 }
 
-                console.log(`[SAMP Hub] Method call: ${methodName}`);
+                console.log(`[SAMP Hub] Method call: ${methodName}${proxyId ? ' (Proxy: ' + proxyId + ')' : ''}`);
                 const listeners = this.listeners(methodName);
                 if (listeners.length > 0) {
                     const listener = listeners[0] as any;
@@ -233,7 +265,7 @@ async function startServer() {
                         }
                         res.writeHead(200, { 'Content-Type': 'text/xml' });
                         res.end(xml);
-                    });
+                    }, proxyId);
                 } else {
                     console.warn(`[SAMP Hub] Method not found: ${methodName}`);
                     res.writeHead(404);
@@ -364,6 +396,97 @@ async function startServer() {
             callback(null, target ? target.metadata : {});
         });
 
+        // --- SAMP Client Methods (Relay to Browser via WebSocket) ---
+        
+        xmlRpcServer.on('samp.client.receiveNotification', (err: any, params: any[], callback: any, proxyId: string) => {
+            const senderId = params[0];
+            const message = params[1];
+            console.log(`[SAMP Hub] Client Relay: receiveNotification from ${senderId}${proxyId ? ' for proxy ' + proxyId : ''}`);
+            
+            // Broadcast to connected browser clients via WebSocket
+            const payload = JSON.stringify({
+                type: 'samp.notification',
+                senderId,
+                message
+            });
+            
+            if (proxyId && sampWsClients.has(proxyId)) {
+                const ws = sampWsClients.get(proxyId);
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(payload);
+                }
+            } else {
+                sampWsClients.forEach((ws) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(payload);
+                    }
+                });
+            }
+            
+            callback(null, "");
+        });
+
+        xmlRpcServer.on('samp.client.receiveCall', (err: any, params: any[], callback: any, proxyId: string) => {
+            const senderId = params[0];
+            const msgTag = params[1];
+            const message = params[2];
+            console.log(`[SAMP Hub] Client Relay: receiveCall from ${senderId}, tag=${msgTag}${proxyId ? ' for proxy ' + proxyId : ''}`);
+            
+            // Forward to browser via WebSocket
+            const payload = JSON.stringify({
+                type: 'samp.call',
+                senderId,
+                msgTag,
+                message
+            });
+            
+            if (proxyId && sampWsClients.has(proxyId)) {
+                const ws = sampWsClients.get(proxyId);
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(payload);
+                }
+            } else {
+                sampWsClients.forEach((ws) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(payload);
+                    }
+                });
+            }
+            
+            // For now, we just acknowledge the call. 
+            // Real SAMP calls expect a response later via samp.hub.reply.
+            callback(null, "");
+        });
+
+        xmlRpcServer.on('samp.client.receiveResponse', (err: any, params: any[], callback: any, proxyId: string) => {
+            const responderId = params[0];
+            const msgTag = params[1];
+            const response = params[2];
+            console.log(`[SAMP Hub] Client Relay: receiveResponse from ${responderId}, tag=${msgTag}${proxyId ? ' for proxy ' + proxyId : ''}`);
+            
+            const payload = JSON.stringify({
+                type: 'samp.response',
+                responderId,
+                msgTag,
+                response
+            });
+            
+            if (proxyId && sampWsClients.has(proxyId)) {
+                const ws = sampWsClients.get(proxyId);
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(payload);
+                }
+            } else {
+                sampWsClients.forEach((ws) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(payload);
+                    }
+                });
+            }
+            
+            callback(null, "");
+        });
+
         // Notify All (Broadcast)
         xmlRpcServer.on('samp.hub.notifyAll', (err: any, params: any[], callback: any) => {
             const privateKey = params[0];
@@ -382,12 +505,12 @@ async function startServer() {
                     const isCoord = mtype === 'coord.pointAt.sky';
                     
                     if (isCoord || client.subscriptions[mtype] || client.subscriptions['*']) {
-                        console.log(`[SAMP Hub] Forwarding ${mtype} from ${sender.id} to ${client.id}`);
+                        console.log(`[SAMP Hub] Forwarding ${mtype} from ${sender.id} to ${client.id} at ${client.xmlrpcUrl}`);
                         
-                        const clientRpc = xmlrpc.createClient(client.xmlrpcUrl);
+                        const clientRpc = createXmlRpcClient(client.xmlrpcUrl);
                         // 第1引数は送信元のID、第2引数はメッセージ本体
                         clientRpc.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any, res: any) => {
-                            if (err) console.error(`[SAMP Hub] Error notifying client ${client.id}:`, err);
+                            if (err) console.error(`[SAMP Hub] Error notifying client ${client.id} at ${client.xmlrpcUrl}:`, err.message);
                         });
                     }
                 }
@@ -407,9 +530,10 @@ async function startServer() {
 
             const recipient = sampClients.get(recipientId);
             if (recipient && recipient.xmlrpcUrl) {
-                const clientRpc = xmlrpc.createClient(recipient.xmlrpcUrl);
+                console.log(`[SAMP Hub] Forwarding direct notify from ${sender.id} to ${recipient.id} at ${recipient.xmlrpcUrl}`);
+                const clientRpc = createXmlRpcClient(recipient.xmlrpcUrl);
                 clientRpc.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any, res: any) => {
-                    if (err) console.error(`[SAMP Hub] Error notifying client ${recipient.id}:`, err);
+                    if (err) console.error(`[SAMP Hub] Error notifying client ${recipient.id} at ${recipient.xmlrpcUrl}:`, err.message);
                 });
             }
             callback(null, "");
@@ -427,9 +551,10 @@ async function startServer() {
 
             const recipient = sampClients.get(recipientId);
             if (recipient && recipient.xmlrpcUrl) {
-                const clientRpc = xmlrpc.createClient(recipient.xmlrpcUrl);
+                console.log(`[SAMP Hub] Forwarding direct call from ${sender.id} to ${recipient.id} at ${recipient.xmlrpcUrl}`);
+                const clientRpc = createXmlRpcClient(recipient.xmlrpcUrl);
                 clientRpc.methodCall('samp.client.receiveCall', [sender.id, msgTag, message], (err: any, res: any) => {
-                    if (err) console.error(`[SAMP Hub] Error calling client ${recipient.id}:`, err);
+                    if (err) console.error(`[SAMP Hub] Error calling client ${recipient.id} at ${recipient.xmlrpcUrl}:`, err.message);
                 });
             }
             callback(null, "msg-" + Math.random().toString(36).substring(7));
@@ -452,9 +577,10 @@ async function startServer() {
             for (const client of sampClients.values()) {
                 if (client.id !== sender.id && client.xmlrpcUrl) {
                     if (client.subscriptions[mtype] || client.subscriptions['*']) {
-                        const clientRpc = xmlrpc.createClient(client.xmlrpcUrl);
+                        console.log(`[SAMP Hub] Forwarding callAll ${mtype} from ${sender.id} to ${client.id} at ${client.xmlrpcUrl}`);
+                        const clientRpc = createXmlRpcClient(client.xmlrpcUrl);
                         clientRpc.methodCall('samp.client.receiveCall', [sender.id, msgTag, message], (err: any, res: any) => {
-                            if (err) console.error(`[SAMP Hub] Error calling client ${client.id}:`, err);
+                            if (err) console.error(`[SAMP Hub] Error calling client ${client.id} at ${client.xmlrpcUrl}:`, err.message);
                         });
                     }
                 }
@@ -568,6 +694,122 @@ async function startServer() {
     apiRouter.use((req, res, next) => {
         res.setHeader('X-Backend-Type', 'Express-Alpaca-Proxy');
         next();
+    });
+
+    apiRouter.post('/samp/stop', (req, res) => {
+        console.log('[SAMP Hub] Stopping hub and clearing clients...');
+        sampClients.clear();
+        
+        // Also clear external connections
+        for (const conn of externalHubConnections.values()) {
+            try {
+                conn.client.methodCall('samp.hub.unregister', [conn.privateKey], () => {});
+            } catch (e) {}
+        }
+        externalHubConnections.clear();
+        
+        res.json({ status: 'ok', message: 'SAMP Hub and External connections cleared' });
+    });
+
+    // --- SAMP External Hub Proxy Endpoints ---
+    
+    apiRouter.post('/samp/proxy/register', async (req, res) => {
+        try {
+            const { hubUrl, secret } = req.body;
+            if (!hubUrl) return res.status(400).json({ error: 'Missing hubUrl' });
+
+            console.log(`[SAMP Proxy] Registering with external hub: ${hubUrl}`);
+            const client = createXmlRpcClient(hubUrl);
+            
+            console.log(`[SAMP Proxy] Calling samp.hub.register at ${hubUrl}...`);
+            client.methodCall('samp.hub.register', [secret || ""], (err: any, result: any) => {
+                if (err) {
+                    console.error(`[SAMP Proxy] Registration failed at ${hubUrl}:`, err.message);
+                    return res.status(500).json({ error: `Registration failed: ${err.message}` });
+                }
+
+                console.log(`[SAMP Proxy] Registration result from ${hubUrl}:`, result);
+                if (!result || !result["samp.private-key"]) {
+                    console.error(`[SAMP Proxy] Registration returned invalid result from ${hubUrl}`);
+                    return res.status(500).json({ error: 'Invalid registration result from hub' });
+                }
+
+                const privateKey = result["samp.private-key"];
+                const selfId = result["samp.self-id"];
+                
+                console.log(`[SAMP Proxy] Registered with ${hubUrl}. PrivateKey: ${privateKey}, SelfId: ${selfId}`);
+                
+                // Store connection
+                externalHubConnections.set(selfId, { hubUrl, privateKey, selfId, client });
+
+                // Declare Metadata
+                const meta = {
+                    "samp.name": "T-Astro Web Studio (Proxy)",
+                    "samp.description.text": "Web-based Astronomy Control Center Proxy",
+                    "samp.icon.url": "https://picsum.photos/seed/astro/64/64"
+                };
+                client.methodCall('samp.hub.declareMetadata', [privateKey, meta], (err: any) => {
+                    if (err) console.error(`[SAMP Proxy] Metadata declaration failed:`, err.message);
+                });
+
+                // Declare Subscriptions
+                const subs = {
+                    "coord.pointAt.sky": {},
+                    "samp.app.ping": {},
+                    "samp.hub.event.shutdown": {}
+                };
+                client.methodCall('samp.hub.declareSubscriptions', [privateKey, subs], (err: any) => {
+                    if (err) console.error(`[SAMP Proxy] Subscriptions declaration failed:`, err.message);
+                });
+
+                // Set Callback URL
+                const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+                const host = req.get('host');
+                const callbackUrl = `${protocol}://${host}/api/samp/xmlrpc?proxyId=${selfId}`;
+                
+                client.methodCall('samp.hub.setXmlrpcCallback', [privateKey, callbackUrl], (err: any) => {
+                    if (err) console.error(`[SAMP Proxy] Callback registration failed:`, err.message);
+                    else console.log(`[SAMP Proxy] Callback registered: ${callbackUrl}`);
+                });
+
+                res.json({ status: 'ok', selfId, privateKey });
+            });
+        } catch (error: any) {
+            console.error(`[SAMP Proxy] Unexpected error in register:`, error);
+            res.status(500).json({ error: error.message || 'Internal server error' });
+        }
+    });
+
+    apiRouter.post('/samp/proxy/notifyAll', (req, res) => {
+        const { selfId, message } = req.body;
+        const conn = externalHubConnections.get(selfId);
+        if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+        console.log(`[SAMP Proxy] Forwarding notifyAll to ${conn.hubUrl}: ${message['samp.mtype']}`);
+        conn.client.methodCall('samp.hub.notifyAll', [conn.privateKey, message], (err: any) => {
+            if (err) {
+                console.error(`[SAMP Proxy] notifyAll failed:`, err.message);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({ status: 'ok' });
+        });
+    });
+
+    apiRouter.get('/samp/lockfile', (req, res) => {
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const host = req.get('host') || 'localhost';
+        // Use the host from the request to build the URL
+        const hubUrl = `${protocol}://${host.split(':')[0]}:21012/api/samp/xmlrpc`;
+        
+        const content = [
+            `# SAMP Standard Profile lockfile for T-Astro`,
+            `samp.secret=${sampHubSecret}`,
+            `samp.hub.xmlrpc.url=${hubUrl}`,
+            `samp.profile.version=1.3`
+        ].join('\n');
+        
+        res.setHeader('Content-Type', 'text/plain');
+        res.send(content);
     });
 
     apiRouter.get('/alpaca/discover', (req, res) => {
@@ -693,6 +935,56 @@ async function startServer() {
         console.log(`[Main] Server running on http://${BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST}:${PORT}`);
     });
 
+    // Initialize SAMP WebSocket Server
+    sampWss = new WebSocketServer({ port: SAMP_WS_PORT });
+    sampWss.on('connection', (ws) => {
+        console.log('[SAMP WS] Browser client linked');
+        
+        ws.on('message', (data) => {
+            try {
+                const msg = JSON.parse(data.toString());
+                if (msg.type === 'register') {
+                    const clientId = msg.clientId;
+                    if (clientId) {
+                        sampWsClients.set(clientId, ws);
+                        console.log(`[SAMP WS] Client registered: ${clientId}`);
+                    }
+                }
+            } catch (e) {
+                console.error('[SAMP WS] Message error:', e);
+            }
+        });
+
+        ws.on('close', () => {
+            // Find the clientId for this ws
+            let clientIdToCleanup = null;
+            for (const [id, clientWs] of sampWsClients.entries()) {
+                if (clientWs === ws) {
+                    clientIdToCleanup = id;
+                    break;
+                }
+            }
+            
+            if (clientIdToCleanup) {
+                sampWsClients.delete(clientIdToCleanup);
+                console.log(`[SAMP WS] Browser client ${clientIdToCleanup} disconnected`);
+                
+                // If it was an external proxy connection, unregister it
+                const conn = externalHubConnections.get(clientIdToCleanup);
+                if (conn) {
+                    console.log(`[SAMP Proxy] Unregistering proxy connection for ${clientIdToCleanup}`);
+                    try {
+                        conn.client.methodCall('samp.hub.unregister', [conn.privateKey], () => {
+                            externalHubConnections.delete(clientIdToCleanup);
+                        });
+                    } catch (e) {
+                        externalHubConnections.delete(clientIdToCleanup);
+                    }
+                }
+            }
+        });
+    });
+    console.log(`[SAMP WS] WebSocket server listening on port ${SAMP_WS_PORT}`);
 
     const SAMP_PORT = 21012;
     const sampHttpServer = http.createServer(app); // 既存のExpress(app)を21012でも受け付けるようにする

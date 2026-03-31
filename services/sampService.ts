@@ -546,26 +546,27 @@ export const disconnect = async () => {
 };
 
 export const sendSkyCoord = async (ra: number, dec: number) => {
-    // ...略...
     const conn = connector?.connection;
     const client = conn?.client;
 
     if (conn && client) {
-        // execute を呼ぶ
-    } else {
-        console.warn("[SAMP] sendSkyCoord aborted: connector.connection or client is still undefined.");
-    }
-};
+        try {
+            const pk = conn.privateKey;
+            const msg = {
+                "samp.mtype": "coord.pointAt.sky",
+                "samp.params": {
+                    "ra": ra.toString(),
+                    "dec": dec.toString()
+                }
+            };
 
-            const pk = connector.connection.privateKey;
-            const client = connector.connection.client;
+            console.log(`[SAMP] Sending coord: RA=${ra}, Dec=${dec}`);
 
             // パッチ済みの execute を直接実行
             client.execute("samp.hub.notifyAll", [pk, msg], 
                 () => console.log("[SAMP] Success: coord.pointAt.sky"),
                 (err: any) => console.error("[SAMP] Failed:", err)
             );
-
         } catch (e) {
             console.error("[SAMP] Logic error inside sendSkyCoord:", e);
         }

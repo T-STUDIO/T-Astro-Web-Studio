@@ -563,7 +563,10 @@ export const connect = async (settings: SampSettings) => {
         const response = await fetch(`${window.location.origin}/api/samp/proxy/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hubUrl })
+            body: JSON.stringify({ 
+                hubUrl,
+                secret: (settings as any).secret // UIにフィールドがあれば送信される
+            })
         });
 
         if (!response.ok) {
@@ -641,7 +644,17 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
         "samp.params": { ra: ra.toString(), dec: dec.toString() }
     };
 
-    // Try proxySession (External Hub via Proxy)
+    // 1. Try activeSession (Internal Hub)
+    if (activeSession) {
+        console.log(`[SAMP] Sending coord via activeSession: RA=${ra}, Dec=${dec}`);
+        activeSession.client.execute("samp.hub.notifyAll", [activeSession.pk, msg],
+            () => console.log("[SAMP] Success (Internal)"),
+            (err: any) => console.error("[SAMP] Failed (Internal)", err)
+        );
+        return;
+    }
+
+    // 2. Try proxySession (External Hub via Proxy)
     if (proxySession) {
         console.log(`[SAMP] Sending coord via proxySession: RA=${ra}, Dec=${dec}`);
         try {
@@ -658,7 +671,7 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
         return;
     }
 
-    // Try connector (Standard/Web Profile)
+    // 3. Try connector (Standard/Web Profile)
     if (connector && connector.connection) {
         console.log(`[SAMP] Sending coord via connector: RA=${ra}, Dec=${dec}`);
         try {
@@ -676,8 +689,9 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
 };
 
 export const isConnected = (): boolean => {
-    // connector が存在し、かつ内部に connection が生成されていること、または proxySession が存在することをチェック
-    return !!((connector && connector.connection) || proxySession);
+    // connector が存在し、かつ内部に connection が生成されていること、または proxySession が存在すること、
+    // または activeSession が存在することをチェック
+    return !!((connector && connector.connection) || proxySession || activeSession);
 };
 
 // Simulation
@@ -823,21 +837,14 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
 
                 // 冒頭で宣言した activeSession に代入する（pk という名前に合わせる）
                 activeSession = {
-                client: client,
-                pk: pk,
-                url: returnedHubUrl
+                    client: client,
+                    pk: pk,
+                    url: returnedHubUrl
                 };
 
                 console.log("[SAMP] Connection object established. Ready to send messages.");
 
-               // これで UI 側のステータスを更新
-               if (statusCallback) {
-               statusCallback('Connected');
-               }
-
-                console.log("[SAMP] Connection object established. Ready to send messages.");
-
-                // 最後に通知！これで「接続中」から「Connected」に変わります
+                // これで UI 側のステータスを更新
                 if (statusCallback) {
                     statusCallback('Connected');
                 }

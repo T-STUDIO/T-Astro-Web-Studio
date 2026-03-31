@@ -538,22 +538,32 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
     if (connector && connector.connection && samp) {
         console.log(`[SAMP] Sending coord: RA=${ra}, Dec=${dec}`);
         try {
-            const msg = new samp.Message("coord.pointAt.sky", {
-                ra: ra.toString(),
-                dec: dec.toString(),
-                frame: "J2000"
+            // メッセージオブジェクトの定義
+            const msg = {
+                "samp.mtype": "coord.pointAt.sky",
+                "samp.params": {
+                    ra: ra.toString(),
+                    dec: dec.toString(),
+                    frame: "J2000"
+                }
+            };
+
+            // samp.js の内部チェックを回避するため、notifyAll を直接実行
+            const pk = connector.connection.privateKey;
+            const client = connector.connection.client;
+
+            // samp.hub.notifyAll(privateKey, message)
+            client.execute("samp.hub.notifyAll", [pk, msg], (result: any) => {
+                console.log("[SAMP] Coordinates sent successfully via direct call");
+            }, (err: any) => {
+                console.error("[SAMP] Failed to send coordinates (Hub error):", err);
             });
-            // Standard SAMP notifyAll takes a message object, not an array
-            connector.connection.notifyAll(msg);
-            console.log("[SAMP] Coordinates sent successfully");
+
         } catch (e) {
-            console.error("[SAMP] Failed to send coordinates:", e);
+            console.error("[SAMP] Failed to send coordinates (Logic error):", e);
         }
     } else {
         console.warn("[SAMP] Not connected, cannot send coordinates");
-        if (!connector) console.warn("  - Connector not initialized");
-        if (!connector?.connection) console.warn("  - Not registered with HUB");
-        if (!samp) console.warn("  - SAMP library not loaded");
     }
 };
 
@@ -630,12 +640,15 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         
         // Set up message listener
         connector.onMessage = (senderId: string, message: any, isCall: boolean) => {
-        const mtype = message["samp.mtype"];
-        const params = message["samp.params"];
+    const mtype = message["samp.mtype"];
+    const params = message["samp.params"];
     
-        if (mtype === "coord.pointAt.sky" && skyCoordCallback) {
-        // ここで RA と Dec を抽出して、アプリ側に渡しています
-        skyCoordCallback(parseFloat(params.ra), parseFloat(params.dec));
+    if (mtype === "coord.pointAt.sky" && skyCoordCallback) {
+        const ra = parseFloat(params.ra);
+        const dec = parseFloat(params.dec);
+        if (!isNaN(ra) && !isNaN(dec)) {
+            skyCoordCallback(ra, dec);
+        }
     }
 };
         
@@ -676,7 +689,12 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
             // 2. 購読対象の宣言 (★重要: これがないとメッセージが届きません)
             const subscriptions = {
                 "coord.pointAt.sky": {},
-                "samp.app.ping": {}
+                "samp.app.ping": {},
+                "samp.hub.event.shutdown": {},
+                "samp.hub.event.register": {},
+                "samp.hub.event.unregister": {},
+                "samp.hub.event.metadata": {},
+                "samp.hub.event.subscriptions": {}
             };
             client.execute("samp.hub.declareSubscriptions", [pk, subscriptions], () => {
                 console.log("[SAMP] Subscriptions declared (coord.pointAt.sky)");

@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import dgram from 'dgram';
 import url from 'url';
 import path from 'path';
+import fs from 'fs';
 import * as xmlrpc from 'xmlrpc';
 // Use createRequire to import CommonJS modules that don't export correctly in ESM
 import { createRequire } from 'module';
@@ -39,7 +40,7 @@ const portArg = args.indexOf('--port');
 const cmdPort = portArg !== -1 ? parseInt(args[portArg + 1]) : null;
 const hostArg = args.indexOf('--host');
 const cmdHost = hostArg !== -1 ? args[hostArg + 1] : null;
-const BIND_HOST = cmdHost || '0.0.0.0';
+const BIND_HOST = cmdHost || '0.0.0.0';  // ★ 修正: LAN環境用に '0.0.0.0' をデフォルトに (localhostだと外部から接続不可)
 
 const PORT = cmdPort || (process.env.PORT ? parseInt(process.env.PORT) : 6002);
 const ALPACA_PORT = 11111;
@@ -56,7 +57,7 @@ interface SampClient {
 }
 
 const sampClients = new Map<string, SampClient>();
-const sampHubSecret = 't-astro-samp-secret-' + Math.random().toString(36).substring(7);
+const sampHubSecret = 't-astro-samp-secret-fixed';
 
 async function startServer() {
     const app = express();
@@ -377,9 +378,14 @@ async function startServer() {
             // Broadcast to all other clients
             for (const client of sampClients.values()) {
                 if (client.id !== sender.id && client.xmlrpcUrl) {
-                    // Check if client is subscribed to this mtype
-                    if (client.subscriptions[mtype] || client.subscriptions['*']) {
+                    // ★修正ポイント：座標メッセージ(coord.pointAt.sky)は購読チェックをスルーして強制転送する
+                    const isCoord = mtype === 'coord.pointAt.sky';
+                    
+                    if (isCoord || client.subscriptions[mtype] || client.subscriptions['*']) {
+                        console.log(`[SAMP Hub] Forwarding ${mtype} from ${sender.id} to ${client.id}`);
+                        
                         const clientRpc = xmlrpc.createClient(client.xmlrpcUrl);
+                        // 第1引数は送信元のID、第2引数はメッセージ本体
                         clientRpc.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any, res: any) => {
                             if (err) console.error(`[SAMP Hub] Error notifying client ${client.id}:`, err);
                         });
@@ -669,9 +675,34 @@ async function startServer() {
         }
         process.exit(1);
     });
+    const sampProfilePath = path.join(process.env.HOME || '', '.samp');
+    const profileContent = [
+        `samp.hub.xmlrpc.url=http://${BIND_HOST === '0.0.0.0' ? '127.0.0.1' : BIND_HOST}:21012/api/samp/xmlrpc`,
+        `samp.secret=${sampHubSecret}`, 
+        `samp.profile.version=1.3`
+    ].join('\n');
+
+    try {
+        fs.writeFileSync(sampProfilePath, profileContent);
+        console.log(`[SAMP] Profile written to ${sampProfilePath}`);
+    } catch (e) {
+        console.error(`[SAMP] Failed to write profile: ${e}`);
+    }
 
     server.listen(PORT, BIND_HOST, () => {
-        console.log(`Server running on http://${BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST}:${PORT}`);
+        console.log(`[Main] Server running on http://${BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST}:${PORT}`);
+    });
+
+
+    const SAMP_PORT = 21012;
+    const sampHttpServer = http.createServer(app); // 既存のExpress(app)を21012でも受け付けるようにする
+
+    sampHttpServer.on('error', (err: any) => {
+        console.error(`[SAMP] Port ${SAMP_PORT} error:`, err.message);
+    });
+
+    sampHttpServer.listen(SAMP_PORT, BIND_HOST, () => {
+        console.log(`[SAMP] Standard Hub Port 21012 is now listening on ${BIND_HOST}`);
     });
 }
 

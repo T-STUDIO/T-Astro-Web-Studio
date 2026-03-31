@@ -5,7 +5,7 @@ import { SampStatus, SampSettings } from '../types';
  * ROLE: Handles communication with SAMP (Simple Applications Messaging Protocol) hubs.
  * This implementation uses the samp.js library loaded in index.html.
  */
-
+let activeSession: { client: any; pk: string; url: string } | null = null;
 declare global {
     interface Window {
         samp: any;
@@ -534,68 +534,26 @@ export const connect = async (settings: SampSettings) => {
 };
 
 export const disconnect = async () => {
-    if (connector) {
-        console.log("[SAMP] Disconnecting...");
-        try {
-            const conn = connector.connection;
-            // connectionがある場合は、その中のclientを使って明示的にunregisterを呼ぶ
-            if (conn && conn.client) {
-                const pk = conn.privateKey;
-                const hubUrl = conn.client.endpoint || connector.hubUrl;
-                
-                console.log(`[SAMP] Sending unregister to: ${hubUrl}`);
-                conn.client.execute("samp.hub.unregister", [pk], 
-                    () => console.log("[SAMP] Unregistered successfully"),
-                    (err: any) => console.warn("[SAMP] Unregister failed:", err)
-                );
-            } else {
-                // 通常の Connector の unregister (Web Profile)
-                connector.unregister();
-            }
-        } catch (e) {
-            console.warn("[SAMP] Disconnect error:", e);
+    if (!activeSession) return;
+    activeSession.client.execute("samp.hub.unregister", [activeSession.pk], 
+        () => {
+            console.log("[SAMP] Disconnected");
+            activeSession = null;
         }
-        connector = null; // 確実にクリア
-    }
+    );
 };
 
 export const sendSkyCoord = async (ra: number, dec: number) => {
-    // connector.connection が直接取れない場合、少し待つか
-    // connector 自体が存在しているかを確認する
-    let conn = connector?.connection;
+    if (!activeSession) return console.warn("[SAMP] No active session.");
     
-    // もし connection がまだ null なら、最大 500ms だけ 50ms 毎にリトライする
-    if (!conn) {
-        for (let i = 0; i < 10; i++) {
-            await new Promise(resolve => setTimeout(resolve, 50));
-            conn = connector?.connection;
-            if (conn) break;
-        }
-    }
-
-    const client = conn?.client;
-
-    if (conn && client) {
-        try {
-            const pk = conn.privateKey;
-            const msg = {
-                "samp.mtype": "coord.pointAt.sky",
-                "samp.params": {
-                    "ra": ra.toString(),
-                    "dec": dec.toString()
-                }
-            };
-            // ...以下、実行処理（変更なし）
-            client.execute("samp.hub.notifyAll", [pk, msg], 
-                () => console.log("[SAMP] Success: coord.pointAt.sky"),
-                (err: any) => console.error("[SAMP] Failed:", err)
-            );
-        } catch (e) {
-            console.error("[SAMP] Logic error inside sendSkyCoord:", e);
-        }
-    } else {
-        console.warn("[SAMP] Cannot send coord: Connection not fully established. (Timed out)");
-    }
+    const msg = {
+        "samp.mtype": "coord.pointAt.sky",
+        "samp.params": { ra: ra.toString(), dec: dec.toString() }
+    };
+    activeSession.client.execute("samp.hub.notifyAll", [activeSession.pk, msg],
+        () => console.log("[SAMP] Success"),
+        (err: any) => console.error("[SAMP] Failed", err)
+    );
 };
 
 export const isConnected = (): boolean => {
@@ -739,15 +697,20 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
 
                 // --- 接続オブジェクトの確定と通知 ---
                 const conn = new samp.Connection(client, pk);
-                
-                // グローバルな connector 変数にセット
-                if (connector) {
-                    connector.connection = conn;
-                    connector.hubUrl = returnedHubUrl;
-                    connector.client = client;
-                } else {
-                    connector = { connection: conn, hubUrl: returnedHubUrl, client: client };
-                }
+
+                // 冒頭で宣言した activeSession に代入する（pk という名前に合わせる）
+                activeSession = {
+                client: client,
+                pk: pk,
+                url: returnedHubUrl
+                };
+
+                console.log("[SAMP] Connection object established. Ready to send messages.");
+
+               // これで UI 側のステータスを更新
+               if (statusCallback) {
+               statusCallback('Connected');
+               }
 
                 console.log("[SAMP] Connection object established. Ready to send messages.");
 

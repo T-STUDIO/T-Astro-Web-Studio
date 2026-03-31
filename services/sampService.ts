@@ -713,12 +713,12 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
             console.log("[SAMP] Internal registration successful", result);
             const pk = result["samp.private-key"];
 
-            // 1. メタデータの宣言
+            // A. メタデータの宣言
             client.execute("samp.hub.declareMetadata", [pk, meta], () => {
                 console.log("[SAMP] Metadata declared");
             }, (err: any) => console.error("[SAMP] Metadata declaration failed:", err));
 
-            // 2. 購読対象の宣言 (★重要: これがないとメッセージが届きません)
+            // B. 購読対象の宣言
             const subscriptions = {
                 "coord.pointAt.sky": {},
                 "samp.app.ping": {},
@@ -732,41 +732,47 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
                 console.log("[SAMP] Subscriptions declared (coord.pointAt.sky)");
             }, (err: any) => console.error("[SAMP] Subscriptions declaration failed:", err));
 
-            // 3. XML-RPCコールバックURLの登録
-            // サーバー側の XML-RPC エンドポイントを指定
+            // C. XML-RPCコールバックURLの登録
             const callbackUrl = `${window.location.origin}/api/samp/xmlrpc`;
             client.execute("samp.hub.setXmlrpcCallback", [pk, callbackUrl], () => {
                 console.log("[SAMP] Callback registered:", callbackUrl);
 
-                // 1. まず Connection オブジェクトを作る
+                // --- 接続オブジェクトの確定と通知 ---
                 const conn = new samp.Connection(client, pk);
                 
-                // 2. ★超重要: statusCallback を呼ぶ「前」に connector に代入する
-                // これにより、Connected イベントを受けて即座に座標を送ろうとする処理が
-                // connector.connection.client を参照できるようになります。
-                if (!connector) {
-                connector = { connection: conn, hubUrl: returnedHubUrl };
+                // グローバルな connector 変数にセット
+                if (connector) {
+                    connector.connection = conn;
+                    connector.hubUrl = returnedHubUrl;
+                    connector.client = client;
                 } else {
-                connector.connection = conn;
-                connector.hubUrl = returnedHubUrl;
-               // connector.client も同期させておく（これが切断時に重要）
-                connector.client = client; 
+                    connector = { connection: conn, hubUrl: returnedHubUrl, client: client };
                 }
 
                 console.log("[SAMP] Connection object established. Ready to send messages.");
+
+                // 最後に通知！これで「接続中」から「Connected」に変わります
+                if (statusCallback) {
+                    statusCallback('Connected');
+                }
+            }, (err: any) => {
+                console.error("[SAMP] Callback registration failed:", err);
+                if (statusCallback) statusCallback('Error', { error: 'Callback registration failed' });
             });
-        }, (err: any) => { // ← samp.hub.register のエラーコールバックを閉じる
+
+        }, (err: any) => {
             console.error("[SAMP] Registration failed:", err);
             if (statusCallback) statusCallback('Error', { error: 'Registration failed' });
         });
 
-        // タイムアウト監視は try ブロックの直下（非同期処理の外）に置く
+        // タイムアウト監視
         setTimeout(() => {
             if (connector && !connector.connection && statusCallback) {
                 console.warn("[SAMP] Internal connection timeout");
-                if (statusCallback) statusCallback('Error', { error: 'Internal Hub connection timeout.' });
+                statusCallback('Error', { error: 'Internal Hub connection timeout.' });
             }
         }, 10000);
+        
     } catch (e: any) {
         console.error("[SAMP] Internal connection error:", e);
         if (statusCallback) statusCallback('Error', { error: e.message });

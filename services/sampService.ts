@@ -537,11 +537,25 @@ export const disconnect = async () => {
     if (connector) {
         console.log("[SAMP] Disconnecting...");
         try {
-            connector.unregister();
+            const conn = connector.connection;
+            // connectionがある場合は、その中のclientを使って明示的にunregisterを呼ぶ
+            if (conn && conn.client) {
+                const pk = conn.privateKey;
+                const hubUrl = conn.client.endpoint || connector.hubUrl;
+                
+                console.log(`[SAMP] Sending unregister to: ${hubUrl}`);
+                conn.client.execute("samp.hub.unregister", [pk], 
+                    () => console.log("[SAMP] Unregistered successfully"),
+                    (err: any) => console.warn("[SAMP] Unregister failed:", err)
+                );
+            } else {
+                // 通常の Connector の unregister (Web Profile)
+                connector.unregister();
+            }
         } catch (e) {
             console.warn("[SAMP] Disconnect error:", e);
         }
-        connector = null;
+        connector = null; // 確実にクリア
     }
 };
 
@@ -730,16 +744,16 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
                 // 2. ★超重要: statusCallback を呼ぶ「前」に connector に代入する
                 // これにより、Connected イベントを受けて即座に座標を送ろうとする処理が
                 // connector.connection.client を参照できるようになります。
+                if (!connector) {
+                connector = { connection: conn, hubUrl: returnedHubUrl };
+                } else {
                 connector.connection = conn;
+                connector.hubUrl = returnedHubUrl;
+               // connector.client も同期させておく（これが切断時に重要）
+                connector.client = client; 
+                }
 
                 console.log("[SAMP] Connection object established. Ready to send messages.");
-
-                if (statusCallback) {
-                    statusCallback('Connected');
-                }
-            }, (err: any) => {
-                console.error("[SAMP] Callback registration failed:", err);
-                if (statusCallback) statusCallback('Error', { error: 'Callback registration failed' });
             });
         }, (err: any) => { // ← samp.hub.register のエラーコールバックを閉じる
             console.error("[SAMP] Registration failed:", err);

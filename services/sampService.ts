@@ -6,6 +6,7 @@ import { SampStatus, SampSettings } from '../types';
  * This implementation uses the samp.js library loaded in index.html.
  */
 let activeSession: { client: any; pk: string; url: string } | null = null;
+let proxySession: { selfId: string; privateKey: string } | null = null;
 declare global {
     interface Window {
         samp: any;
@@ -15,6 +16,57 @@ declare global {
 let statusCallback: ((status: SampStatus, metadata?: any) => void) | null = null;
 let skyCoordCallback: ((ra: number, dec: number) => void) | null = null;
 let connector: any = null;
+let ws: WebSocket | null = null;
+
+const SAMP_WS_PORT = 31000;
+
+const connectWs = (clientId: string) => {
+    if (ws) ws.close();
+    
+    // Use the same host as the page
+    const host = window.location.hostname;
+    const wsUrl = `ws://${host}:${SAMP_WS_PORT}`;
+    
+    console.log(`[SAMP WS] Connecting to ${wsUrl}...`);
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log('[SAMP WS] Connected');
+        ws?.send(JSON.stringify({ type: 'register', clientId }));
+    };
+    
+    ws.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            console.log('[SAMP WS] Received:', msg.type);
+            
+            if (msg.type === 'samp.notification') {
+                const { senderId, message } = msg;
+                const mtype = message["samp.mtype"];
+                const params = message["samp.params"];
+                
+                if (mtype === "coord.pointAt.sky" && skyCoordCallback) {
+                    const ra = parseFloat(params.ra);
+                    const dec = parseFloat(params.dec);
+                    if (!isNaN(ra) && !isNaN(dec)) {
+                        console.log(`[SAMP WS] Sky coord received: RA=${ra}, Dec=${dec}`);
+                        skyCoordCallback(ra, dec);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[SAMP WS] Message error:', e);
+        }
+    };
+    
+    ws.onclose = () => {
+        console.log('[SAMP WS] Disconnected');
+    };
+    
+    ws.onerror = (err) => {
+        console.error('[SAMP WS] Error:', err);
+    };
+};
 
 export const setSkyCoordCallback = (cb: (ra: number, dec: number) => void) => {
     skyCoordCallback = cb;
@@ -452,113 +504,180 @@ export const connect = async (settings: SampSettings) => {
         return;
     }
 
-    // Unregister existing connector if any
-    if (connector) {
+    // Unregister existing sessions
+    await disconnect();
+
+    // Aladin等の外部Hubは動的ポート（例: 49711）を使用するため、.sampファイルの値を確認してください。
+    // ホスト欄にフルURL（http://...）が入力されている場合はそれを優先します。
+    let hubUrl = '';
+    if (settings.host && (settings.host.startsWith('http://') || settings.host.startsWith('https://'))) {
+        hubUrl = settings.host;
+    } else if (settings.host && (settings.host.includes(':') || settings.host.includes('/'))) {
+        // ホスト名に既にポートやパスが含まれている場合は http:// を補完するのみ
+        hubUrl = `http://${settings.host}`;
+    } else {
+        const host = settings.host || '127.0.0.1';
+        const port = settings.port || 21012;
+        hubUrl = `http://${host}:${port}/xmlrpc`;
+    }
+    
+    const isLocal = hubUrl.includes('127.0.0.1') || hubUrl.includes('localhost');
+
+    if (isLocal) {
+        console.log(`[SAMP] Connecting to LOCAL HUB via Browser at: ${hubUrl}`);
+        if (statusCallback) statusCallback('Connecting', { hubUrl });
+        
         try {
-            console.log("[SAMP] Unregistering previous connector...");
-            connector.unregister();
-        } catch (e) {
-            console.warn("[SAMP] Unregister failed (normal if already disconnected):", e);
+            if (!connector) {
+                connector = new samp.Connector({ "samp.name": "T-Astro Web Studio" });
+            }
+            connector.hubUrl = hubUrl;
+            if (connector.client) {
+                connector.client.endpoint = hubUrl;
+                connector.client.hubUrl = hubUrl;
+            }
+            
+            connector.register();
+            
+            // Wait a bit for connection to establish
+            setTimeout(() => {
+                if (connector && connector.connection) {
+                    console.log("[SAMP] Local connection successful");
+                    if (statusCallback) statusCallback('Connected');
+                } else {
+                    console.warn("[SAMP] Local connection might have failed or is still pending");
+                }
+            }, 1000);
+        } catch (e: any) {
+            console.error("[SAMP] Local connection error:", e);
+            if (statusCallback) statusCallback('Error', { error: e.message });
         }
+        return;
     }
 
-    // ★ 修正: LAN環境対応 - ホストを自動検出
-    const host = settings.host || window.location.hostname;
-    const port = settings.port || 6002;
-    const hubUrl = `http://${host}:${port}/api/samp/xmlrpc`;
-    
-    console.log(`[SAMP] Connecting to HUB at: ${hubUrl}`);
-    console.log(`[SAMP] Settings - Host: ${host}, Port: ${port}`);
+    console.log(`[SAMP] Connecting to REMOTE HUB via Proxy at: ${hubUrl}`);
     if (statusCallback) statusCallback('Connecting', { hubUrl });
 
-    const meta = {
-        "samp.name": "T-Astro Web Studio",
-        "samp.description.text": "Web-based Astronomy Control Center",
-        "samp.icon.url": window.location.origin + "/favicon.ico"
-    };
-
     try {
-        const samp = getSamp();
-        ensureXmlRpcRequest();
-        
-        // Connector handles the Web Profile (CORS, etc.)
-        // Pass hubUrl in options to ensure it's used from the start
-        connector = new samp.Connector(meta, { "samp.hub.xmlrpc.url": hubUrl });
-        
-        // Set up message listener
-        connector.onMessage = (senderId: string, message: any, isCall: boolean) => {
-            const mtype = message["samp.mtype"];
-            const params = message["samp.params"];
-            console.log(`[SAMP] Received message: ${mtype} from ${senderId}`);
-            
-            if (mtype === "coord.pointAt.sky" && skyCoordCallback) {
-                const ra = parseFloat(params.ra);
-                const dec = parseFloat(params.dec);
-                if (!isNaN(ra) && !isNaN(dec)) {
-                    console.log(`[SAMP] Sky coord received: RA=${ra}, Dec=${dec}`);
-                    skyCoordCallback(ra, dec);
-                }
-            }
-        };
-        
-        // CRITICAL: Force the endpoint on the connector's internal client
-        if (connector.client) {
-            connector.client.endpoint = hubUrl;
-            connector.client.url = hubUrl;
-            connector.client.hubUrl = hubUrl;
-        }
-        connector.hubUrl = hubUrl;
-        
-        // Set up connection change listener
-        connector.onConnectionChange = (isConnected: boolean) => {
-            console.log(`[SAMP] Connection changed: ${isConnected}`);
-            if (statusCallback) {
-                statusCallback(isConnected ? 'Connected' : 'Disconnected');
-            }
-        };
+        // Use server-side proxy to register
+        const response = await fetch(`${window.location.origin}/api/samp/proxy/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hubUrl })
+        });
 
-        // Register with the hub
-        connector.register();
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Failed to register with external hub via proxy');
+        }
+
+        const data = await response.json();
+        proxySession = { selfId: data.selfId, privateKey: data.privateKey };
         
-        // Timeout for connection
-        setTimeout(() => {
-            if (connector && !connector.connection && statusCallback) {
-                console.warn("[SAMP] Connection timeout");
-                statusCallback('Error', { error: `Connection timeout. Is SAMP Hub running at ${hubUrl}?` });
-            }
-        }, 10000);
+        console.log(`[SAMP] Proxy registration successful. SelfID: ${data.selfId}`);
+        
+        // Connect WebSocket to receive notifications from the proxy
+        connectWs(data.selfId);
+
+        if (statusCallback) statusCallback('Connected');
     } catch (e: any) {
-        console.error("[SAMP] Connection error:", e);
+        console.error(`[SAMP] Proxy connection error to ${hubUrl}:`, e);
         if (statusCallback) statusCallback('Error', { error: e.message });
     }
 };
 
 export const disconnect = async () => {
-    if (!activeSession) return;
-    activeSession.client.execute("samp.hub.unregister", [activeSession.pk], 
-        () => {
-            console.log("[SAMP] Disconnected");
-            activeSession = null;
+    console.log("[SAMP] Disconnecting...");
+    
+    // 1. Unregister from server-side hub if internal session is active
+    if (activeSession) {
+        try {
+            activeSession.client.execute("samp.hub.unregister", [activeSession.pk], () => {
+                console.log("[SAMP] Internal session unregistered");
+            });
+        } catch (e) {
+            console.warn("[SAMP] Internal unregister failed:", e);
         }
-    );
+        activeSession = null;
+    }
+
+    // 1.5 Unregister proxy session if active
+    if (proxySession) {
+        try {
+            // The server will handle unregistering when we call /api/samp/stop or we could add a specific endpoint
+            console.log("[SAMP] Proxy session cleared");
+        } catch (e) {}
+        proxySession = null;
+    }
+
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+
+    // 2. Unregister connector if active
+    if (connector) {
+        try {
+            if (connector.connection) {
+                connector.unregister();
+            }
+        } catch (e) {
+            console.warn("[SAMP] Connector unregister failed:", e);
+        }
+        connector = null;
+    }
+
+    // 3. Tell server to clear hub state (optional but helpful for "turning off" the hub)
+    try {
+        await fetch(`${window.location.origin}/api/samp/stop`, { method: 'POST' });
+    } catch (e) {}
+
+    if (statusCallback) statusCallback('Disconnected');
 };
 
 export const sendSkyCoord = async (ra: number, dec: number) => {
-    if (!activeSession) return console.warn("[SAMP] No active session.");
-    
     const msg = {
         "samp.mtype": "coord.pointAt.sky",
         "samp.params": { ra: ra.toString(), dec: dec.toString() }
     };
-    activeSession.client.execute("samp.hub.notifyAll", [activeSession.pk, msg],
-        () => console.log("[SAMP] Success"),
-        (err: any) => console.error("[SAMP] Failed", err)
-    );
+
+    // Try proxySession (External Hub via Proxy)
+    if (proxySession) {
+        console.log(`[SAMP] Sending coord via proxySession: RA=${ra}, Dec=${dec}`);
+        try {
+            const response = await fetch(`${window.location.origin}/api/samp/proxy/notifyAll`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ selfId: proxySession.selfId, message: msg })
+            });
+            if (!response.ok) throw new Error(`Proxy notification failed: ${response.status}`);
+            console.log("[SAMP] Success (Proxy)");
+        } catch (e) {
+            console.error("[SAMP] Failed (Proxy)", e);
+        }
+        return;
+    }
+
+    // Try connector (Standard/Web Profile)
+    if (connector && connector.connection) {
+        console.log(`[SAMP] Sending coord via connector: RA=${ra}, Dec=${dec}`);
+        try {
+            connector.connection.notifyAll([msg], 
+                () => console.log("[SAMP] Success (Connector)"),
+                (err: any) => console.error("[SAMP] Failed (Connector)", err)
+            );
+        } catch (e) {
+            console.error("[SAMP] Connector notifyAll error:", e);
+        }
+        return;
+    }
+
+    console.warn("[SAMP] Not connected, cannot send coordinates");
 };
 
 export const isConnected = (): boolean => {
-    // connector が存在し、かつ内部に connection が生成されていることを厳密にチェック
-    return !!(connector && connector.connection);
+    // connector が存在し、かつ内部に connection が生成されていること、または proxySession が存在することをチェック
+    return !!((connector && connector.connection) || proxySession);
 };
 
 // Simulation
@@ -670,6 +789,10 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         client.execute("samp.hub.register", [secret], (result: any) => {
             console.log("[SAMP] Internal registration successful", result);
             const pk = result["samp.private-key"];
+            const clientId = result["samp.self-id"];
+
+            // Connect WebSocket for notifications
+            connectWs(clientId);
 
             // A. メタデータの宣言
             client.execute("samp.hub.declareMetadata", [pk, meta], () => {

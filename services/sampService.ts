@@ -1,4 +1,3 @@
-
 import { SampStatus, SampSettings } from '../types';
 
 /**
@@ -14,74 +13,110 @@ declare global {
 }
 
 let statusCallback: ((status: SampStatus, metadata?: any) => void) | null = null;
+let skyCoordCallback: ((ra: number, dec: number) => void) | null = null;
 let connector: any = null;
 
-const patchSampLibrary = () => {
-    if (typeof window === 'undefined') return;
-    
-    const samp = window.samp || (window.module && window.module.exports);
-    if (!samp) return;
-    
-    if (samp.__tastro_patched) return;
-    
-    console.log("[SAMP] Applying aggressive library patches...");
+export const setSkyCoordCallback = (cb: (ra: number, dec: number) => void) => {
+    skyCoordCallback = cb;
+};
 
-    // 1. Robust XML Serialization helper
-    const serialize = (v: any): string => {
-        if (v === null || v === undefined) return '<nil/>';
-        if (typeof v === 'string') return `<string>${v.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</string>`;
-        if (typeof v === 'number') {
-            if (Number.isInteger(v)) return `<int>${v}</int>`;
-            return `<double>${v}</double>`;
-        }
-        if (typeof v === 'boolean') return `<boolean>${v ? '1' : '0'}</boolean>`;
-        if (v instanceof Date) return `<dateTime.iso8601>${v.toISOString()}</dateTime.iso8601>`;
-        if (Array.isArray(v)) {
-            return `<array><data>${v.map(item => `<value>${serialize(item)}</value>`).join('')}</data></array>`;
-        }
-        if (typeof v === 'object') {
-            let s = '<struct>';
-            for (const k in v) {
-                if (Object.prototype.hasOwnProperty.call(v, k)) {
-                    s += `<member><name>${k}</name><value>${serialize(v[k])}</value></member>`;
-                }
+const serialize = (v: any): string => {
+    if (v === null || v === undefined) return '<nil/>';
+    if (typeof v === 'string') return `<string>${v.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</string>`;
+    if (typeof v === 'number') {
+        if (Number.isInteger(v)) return `<int>${v}</int>`;
+        return `<double>${v}</double>`;
+    }
+    if (typeof v === 'boolean') return `<boolean>${v ? '1' : '0'}</boolean>`;
+    if (v instanceof Date) return `<dateTime.iso8601>${v.toISOString()}</dateTime.iso8601>`;
+    if (Array.isArray(v)) {
+        return `<array><data>${v.map(item => `<value>${serialize(item)}</value>`).join('')}</data></array>`;
+    }
+    if (typeof v === 'object') {
+        let s = '<struct>';
+        for (const k in v) {
+            if (Object.prototype.hasOwnProperty.call(v, k)) {
+                s += `<member><name>${k}</name><value>${serialize(v[k])}</value></member>`;
             }
-            return s + '</struct>';
         }
-        return `<string>${String(v)}</string>`;
-    };
+        return s + '</struct>';
+    }
+    return `<string>${String(v)}</string>`;
+};
 
-    // 2. Completely override XmlRpcRequest
-    const MyRequest = function(this: any, methodName: string, params: any[]) {
-        this.methodName = methodName;
-        this.params = params;
-    };
-    MyRequest.prototype.toXml = function() {
+// 2. Completely override XmlRpcRequest
+const MyRequest = function(this: any, methodName: string, params: any[]) {
+    // Handle both constructor and function calls
+    if (!(this instanceof MyRequest)) {
+        return new (MyRequest as any)(methodName, params);
+    }
+    const self = this as any;
+    self.methodName = methodName;
+    self.params = params;
+    // Define toXml on instance for absolute certainty
+    self.toXml = function() {
         let xml = '<?xml version="1.0"?><methodCall>';
-        xml += `<methodName>${this.methodName}</methodName>`;
+        xml += `<methodName>${self.methodName}</methodName>`;
         xml += '<params>';
-        if (this.params && Array.isArray(this.params)) {
-            for (const p of this.params) {
+        if (self.params && Array.isArray(self.params)) {
+            for (const p of self.params) {
                 xml += `<param><value>${serialize(p)}</value></param>`;
             }
         }
         xml += '</params></methodCall>';
         return xml;
     };
+};
+MyRequest.prototype.toXml = function() {
+    return (this as any).toXml();
+};
+(MyRequest as any).checkParams = function() { return true; };
+(MyRequest.prototype as any).checkParams = function() { return true; };
 
-    // Force it everywhere
-    samp.XmlRpcRequest = MyRequest;
-    (window as any).XmlRpcRequest = MyRequest;
+const patchSampLibrary = () => {
+    if (typeof window === 'undefined') return;
+    
+    // Get the samp object from window or module.exports
+    const samp = window.samp || (window.module && window.module.exports);
+    if (!samp) {
+        console.warn("[SAMP] Library not found yet, will retry later.");
+        return;
+    }
+    
+    if (samp.__tastro_patched) return;
+    
+    console.log("[SAMP] Applying aggressive library patches...");
+
+    // Force it globally
+    try {
+        samp.XmlRpcRequest = MyRequest;
+        (window as any).XmlRpcRequest = MyRequest;
+        if (samp.XmlRpc) samp.XmlRpc.XmlRpcRequest = MyRequest;
+        if ((window as any).XmlRpc) (window as any).XmlRpc.XmlRpcRequest = MyRequest;
+        console.log("[SAMP Patch] XmlRpcRequest overridden globally");
+    } catch (e) {
+        console.warn("[SAMP Patch] Failed to override XmlRpcRequest globally:", e);
+    }
 
     // 3. Completely override XmlRpcClient prototype execute
     const patchExecute = function(this: any, methodName: string, params: any[], success: any, error: any) {
-        // Determine the URL to use
+        // Determine the URL to use. Force use of the instance's endpoint if set.
         const url = this.endpoint || this.url || this.hubUrl || (window as any).XmlRpcClient_defaultUrl || "http://localhost:21012/";
         
         console.log(`[SAMP Patch] Executing ${methodName} -> ${url}`);
         
         try {
-            const req = new MyRequest(methodName, params);
+            const req = new (MyRequest as any)(methodName, params);
+            if (!req || typeof req.toXml !== 'function') {
+                console.error("[SAMP Patch] req is invalid or missing toXml:", req);
+                // Try to force it one last time
+                if (req) {
+                    (req as any).toXml = MyRequest.prototype.toXml;
+                }
+                if (!req || typeof req.toXml !== 'function') {
+                    throw new Error("req.toXml is not a function (Patched)");
+                }
+            }
             const xml = req.toXml();
             
             const xhr = new XMLHttpRequest();
@@ -96,6 +131,7 @@ const patchSampLibrary = () => {
                             if (samp.XmlRpcDeserializer) {
                                 result = samp.XmlRpcDeserializer.deserializeResponse(xhr.responseText);
                             } else {
+                                // Fallback if deserializer is missing
                                 result = xhr.responseText;
                             }
                             if (typeof success === 'function') success(result);
@@ -124,47 +160,213 @@ const patchSampLibrary = () => {
         }
     };
 
+    // Patch XmlRpcClient
     if (samp.XmlRpcClient) {
-        if (samp.XmlRpcClient.prototype) {
-            samp.XmlRpcClient.prototype.execute = patchExecute;
-        }
+        const patchClientProto = (proto: any) => {
+            if (!proto) return;
+            try {
+                Object.defineProperty(proto, 'execute', {
+                    value: patchExecute,
+                    writable: true,
+                    configurable: true
+                });
+                // Also patch 'call' if it exists
+                if (typeof proto.call === 'function') {
+                    proto.call = function(methodName: string, params: any[], success: any, error: any) {
+                        this.execute(methodName, params, success, error);
+                    };
+                }
+            } catch (e) {
+                proto.execute = patchExecute;
+            }
+        };
+
+        patchClientProto(samp.XmlRpcClient.prototype);
+        if ((window as any).XmlRpcClient) patchClientProto((window as any).XmlRpcClient.prototype);
         
-        // Also patch the constructor to ensure every instance is forced to use the correct URL
+        // Patch constructor
         const OriginalClient = samp.XmlRpcClient;
         const PatchedClient = function(this: any, url: string) {
-            const instance = new (OriginalClient as any)(url);
-            instance.endpoint = url;
-            instance.url = url;
-            instance.hubUrl = url;
-            instance.execute = patchExecute; // Force instance-level override
-            return instance;
+            if (!(this instanceof PatchedClient)) {
+                return new (PatchedClient as any)(url);
+            }
+            const self = this as any;
+            // Use original constructor logic if possible
+            try {
+                OriginalClient.call(self, url);
+            } catch (e) {}
+            
+            // Force properties
+            self.endpoint = url;
+            self.url = url;
+            self.hubUrl = url;
+            // Force method override on the instance itself
+            self.execute = patchExecute;
         };
         PatchedClient.prototype = OriginalClient.prototype;
-        samp.XmlRpcClient = PatchedClient;
+        
+        try {
+            samp.XmlRpcClient = PatchedClient;
+            (window as any).XmlRpcClient = PatchedClient;
+            console.log("[SAMP Patch] XmlRpcClient overridden globally");
+        } catch (e) {
+            console.warn("[SAMP Patch] Failed to override XmlRpcClient globally:", e);
+        }
     }
 
-    // Also patch global XmlRpcClient if it exists
-    if ((window as any).XmlRpcClient && (window as any).XmlRpcClient.prototype) {
-        (window as any).XmlRpcClient.prototype.execute = patchExecute;
-    }
-    
-    // 4. Patch Connector to ensure it doesn't default to localhost
-    if (samp.Connector && samp.Connector.prototype) {
+    // 4. Patch Connector to ensure it uses the patched client and correct URL
+    if (samp.Connector) {
         const originalRegister = samp.Connector.prototype.register;
         samp.Connector.prototype.register = function() {
-            if (this.client && this.hubUrl) {
+            console.log("[SAMP Patch] Connector.register called. HubUrl:", this.hubUrl);
+            if (this.client) {
+                // Ensure the internal client is patched and using the correct URL
                 this.client.endpoint = this.hubUrl;
                 this.client.url = this.hubUrl;
                 this.client.hubUrl = this.hubUrl;
+                this.client.execute = patchExecute;
             }
             return originalRegister.apply(this, arguments);
         };
+    }
+
+    // 4.5 Patch Connection.prototype.call to bypass XmlRpc.checkParams
+    if (samp.Connection) {
+        samp.Connection.prototype.call = function(methodName: string, params: any[], success: any, error: any) {
+            // Bypass XmlRpc.checkParams(params, methodName) which is buggy in samp.js
+            const fullParams = [this.privateKey].concat(params);
+            this.client.execute(methodName, fullParams, success, error);
+        };
+        console.log("[SAMP Patch] samp.Connection.prototype.call patched");
+    }
+
+    // 5. Patch checkParams to be a no-op everywhere to avoid signature mismatch errors
+    const noopCheck = function() { 
+        return true; 
+    };
+    
+    const patchObject = (obj: any) => {
+        if (!obj) return;
+        try {
+            if (typeof obj.checkParams === 'function') {
+                obj.checkParams = noopCheck;
+            }
+            if (obj.prototype && typeof obj.prototype.checkParams === 'function') {
+                obj.prototype.checkParams = noopCheck;
+            }
+            // Also check for static checkParams
+            if (obj.checkParams && typeof obj.checkParams !== 'function') {
+                obj.checkParams = noopCheck;
+            }
+        } catch (e) {}
+    };
+
+    patchObject(samp.XmlRpc);
+    patchObject(samp.XmlRpcRequest);
+    patchObject(samp.XmlRpcClient);
+    patchObject(samp.XmlRpcResponse);
+    patchObject(samp.XmlRpcDeserializer);
+    patchObject(samp.Connection);
+    patchObject(samp.Connector);
+    
+    // Also patch globally if they exist
+    patchObject((window as any).XmlRpc);
+    patchObject((window as any).XmlRpcRequest);
+    patchObject((window as any).XmlRpcClient);
+    patchObject((window as any).XmlRpcResponse);
+    patchObject((window as any).XmlRpcDeserializer);
+    patchObject((window as any).XmlRpcConnection);
+    patchObject((window as any).XmlRpcConnector);
+
+    // Ensure MyRequest has checkParams too just in case
+    (MyRequest as any).checkParams = noopCheck;
+    (MyRequest.prototype as any).checkParams = noopCheck;
+    
+    // 6. Custom Deserializer to bypass buggy samp.js logic
+    const customDeserialize = (xml: string): any => {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(xml, "text/xml");
+            
+            const deserializeNode = (node: Node): any => {
+                const type = node.nodeName.toLowerCase();
+                if (type === 'value') {
+                    const child = Array.from(node.childNodes).find(n => n.nodeType === 1);
+                    return child ? deserializeNode(child) : node.textContent;
+                }
+                if (type === 'string') return node.textContent;
+                if (type === 'int' || type === 'i4') return parseInt(node.textContent || '0', 10);
+                if (type === 'double') return parseFloat(node.textContent || '0');
+                if (type === 'boolean') return node.textContent === '1' || node.textContent === 'true';
+                if (type === 'array') {
+                    const data = Array.from(node.childNodes).find(n => n.nodeName.toLowerCase() === 'data');
+                    if (!data) return [];
+                    return Array.from(data.childNodes)
+                        .filter(n => n.nodeType === 1)
+                        .map(n => deserializeNode(n));
+                }
+                if (type === 'struct') {
+                    const obj: any = {};
+                    Array.from(node.childNodes)
+                        .filter(n => n.nodeName.toLowerCase() === 'member')
+                        .forEach(m => {
+                            const nameNode = Array.from(m.childNodes).find(n => n.nodeName.toLowerCase() === 'name');
+                            const valueNode = Array.from(m.childNodes).find(n => n.nodeName.toLowerCase() === 'value');
+                            if (nameNode && valueNode) {
+                                obj[nameNode.textContent || ''] = deserializeNode(valueNode);
+                            }
+                        });
+                    return obj;
+                }
+                return node.textContent;
+            };
+
+            const fault = doc.getElementsByTagName('fault')[0];
+            if (fault) {
+                const faultValue = deserializeNode(fault.getElementsByTagName('value')[0]);
+                throw new Error(`XML-RPC Fault: ${faultValue.faultString} (${faultValue.faultCode})`);
+            }
+            
+            const params = doc.getElementsByTagName('param');
+            if (params.length > 0) {
+                const valNode = params[0].getElementsByTagName('value')[0];
+                return valNode ? deserializeNode(valNode) : null;
+            }
+            return null;
+        } catch (e) {
+            console.error("[SAMP Patch] Custom deserialization failed:", e);
+            throw e;
+        }
+    };
+
+    if (samp.XmlRpcDeserializer) {
+        samp.XmlRpcDeserializer.deserializeResponse = customDeserialize;
+        console.log("[SAMP Patch] samp.XmlRpcDeserializer.deserializeResponse replaced with custom implementation");
     }
 
     samp.__tastro_patched = true;
     window.samp = samp;
     console.log("[SAMP] Aggressive patches applied successfully.");
 };
+
+// Apply patches immediately if possible
+if (typeof window !== 'undefined') {
+    // Try patching immediately
+    patchSampLibrary();
+    // Also try again when DOM is ready
+    window.addEventListener('DOMContentLoaded', patchSampLibrary);
+    // And as a fallback, try every second for 5 seconds
+    let attempts = 0;
+    const interval = setInterval(() => {
+        const samp = (window as any).samp || (window as any).module?.exports;
+        if (samp && !samp.__tastro_patched) {
+            patchSampLibrary();
+        }
+        if (++attempts > 5 || (samp && (samp as any).__tastro_patched)) {
+            clearInterval(interval);
+        }
+    }, 1000);
+}
 
 const getSamp = () => {
     const s = window.samp || (window.module && window.module.exports);
@@ -188,6 +390,11 @@ export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
     const samp = getSamp();
     ensureXmlRpcRequest();
     
+    console.log('[SAMP] Initialization:');
+    console.log(`  - Browser Hostname: ${window.location.hostname}`);
+    console.log(`  - Server URL: ${window.location.origin}`);
+    console.log(`  - SAMP Library: ${samp ? 'Loaded' : 'NOT LOADED'}`);
+    
     if (samp && !connector) {
         const meta = {
             "samp.name": "T-Astro Web Studio",
@@ -196,6 +403,22 @@ export const init = (cb: (status: SampStatus, metadata?: any) => void) => {
         };
         // Connector handles the Web Profile (CORS, etc.)
         connector = new samp.Connector(meta);
+        
+        // Set up message listener
+        connector.onMessage = (senderId: string, message: any, isCall: boolean) => {
+            const mtype = message["samp.mtype"];
+            const params = message["samp.params"];
+            console.log(`[SAMP] Received message: ${mtype} from ${senderId}`);
+            
+            if (mtype === "coord.pointAt.sky" && skyCoordCallback) {
+                const ra = parseFloat(params.ra);
+                const dec = parseFloat(params.dec);
+                if (!isNaN(ra) && !isNaN(dec)) {
+                    console.log(`[SAMP] Sky coord received: RA=${ra}, Dec=${dec}`);
+                    skyCoordCallback(ra, dec);
+                }
+            }
+        };
         
         // Set up connection change listener
         connector.onConnectionChange = (isConnected: boolean) => {
@@ -227,19 +450,14 @@ export const connect = async (settings: SampSettings) => {
         }
     }
 
-    const host = settings.host || 'localhost';
-    const port = settings.port || 21012;
-    // Standard SAMP hub URL is usually the root or /xmlrpc
-    const hubUrl = `http://${host}:${port}/`;
+    // ★ 修正: LAN環境対応 - ホストを自動検出
+    const host = settings.host || window.location.hostname;
+    const port = settings.port || 6002;
+    const hubUrl = `http://${host}:${port}/api/samp/xmlrpc`;
     
-    // Use proxy for SAMP to bypass CORS only if on HTTPS
-    const isHttps = window.location.protocol === 'https:';
-    const proxyUrl = isHttps 
-        ? `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(hubUrl)}`
-        : hubUrl;
-    
-    console.log(`[SAMP] Connecting to hub at: ${hubUrl} ${isHttps ? '(via proxy)' : '(direct)'}`);
-    if (statusCallback) statusCallback('Connecting');
+    console.log(`[SAMP] Connecting to HUB at: ${hubUrl}`);
+    console.log(`[SAMP] Settings - Host: ${host}, Port: ${port}`);
+    if (statusCallback) statusCallback('Connecting', { hubUrl });
 
     const meta = {
         "samp.name": "T-Astro Web Studio",
@@ -253,15 +471,31 @@ export const connect = async (settings: SampSettings) => {
         
         // Connector handles the Web Profile (CORS, etc.)
         // Pass hubUrl in options to ensure it's used from the start
-        connector = new samp.Connector(meta, { "samp.hub.xmlrpc.url": proxyUrl });
+        connector = new samp.Connector(meta, { "samp.hub.xmlrpc.url": hubUrl });
+        
+        // Set up message listener
+        connector.onMessage = (senderId: string, message: any, isCall: boolean) => {
+            const mtype = message["samp.mtype"];
+            const params = message["samp.params"];
+            console.log(`[SAMP] Received message: ${mtype} from ${senderId}`);
+            
+            if (mtype === "coord.pointAt.sky" && skyCoordCallback) {
+                const ra = parseFloat(params.ra);
+                const dec = parseFloat(params.dec);
+                if (!isNaN(ra) && !isNaN(dec)) {
+                    console.log(`[SAMP] Sky coord received: RA=${ra}, Dec=${dec}`);
+                    skyCoordCallback(ra, dec);
+                }
+            }
+        };
         
         // CRITICAL: Force the endpoint on the connector's internal client
         if (connector.client) {
-            connector.client.endpoint = proxyUrl;
-            connector.client.url = proxyUrl;
-            connector.client.hubUrl = proxyUrl;
+            connector.client.endpoint = hubUrl;
+            connector.client.url = hubUrl;
+            connector.client.hubUrl = hubUrl;
         }
-        connector.hubUrl = proxyUrl;
+        connector.hubUrl = hubUrl;
         
         // Set up connection change listener
         connector.onConnectionChange = (isConnected: boolean) => {
@@ -278,7 +512,7 @@ export const connect = async (settings: SampSettings) => {
         setTimeout(() => {
             if (connector && !connector.connection && statusCallback) {
                 console.warn("[SAMP] Connection timeout");
-                statusCallback('Error', { error: 'Connection timeout. Is Aladin/SAMP Hub running with Web Profile enabled?' });
+                statusCallback('Error', { error: `Connection timeout. Is SAMP Hub running at ${hubUrl}?` });
             }
         }, 10000);
     } catch (e: any) {
@@ -290,7 +524,12 @@ export const connect = async (settings: SampSettings) => {
 export const disconnect = async () => {
     if (connector) {
         console.log("[SAMP] Disconnecting...");
-        connector.unregister();
+        try {
+            connector.unregister();
+        } catch (e) {
+            console.warn("[SAMP] Disconnect error:", e);
+        }
+        connector = null;
     }
 };
 
@@ -301,15 +540,20 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
         try {
             const msg = new samp.Message("coord.pointAt.sky", {
                 ra: ra.toString(),
-                dec: dec.toString()
+                dec: dec.toString(),
+                frame: "J2000"
             });
             // Standard SAMP notifyAll takes a message object, not an array
             connector.connection.notifyAll(msg);
+            console.log("[SAMP] Coordinates sent successfully");
         } catch (e) {
             console.error("[SAMP] Failed to send coordinates:", e);
         }
     } else {
         console.warn("[SAMP] Not connected, cannot send coordinates");
+        if (!connector) console.warn("  - Connector not initialized");
+        if (!connector?.connection) console.warn("  - Not registered with HUB");
+        if (!samp) console.warn("  - SAMP library not loaded");
     }
 };
 
@@ -341,26 +585,35 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
     }
 
     try {
+        // ★ 修正: LAN環境対応 - サーバーのホストアドレスを使用
+        const host = settings.host || window.location.hostname;
+        const port = settings.port || 6002;
+        const hubUrl = `http://${host}:${port}/api/samp/xmlrpc`;
+        
         // 1. Fetch registration info from our server
         const regResponse = await fetch(`${window.location.origin}/samp-registration`, { method: 'POST' });
         if (!regResponse.ok) throw new Error('Failed to get registration info from server');
         
         const regData = await regResponse.json();
-        let hubUrl = regData["samp.hub.xmlrpc.url"];
+        let returnedHubUrl = regData["samp.hub.xmlrpc.url"];
         const secret = regData["samp.secret"];
         
-        // Fix localhost issue if it comes from the server
-        if (hubUrl.includes('localhost') || hubUrl.includes('127.0.0.1')) {
+        console.log(`[SAMP] Server returned HUB URL: ${returnedHubUrl}`);
+        
+        // Smart URL correction for Cloud Run/Proxy environments
+        if (returnedHubUrl && (returnedHubUrl.includes('localhost') || returnedHubUrl.includes('127.0.0.1'))) {
             try {
-                const urlObj = new URL(hubUrl);
-                hubUrl = window.location.origin + urlObj.pathname + urlObj.search;
+                const urlObj = new URL(returnedHubUrl);
+                // Use current origin but keep the path
+                returnedHubUrl = window.location.origin + urlObj.pathname + urlObj.search;
+                console.log(`[SAMP] Corrected localhost URL to: ${returnedHubUrl}`);
             } catch (e) {
-                console.warn("[SAMP] Failed to parse hubUrl, using relative path fallback");
-                hubUrl = window.location.origin + "/api/samp/xmlrpc";
+                console.warn("[SAMP] Failed to parse returnedHubUrl, using fallback:", e);
+                returnedHubUrl = hubUrl;
             }
         }
-        
-        console.log(`[SAMP] Internal Hub URL: ${hubUrl}`);
+
+        console.log(`[SAMP] Internal Hub URL: ${returnedHubUrl}`);
 
         const meta = {
             "samp.name": "T-Astro Web Studio (Internal)",
@@ -375,10 +628,23 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
 
         connector = new samp.Connector(meta);
         
+        // Set up message listener
+        connector.onMessage = (senderId: string, message: any, isCall: boolean) => {
+        const mtype = message["samp.mtype"];
+        const params = message["samp.params"];
+    
+        if (mtype === "coord.pointAt.sky" && skyCoordCallback) {
+        // ここで RA と Dec を抽出して、アプリ側に渡しています
+        skyCoordCallback(parseFloat(params.ra), parseFloat(params.dec));
+    }
+};
+        
         // Use the exact URL provided by the server
-        connector.hubUrl = hubUrl;
+        connector.hubUrl = returnedHubUrl;
         if (connector.client) {
-            connector.client.hubUrl = hubUrl;
+            connector.client.hubUrl = returnedHubUrl;
+            connector.client.endpoint = returnedHubUrl;
+            connector.client.url = returnedHubUrl;
         }
 
         connector.onConnectionChange = (isConnected: boolean) => {
@@ -393,20 +659,43 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
         if (!samp.XmlRpcClient) {
             throw new Error('SAMP XmlRpcClient not found');
         }
-        const client = new samp.XmlRpcClient(hubUrl);
-        client.endpoint = hubUrl;
-        client.url = hubUrl;
-        client.hubUrl = hubUrl;
+        const client = new samp.XmlRpcClient(returnedHubUrl);
+        client.endpoint = returnedHubUrl;
+        client.url = returnedHubUrl;
+        client.hubUrl = returnedHubUrl;
         
         client.execute("samp.hub.register", [secret], (result: any) => {
             console.log("[SAMP] Internal registration successful", result);
-            const conn = new samp.Connection(client, result["samp.private-key"]);
-            connector.connection = conn;
-            if (statusCallback) statusCallback('Connected');
-            
-            // Declare metadata and subscriptions
-            conn.call("samp.hub.declareMetadata", [result["samp.private-key"], meta], () => {});
-            conn.call("samp.hub.declareSubscriptions", [result["samp.private-key"], {}], () => {});
+            const pk = result["samp.private-key"];
+
+            // 1. メタデータの宣言
+            client.execute("samp.hub.declareMetadata", [pk, meta], () => {
+                console.log("[SAMP] Metadata declared");
+            }, (err: any) => console.error("[SAMP] Metadata declaration failed:", err));
+
+            // 2. 購読対象の宣言 (★重要: これがないとメッセージが届きません)
+            const subscriptions = {
+                "coord.pointAt.sky": {},
+                "samp.app.ping": {}
+            };
+            client.execute("samp.hub.declareSubscriptions", [pk, subscriptions], () => {
+                console.log("[SAMP] Subscriptions declared (coord.pointAt.sky)");
+            }, (err: any) => console.error("[SAMP] Subscriptions declaration failed:", err));
+
+            // 3. XML-RPCコールバックURLの登録
+            // サーバー側の XML-RPC エンドポイントを指定
+            const callbackUrl = `${window.location.origin}/api/samp/xmlrpc`;
+            client.execute("samp.hub.setXmlrpcCallback", [pk, callbackUrl], () => {
+                console.log("[SAMP] Callback registered:", callbackUrl);
+
+                // コネクションオブジェクトの生成
+                const conn = new samp.Connection(client, pk);
+                connector.connection = conn;
+                if (statusCallback) statusCallback('Connected');
+            }, (err: any) => {
+                console.error("[SAMP] Callback registration failed:", err);
+            });
+
         }, (err: any) => {
             console.error("[SAMP] Internal registration failed:", err);
             if (statusCallback) statusCallback('Error', { error: 'Registration failed: ' + (err.message || err) });

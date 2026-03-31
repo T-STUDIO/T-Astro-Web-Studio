@@ -546,31 +546,31 @@ export const disconnect = async () => {
 };
 
 export const sendSkyCoord = async (ra: number, dec: number) => {
-    const samp = getSamp();
-    if (connector && connector.connection && samp) {
-        try {
-            const msg = {
-                "samp.mtype": "coord.pointAt.sky",
-                "samp.params": {
-                    ra: ra.toString(),
-                    dec: dec.toString(),
-                    frame: "J2000"
-                }
-            };
+    // ...略...
+    const conn = connector?.connection;
+    const client = conn?.client;
+
+    if (conn && client) {
+        // execute を呼ぶ
+    } else {
+        console.warn("[SAMP] sendSkyCoord aborted: connector.connection or client is still undefined.");
+    }
+};
 
             const pk = connector.connection.privateKey;
             const client = connector.connection.client;
 
-            // 重要: ライブラリの connection.notifyAll を使わず、
-            // パッチを当てた client.execute を直接叩く
+            // パッチ済みの execute を直接実行
             client.execute("samp.hub.notifyAll", [pk, msg], 
                 () => console.log("[SAMP] Success: coord.pointAt.sky"),
                 (err: any) => console.error("[SAMP] Failed:", err)
             );
 
         } catch (e) {
-            console.error("[SAMP] Logic error:", e);
+            console.error("[SAMP] Logic error inside sendSkyCoord:", e);
         }
+    } else {
+        console.warn("[SAMP] Cannot send coord: Connection not fully established.");
     }
 };
 
@@ -713,23 +713,33 @@ export const connectInternal = async (cb: (status: SampStatus, metadata?: any) =
             client.execute("samp.hub.setXmlrpcCallback", [pk, callbackUrl], () => {
                 console.log("[SAMP] Callback registered:", callbackUrl);
 
-                // コネクションオブジェクトの生成
+                // 1. まず Connection オブジェクトを作る
                 const conn = new samp.Connection(client, pk);
+                
+                // 2. ★超重要: statusCallback を呼ぶ「前」に connector に代入する
+                // これにより、Connected イベントを受けて即座に座標を送ろうとする処理が
+                // connector.connection.client を参照できるようになります。
                 connector.connection = conn;
-                if (statusCallback) statusCallback('Connected');
+
+                console.log("[SAMP] Connection object established. Ready to send messages.");
+
+                if (statusCallback) {
+                    statusCallback('Connected');
+                }
             }, (err: any) => {
                 console.error("[SAMP] Callback registration failed:", err);
+                if (statusCallback) statusCallback('Error', { error: 'Callback registration failed' });
             });
-
-        }, (err: any) => {
-            console.error("[SAMP] Internal registration failed:", err);
-            if (statusCallback) statusCallback('Error', { error: 'Registration failed: ' + (err.message || err) });
+        }, (err: any) => { // ← samp.hub.register のエラーコールバックを閉じる
+            console.error("[SAMP] Registration failed:", err);
+            if (statusCallback) statusCallback('Error', { error: 'Registration failed' });
         });
 
+        // タイムアウト監視は try ブロックの直下（非同期処理の外）に置く
         setTimeout(() => {
             if (connector && !connector.connection && statusCallback) {
                 console.warn("[SAMP] Internal connection timeout");
-                statusCallback('Error', { error: 'Internal Hub connection timeout.' });
+                if (statusCallback) statusCallback('Error', { error: 'Internal Hub connection timeout.' });
             }
         }, 10000);
     } catch (e: any) {

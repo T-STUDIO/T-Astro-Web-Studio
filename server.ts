@@ -65,26 +65,36 @@ const externalHubConnections = new Map<string, {
 function createXmlRpcClient(urlStr: string) {
     console.log(`[Server] Creating XML-RPC client for: ${urlStr}`);
     try {
-        const u = new URL(urlStr);
-        const options = {
-            host: u.hostname,
-            port: parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80),
-            path: u.pathname + u.search
-        };
-        console.log(`[Server] XML-RPC client options:`, options);
-        
-        if (typeof xmlrpc.createClient !== 'function') {
-            console.error('[Server] xmlrpc.createClient is not a function! xmlrpc object:', typeof xmlrpc, Object.keys(xmlrpc));
-            throw new Error('xmlrpc.createClient is not a function');
-        }
-        
-        return xmlrpc.createClient(options);
-    } catch (e) {
-        console.warn(`[Server] URL parsing failed or createClient error for ${urlStr}:`, e);
+        // Try to use the URL string directly first, as it's more robust for some libraries
         if (typeof xmlrpc.createClient === 'function') {
             return xmlrpc.createClient(urlStr as any);
         }
-        throw e;
+        throw new Error('xmlrpc.createClient is not a function');
+    } catch (e) {
+        // Fallback to manual parsing if string-based creation fails
+        try {
+            const u = new URL(urlStr);
+            const options: any = {
+                host: u.hostname,
+                port: parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80),
+                path: u.pathname + u.search
+            };
+            // Basic auth support if provided in URL
+            if (u.username || u.password) {
+                options.basic_auth = {
+                    user: u.username,
+                    pass: u.password
+                };
+            }
+            console.log(`[Server] XML-RPC client options:`, options);
+            if (typeof xmlrpc.createClient === 'function') {
+                return xmlrpc.createClient(options);
+            }
+            throw new Error('xmlrpc.createClient is not a function');
+        } catch (e2) {
+            console.error(`[Server] Failed to create XML-RPC client for ${urlStr}:`, e2);
+            throw e2;
+        }
     }
 }
 
@@ -722,7 +732,9 @@ async function startServer() {
             const client = createXmlRpcClient(hubUrl);
             
             console.log(`[SAMP Proxy] Calling samp.hub.register at ${hubUrl}...`);
-            client.methodCall('samp.hub.register', [secret || ""], (err: any, result: any) => {
+            // Use provided secret or empty string
+            const regParams = (secret && secret !== "") ? [secret] : [""];
+            client.methodCall('samp.hub.register', regParams, (err: any, result: any) => {
                 if (err) {
                     console.error(`[SAMP Proxy] Registration failed at ${hubUrl}:`, err.message);
                     return res.status(500).json({ error: `Registration failed: ${err.message}` });

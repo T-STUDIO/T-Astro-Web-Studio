@@ -391,7 +391,7 @@ const App: React.FC = () => {
       const obj = CELESTIAL_OBJECTS.find(o => o.name === name) || selectedObject;
       if (!obj) return;
       setIsGeminiModalOpen(true); setIsGeminiLoading(true);
-      try { const info = await GeminiService.getObjectInfo(obj.name, language); setGeminiContent(info); } 
+      try { const info = await GeminiService.getObjectInfo(obj.name, language, obj.id?.startsWith('anno_')); setGeminiContent(info); } 
       finally { setIsGeminiLoading(false); }
   };
 
@@ -483,7 +483,14 @@ const App: React.FC = () => {
                 isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
                 onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                 sampStatus={sampStatus}
-                onConnectSamp={async () => { setSampStatus('Connecting'); await SampService.connect(sampSettings); setSampStatus('Connected'); }}
+                onConnectSamp={async () => { 
+                  if (sampStatus === 'Connected') {
+                    SampService.disconnect();
+                  } else {
+                    setSampStatus('Connecting'); 
+                    await SampService.connect(sampSettings);
+                  }
+                }}
                 onDisconnectSamp={async () => { await SampService.disconnect(); setSampStatus('Disconnected'); }}
                 isCapturing={isCapturing}
                 captureProgress={captureProgress}

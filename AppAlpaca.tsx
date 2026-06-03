@@ -376,7 +376,7 @@ const AppAlpaca: React.FC = () => {
       const obj = CELESTIAL_OBJECTS.find(o => o.name === name) || selectedObject;
       if (!obj) return;
       setIsGeminiModalOpen(true); setIsGeminiLoading(true);
-      try { const info = await GeminiService.getObjectInfo(obj.name, language); setGeminiContent(info); } 
+      try { const info = await GeminiService.getObjectInfo(obj.name, language, obj.id?.startsWith('anno_')); setGeminiContent(info); } 
       finally { setIsGeminiLoading(false); }
   };
 

@@ -26,6 +26,22 @@ const TYPE_MAP_JA: Record<string, string> = {
 };
 
 export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'): Promise<AstroData> => {
+    const isAnno = obj.id?.startsWith('anno_');
+    if (isAnno) {
+        const cleanSimbadName = obj.name.split('(')[0].trim();
+        const simbadData = await fetchSimbadData(cleanSimbadName, lang).catch(() => null);
+        if (simbadData) {
+            return {
+                type: simbadData.type || obj.type || '---',
+                magnitude: simbadData.magnitude || '---',
+                ra: simbadData.ra || '---',
+                dec: simbadData.dec || '---',
+                source: 'Simbad',
+                isLoading: false
+            };
+        }
+    }
+
     // 内部データベースの正規の天体かどうかを検索
     const dbObject = CELESTIAL_OBJECTS.find(o => 
         o.id === obj.id || 

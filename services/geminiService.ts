@@ -3,25 +3,47 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { Language } from '../types';
+import { fetchSimbadData } from "./simbadService";
 
 /* GUIDELINE: Initialize GoogleGenAI right before making a call to ensure it uses the latest API key. */
 
-export const getObjectInfo = async (objectName: string, language: Language): Promise<string> => {
-  /* GUIDELINE: Using 'gemini-3-flash-preview' for basic text tasks like object descriptions. */
-  const model = "gemini-3-flash-preview";
+export const getObjectInfo = async (objectName: string, language: Language, isAnno?: boolean): Promise<string> => {
+  /* GUIDELINE: Using 'gemini-3.5-flash' for basic text tasks like object descriptions. */
+  const model = "gemini-3.5-flash";
   
   const langInstruction = language === 'ja'
     ? 'IMPORTANT: You MUST output strictly in Japanese (日本語). Ensure the response is natural and easy to read for Japanese speakers.'
     : 'Response Language: English';
 
+  let sourceMaterial = 'Source Material: Refer to data from Wikipedia (天体情報) and standard Astronomical Catalogs (Messier, NGC, IC).';
+  if (isAnno) {
+    try {
+      const simbadData = await fetchSimbadData(objectName, language === 'ja' ? 'ja' : 'en');
+      if (simbadData) {
+        const aliases = simbadData.aliases ? `Aliases: ${simbadData.aliases.join(', ')}` : '';
+        sourceMaterial = `Source Material: Refer STRICTLY to the following scientific data obtained from SIMBAD for the celestial object:
+- Name: ${objectName}
+- Type: ${simbadData.type}
+- Visual Magnitude: ${simbadData.magnitude}
+- RA: ${simbadData.ra}
+- Dec: ${simbadData.dec}
+- ${aliases}
+
+Use this precise scientific data as the primary source of truth, and describe the celestial object. Do not create new sections or items. Stick to the exact 4 sections listed below.`;
+      }
+    } catch (e) {
+      console.warn("Failed to fetch Simbad info during getObjectInfo", e);
+    }
+  }
+
   const prompt = `
     Role: You are an expert astronomer and observatory assistant.
     Task: Provide a detailed description of the celestial object "${objectName}".
-    Source Material: Refer to data from Wikipedia (天体情報) and standard Astronomical Catalogs (Messier, NGC, IC).
+    ${sourceMaterial}
 
     ${langInstruction}
     
-    Please structure the response as follows:
+    Please structure the response precisely as follows:
     1. **Overview**: Basic description, constellation, distance from Earth.
     2. **Physical Characteristics**: Type, size, mass, age, composition.
     3. **Observation**: Visual magnitude, apparent size, best season to view.
@@ -32,7 +54,14 @@ export const getObjectInfo = async (objectName: string, language: Language): Pro
 
   try {
     /* GUIDELINE: Always obtain API key exclusively from process.env.API_KEY and initialize inside the function. */
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
+    const getEnvVar = (name: string) => {
+      try {
+        return (import.meta.env && import.meta.env[`VITE_${name}`]) || (typeof process !== 'undefined' ? process.env[name] : '');
+      } catch (e) {
+        return '';
+      }
+    };
+    const apiKey = getEnvVar('API_KEY');
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: model,
@@ -75,7 +104,7 @@ export const getObjectInfo = async (objectName: string, language: Language): Pro
 };
 
 export const summarizeExternalInfo = async (objectName: string, rawText: string, source: 'Wikipedia' | 'SIMBAD', language: Language): Promise<string> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.5-flash";
   
   const langInstruction = language === 'ja'
     ? 'IMPORTANT: You MUST output strictly in Japanese (日本語). Ensure the summary is natural and easy to read for Japanese speakers.'
@@ -98,7 +127,14 @@ export const summarizeExternalInfo = async (objectName: string, rawText: string,
   `;
 
   try {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
+    const getEnvVar = (name: string) => {
+      try {
+        return (import.meta.env && import.meta.env[`VITE_${name}`]) || (typeof process !== 'undefined' ? process.env[name] : '');
+      } catch (e) {
+        return '';
+      }
+    };
+    const apiKey = getEnvVar('API_KEY');
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: model,

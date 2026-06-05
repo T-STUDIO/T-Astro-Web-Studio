@@ -259,6 +259,8 @@ export const ja = {
     showGalaxies: '銀河を表示',
     showNebulae: '星雲を表示',
     showClusters: '星団を表示',
+    showSatellites: '人工衛星を表示',
+    showComets: '彗星を表示',
     targetAcquisition: '天体導入',
     plateSolvingSettings: 'PlateSolving設定',
     selectTarget: 'ターゲットを選択',

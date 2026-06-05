@@ -230,6 +230,8 @@ export const en = {
     showGalaxies: 'Show Galaxies',
     showNebulae: 'Show Nebulae',
     showClusters: 'Show Clusters',
+    showSatellites: 'Show Satellites',
+    showComets: 'Show Comets',
     targetAcquisition: 'Target Acquisition',
     plateSolvingSettings: 'Plate Solving Settings',
     selectTarget: 'Select a Target',

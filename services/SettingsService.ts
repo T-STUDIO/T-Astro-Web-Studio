@@ -29,6 +29,14 @@ export interface AppSettings {
     lastSaveTimestamp: string;
 }
 
+// ★ 修正: getLanHostname 関数を追加（LAN環境対応）
+const getLanHostname = (): string => {
+    if (typeof window === 'undefined') {
+        return 'localhost';
+    }
+    return window.location.hostname || 'localhost';
+};
+
 const DEFAULT_SETTINGS: AppSettings = {
     connectionSettings: {
         driver: 'INDI',
@@ -53,6 +61,8 @@ const DEFAULT_SETTINGS: AppSettings = {
         showGalaxies: true,
         showNebulae: true,
         showClusters: true,
+        showSatellites: false,
+        showComets: false,
     },
     exposure: 1000,
     gain: 100,
@@ -67,10 +77,12 @@ const DEFAULT_SETTINGS: AppSettings = {
         port: 6000
     },
     isAutoCenterEnabled: false,
-    isAutoSyncLocationEnabled: true, 
+    isAutoSyncLocationEnabled: true,
+    // ★ 修正: LAN環境対応 - ホストを自動検出
     sampSettings: {
-        host: 'localhost',
-        port: 8080
+        host: getLanHostname(),
+        port: 6002,
+        sourceDevice: ''
     },
     location: null,
     savedLocations: [],
@@ -90,7 +102,15 @@ export const loadSettings = (): AppSettings => {
             return { 
                 ...DEFAULT_SETTINGS, 
                 ...parsed, 
-                sampSettings: { ...DEFAULT_SETTINGS.sampSettings, ...parsed.sampSettings },
+                // ★ 修正: sampSettings のマージ時にホストをLAN自動検出に対応
+                sampSettings: { 
+                    ...DEFAULT_SETTINGS.sampSettings,
+                    ...parsed.sampSettings,
+                    // 保存されたhostがある場合はそれを使用し、ない場合のみ現在のホスト名を使用
+                    host: parsed.sampSettings?.host && parsed.sampSettings.host !== 'localhost' && parsed.sampSettings.host !== '127.0.0.1' 
+                        ? parsed.sampSettings.host 
+                        : (parsed.sampSettings?.host || getLanHostname())
+                },
                 planetariumSettings: { ...DEFAULT_SETTINGS.planetariumSettings, ...parsed.planetariumSettings },
                 connectionSettings: { ...DEFAULT_SETTINGS.connectionSettings, ...parsed.connectionSettings },
                 localSolverSettings: { ...DEFAULT_SETTINGS.localSolverSettings, ...parsed.localSolverSettings },
@@ -163,7 +183,13 @@ export const importSettingsFromFile = async (file: File): Promise<AppSettings> =
                     savedApiKeys: Array.isArray(data.savedApiKeys) ? data.savedApiKeys : [],
                     savedLocalSolvers: Array.isArray(data.savedLocalSolvers) ? data.savedLocalSolvers : [],
                     savedSampSettings: Array.isArray(data.savedSampSettings) ? data.savedSampSettings : [],
-                    sampSettings: { ...DEFAULT_SETTINGS.sampSettings, ...data.sampSettings },
+                    // ★ 修正: sampSettings のマージ時にホストをLAN自動検出に対応
+                    sampSettings: { 
+                        ...DEFAULT_SETTINGS.sampSettings,
+                        ...data.sampSettings,
+                        // 保存されたhostがない場合は現在のホスト名を使用
+                        host: data.sampSettings?.host || getLanHostname()
+                    },
                     planetariumSettings: { ...DEFAULT_SETTINGS.planetariumSettings, ...data.planetariumSettings },
                     connectionSettings: { ...DEFAULT_SETTINGS.connectionSettings, ...data.connectionSettings },
                     localSolverSettings: { ...DEFAULT_SETTINGS.localSolverSettings, ...data.localSolverSettings }

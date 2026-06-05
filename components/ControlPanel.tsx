@@ -238,6 +238,8 @@ const SettingsPanel = memo((props: any) => {
              <ToggleSwitch id="show-galaxies" label={t('controlPanel.showGalaxies')} checked={planetariumSettings.showGalaxies} onChange={(v) => onPlanetariumSettingsChange({ showGalaxies: v })} />
              <ToggleSwitch id="show-nebulae" label={t('controlPanel.showNebulae')} checked={planetariumSettings.showNebulae} onChange={(v) => onPlanetariumSettingsChange({ showNebulae: v })} />
              <ToggleSwitch id="show-clusters" label={t('controlPanel.showClusters')} checked={planetariumSettings.showClusters} onChange={(v) => onPlanetariumSettingsChange({ showClusters: v })} />
+             <ToggleSwitch id="show-satellites" label={t('controlPanel.showSatellites')} checked={planetariumSettings.showSatellites} onChange={(v) => onPlanetariumSettingsChange({ showSatellites: v })} />
+             <ToggleSwitch id="show-comets" label={t('controlPanel.showComets')} checked={planetariumSettings.showComets} onChange={(v) => onPlanetariumSettingsChange({ showComets: v })} />
           </div>
           
           <div className="space-y-2 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
@@ -273,7 +275,19 @@ const SettingsPanel = memo((props: any) => {
 
                     <div>
                         <label className="block text-[10px] text-slate-400 mb-1">{t('controlPanel.host')}</label>
-                        <input type="text" value={sampSettings?.host || 'localhost'} onChange={(e) => { setSelectedSampIndex(""); onSampSettingsChange({ host: e.target.value }); }} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200" placeholder="localhost" autoComplete="off" title={t('tooltips.host')} />
+                        <input type="text" value={sampSettings?.host || ''} onChange={(e) => { setSelectedSampIndex(""); onSampSettingsChange({ host: e.target.value }); }} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200" placeholder="localhost" autoComplete="off" title={t('tooltips.host')} />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] text-slate-400 mb-1">{t('controlPanel.password')} (samp.secret)</label>
+                        <input 
+                            type="password" 
+                            value={sampSettings?.secret || ''} 
+                            onChange={(e) => { setSelectedSampIndex(""); onSampSettingsChange({ secret: e.target.value }); }} 
+                            className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200" 
+                            placeholder="e.g. pk-..." 
+                            autoComplete="off"
+                            title="The secret from .samp file for connecting to external hubs."
+                        />
                     </div>
                     <div>
                         <label className="block text-[10px] text-slate-400 mb-1">{t('controlPanel.port')} (WebSockify)</label>

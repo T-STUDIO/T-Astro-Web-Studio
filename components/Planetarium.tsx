@@ -11,6 +11,8 @@ import { CrosshairIcon } from './icons/CrosshairIcon';
 import { StarIcon } from './icons/StarIcon';
 import { TelescopeIcon } from './icons/TelescopeIcon';
 import * as AstroService from '../services/AstroService';
+import { satelliteService, Satellite } from '../services/satelliteService';
+import { cometService, Comet } from '../services/cometService';
 import { useTranslation } from '../contexts/LanguageContext';
 import { getRealStarCatalog } from '../utils/starCatalog';
 import { BACKGROUND_STARS } from '../utils/starGenerator';
@@ -108,6 +110,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const [dssLoading, setDssLoading] = useState(false);
     const lastDssParams = useRef({ ra: -1, dec: -1, zoom: -1 });
     const [searchQuery, setSearchQuery] = useState('');
+    const [satellitesList, setSatellitesList] = useState<Satellite[]>([]);
+    const [cometsList, setCometsList] = useState<Comet[]>([]);
+    const promptFocalLengthRef = useRef(false);
 
     const effLocation = location || { latitude: 35.6, longitude: 139.6 };
     const effTime = localTime || new Date();
@@ -188,6 +193,34 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         observer.observe(containerRef.current);
         return () => observer.disconnect();
     }, []);
+
+    useEffect(() => {
+        if (settings.showSatellites) {
+            satelliteService.startUpdateLoop((sats) => {
+                setSatellitesList([...sats]);
+            });
+        } else {
+            satelliteService.stopUpdateLoop();
+            setSatellitesList([]);
+        }
+        return () => {
+            satelliteService.stopUpdateLoop();
+        };
+    }, [settings.showSatellites]);
+
+    useEffect(() => {
+        if (settings.showComets) {
+            cometService.startUpdateLoop((comets) => {
+                setCometsList([...comets]);
+            });
+        } else {
+            cometService.stopUpdateLoop();
+            setCometsList([]);
+        }
+        return () => {
+            cometService.stopUpdateLoop();
+        };
+    }, [settings.showComets]);
 
     useEffect(() => {
         if (!canvasRef.current || dimensions.width === 0 || dimensions.height === 0) return;
@@ -419,15 +452,187 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             });
         }
+        // --- 1. 人工衛星の描画 ---
+        if (settings.showSatellites && satellitesList.length > 0) {
+            satellitesList.forEach(sat => {
+                const { alt, az } = raDecToAzAlt(sat.ra, sat.dec, effLocation.latitude, lst);
+                if (alt < 0) return;
+                const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                if (!p || p.x < 0 || p.x > width || p.y < 0 || p.y > height) return;
+
+                const isLit = Math.floor(Date.now() / 250) % 2 === 0;
+                
+                ctx.save();
+                ctx.fillStyle = isLit ? 'rgba(34, 211, 238, 1)' : 'rgba(34, 211, 238, 0.4)';
+                ctx.shadowColor = 'rgba(34, 211, 238, 0.8)';
+                ctx.shadowBlur = isLit ? 6 : 2;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, isLit ? 3.5 : 2.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (isLit) {
+                    ctx.strokeStyle = 'rgba(34, 211, 238, 0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.font = '10px monospace';
+                const name = language === 'ja' ? sat.nameJa : sat.name;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.lineWidth = 3;
+                ctx.strokeText(`🛰️ ${name}`, p.x + 10, p.y);
+                ctx.fillStyle = '#22d3ee';
+                ctx.fillText(`🛰️ ${name}`, p.x + 10, p.y);
+                ctx.restore();
+            });
+        }
+
+        // --- 2. 彗星の描画 ---
+        if (settings.showComets && cometsList.length > 0) {
+            cometsList.forEach(comet => {
+                const { alt, az } = raDecToAzAlt(comet.ra, comet.dec, effLocation.latitude, lst);
+                if (alt < 0) return;
+                const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                if (!p || p.x < 0 || p.x > width || p.y < 0 || p.y > height) return;
+
+                ctx.save();
+                ctx.fillStyle = 'rgba(74, 222, 128, 0.8)';
+                ctx.strokeStyle = 'rgba(74, 222, 128, 0.4)';
+                ctx.shadowColor = 'rgba(74, 222, 128, 0.6)';
+                ctx.shadowBlur = 4;
+
+                const radGlow = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, 6);
+                radGlow.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                radGlow.addColorStop(0.3, 'rgba(74, 222, 128, 0.8)');
+                radGlow.addColorStop(1, 'rgba(74, 222, 128, 0)');
+                ctx.fillStyle = radGlow;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(74, 222, 128, 0.2)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p.x + 10, p.y - 10);
+                ctx.stroke();
+
+                ctx.font = '10px sans-serif';
+                const name = language === 'ja' ? comet.nameJa : comet.name;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.lineWidth = 3;
+                ctx.strokeText(`☄️ ${name}`, p.x + 8, p.y + 6);
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText(`☄️ ${name}`, p.x + 8, p.y + 6);
+                ctx.restore();
+            });
+        }
+
+        // --- 3. 望遠鏡・画角指標の描画 ---
         if (telescopePosition && isConnected) {
             const { alt: tAlt, az: tAz } = raDecToAzAlt(telescopePosition.ra, telescopePosition.dec, effLocation.latitude, lst);
             const tp = projectStereographic(tAlt, tAz, width, height, zoom, center, viewAlt, viewAz);
             if (tp) {
-                ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tp.x, tp.y, 20, 0, Math.PI * 2); ctx.stroke();
-                ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tp.x - 30, tp.y); ctx.lineTo(tp.x + 30, tp.y); ctx.moveTo(tp.x, tp.y - 30); ctx.lineTo(tp.x, tp.y + 30); ctx.stroke();
+                const activeCam = AstroService.getActiveCamera();
+                const params = AstroService.getCameraParams();
+                
+                let focalLength = 0;
+                const driver = loadSettings().connectionSettings.driver;
+                
+                if (driver === 'Simulator') {
+                    focalLength = loadSettings().simulatorSettings.focalLength || 0;
+                } else if (activeCam) {
+                    focalLength = AstroService.getNumericValue(activeCam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 
+                                  AstroService.getNumericValue(activeCam, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') ||
+                                  AstroService.getNumericValue(activeCam, 'FocalLength', 'FocalLength') || 0;
+                }
+
+                if (isConnected && activeCam && (focalLength === 0 || focalLength === null) && !promptFocalLengthRef.current) {
+                    promptFocalLengthRef.current = true;
+                    setTimeout(() => {
+                        const val = window.prompt("望遠鏡の焦点距離(TELESCOPE_FOCAL_LENGTH)がドライバ側で設定されていません。画像取得時に画角を正確に表示するために、焦点距離 (mm) を入力してください:", "180");
+                        if (val) {
+                            const num = parseFloat(val);
+                            if (!isNaN(num) && num > 0) {
+                                AstroService.updateDeviceSetting(activeCam, 'TELESCOPE_TYPE', { 'TELESCOPE_FOCAL_LENGTH': num });
+                            }
+                        }
+                    }, 1000);
+                }
+
+                const hasCameraParams = params && params.width > 0 && params.height > 0 && params.pixelSize > 0 && focalLength > 0;
+
+                if (hasCameraParams) {
+                    const sw = params.width * (params.pixelSize / 1000.0);
+                    const sh = params.height * (params.pixelSize / 1000.0);
+                    const fovWDeg = (sw / focalLength) * (180.0 / Math.PI);
+                    const fovHDeg = (sh / focalLength) * (180.0 / Math.PI);
+
+                    const wPx = fovWDeg * pixelsPerDegree;
+                    const hPx = fovHDeg * pixelsPerDegree;
+
+                    ctx.save();
+                    ctx.translate(tp.x, tp.y);
+                    
+                    let rotationDeg = 0;
+                    if (activeCam) {
+                        rotationDeg = AstroService.getNumericValue(activeCam, 'CCD_ROTATOR', 'ROTATION') || 
+                                      AstroService.getNumericValue(activeCam, 'ROTATOR', 'ROTATION') || 0;
+                    }
+                    ctx.rotate((rotationDeg * Math.PI) / 180.0);
+
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(-wPx / 2, -hPx / 2, wPx, hPx);
+
+                    const markerLen = Math.min(15, Math.min(wPx, hPx) * 0.2);
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2.5;
+
+                    ctx.beginPath();
+                    ctx.moveTo(-wPx/2 + markerLen, -hPx/2);
+                    ctx.lineTo(-wPx/2, -hPx/2);
+                    ctx.lineTo(-wPx/2, -hPx/2 + markerLen);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(wPx/2 - markerLen, -hPx/2);
+                    ctx.lineTo(wPx/2, -hPx/2);
+                    ctx.lineTo(wPx/2, -hPx/2 + markerLen);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(-wPx/2 + markerLen, hPx/2);
+                    ctx.lineTo(-wPx/2, hPx/2);
+                    ctx.lineTo(-wPx/2, hPx/2 - markerLen);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(wPx/2 - markerLen, hPx/2);
+                    ctx.lineTo(wPx/2, hPx/2);
+                    ctx.lineTo(wPx/2, hPx/2 - markerLen);
+                    ctx.stroke();
+
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+                    ctx.font = '10px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`FOV: ${fovWDeg.toFixed(2)}° × ${fovHDeg.toFixed(2)}° (F:${focalLength}mm)`, 0, hPx/2 + 15);
+
+                    ctx.restore();
+                } else {
+                    ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tp.x, tp.y, 20, 0, Math.PI * 2); ctx.stroke();
+                    ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tp.x - 30, tp.y); ctx.lineTo(tp.x + 30, tp.y); ctx.moveTo(tp.x, tp.y - 30); ctx.lineTo(tp.x, tp.y + 30); ctx.stroke();
+                }
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading]);
+    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading, satellitesList, cometsList]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }

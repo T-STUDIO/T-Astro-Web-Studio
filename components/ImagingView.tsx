@@ -13,11 +13,12 @@ import { ListIcon } from './icons/ListIcon';
 import { CloseIcon } from './icons/CloseIcon';
 import { HistogramIcon } from './icons/HistogramIcon';
 import { solveImageAstrometryNet, solveImageLocal, CalibrationData, SolverAnnotation } from '../services/plateSolvingService';
-import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, calculateTransitTime, decimalToSexagesimal, pixelToWcs } from '../utils/coords';
+import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, calculateTransitTime, decimalToSexagesimal, pixelToWcs, projectWcsToPixel } from '../utils/coords';
 import { exportFITS, exportTIFF, exportJPEG } from '../utils/imageExporter';
 import { MetadataViewer } from './MetadataViewer';
 import { CelestialObjectHUD } from './CelestialObjectHUD';
 import * as AstroService from '../services/AstroService';
+import { CELESTIAL_OBJECTS, CONSTELLATIONS } from '../constants';
 
 interface ImagingViewProps {
   isCapturing: boolean;
@@ -82,7 +83,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
     isMini = false,
     onStopStream
 }) => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   
   const [showAnnotations, setShowAnnotations] = useState(false); 
   const [wcsStatus, setWcsStatus] = useState<'Idle' | 'Solving' | 'Success' | 'Failed'>('Idle');
@@ -187,6 +188,8 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
   const drawOverlays = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
       hitRegions.current = []; 
       if (!showAnnotations) return;
+      
+      // 1. Draw Native Object Annotations
       if (nativeAnnotations.length > 0) {
           const solverW = solverImageDimensions?.width || width;
           const solverH = solverImageDimensions?.height || height;
@@ -204,7 +207,98 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
           });
           ctx.restore();
       }
-  }, [showAnnotations, nativeAnnotations, solverImageDimensions]);
+
+      // 2. Draw Constellation lines & names under successful WCS Calibration
+      if (solvedCalibration) {
+          const starPosMap = new Map<string, { ra: number; dec: number }>();
+          CELESTIAL_OBJECTS.forEach(obj => {
+              if (obj.type === 'Star') {
+                  const raDeg = hmsToDegrees(obj.ra);
+                  const decDeg = dmsToDegrees(obj.dec);
+                  starPosMap.set(obj.id, { ra: raDeg, dec: decDeg });
+              }
+          });
+
+          const solverW = solverImageDimensions?.width || width;
+          const solverH = solverImageDimensions?.height || height;
+          const scaleX = width / solverW;
+          const scaleY = height / solverH;
+
+          ctx.save();
+          
+          // Draw lines
+          ctx.strokeStyle = 'rgba(34, 211, 238, 0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+
+          CONSTELLATIONS.forEach(c => {
+              c.lines.forEach(line => {
+                  const s1 = starPosMap.get(line.from);
+                  const s2 = starPosMap.get(line.to);
+                  if (s1 && s2) {
+                      const p1_orig = projectWcsToPixel(s1.ra, s1.dec, solvedCalibration, solverW, solverH);
+                      const p2_orig = projectWcsToPixel(s2.ra, s2.dec, solvedCalibration, solverW, solverH);
+                      if (p1_orig && p2_orig) {
+                          const p1 = { x: p1_orig.x * scaleX, y: p1_orig.y * scaleY };
+                          const p2 = { x: p2_orig.x * scaleX, y: p2_orig.y * scaleY };
+                          
+                          const margin = 200;
+                          const inBounds = (p: any) => p.x >= -margin && p.x <= width + margin && p.y >= -margin && p.y <= height + margin;
+                          if (inBounds(p1) && inBounds(p2)) {
+                              ctx.moveTo(p1.x, p1.y);
+                              ctx.lineTo(p2.x, p2.y);
+                          }
+                      }
+                  }
+              });
+          });
+          ctx.stroke();
+
+          // Draw names
+          CONSTELLATIONS.forEach(c => {
+              let sumX = 0;
+              let sumY = 0;
+              let count = 0;
+              const processedStarIds = new Set<string>();
+              c.lines.forEach(line => {
+                  processedStarIds.add(line.from);
+                  processedStarIds.add(line.to);
+              });
+
+              processedStarIds.forEach(starId => {
+                  const s = starPosMap.get(starId);
+                  if (s) {
+                      const p_orig = projectWcsToPixel(s.ra, s.dec, solvedCalibration, solverW, solverH);
+                      if (p_orig) {
+                          const p = { x: p_orig.x * scaleX, y: p_orig.y * scaleY };
+                          if (p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
+                              sumX += p.x;
+                              sumY += p.y;
+                              count++;
+                          }
+                      }
+                  }
+              });
+
+              if (count >= 2) {
+                  const centerX = sumX / count;
+                  const centerY = sumY / count;
+                  const name = language === 'ja' ? c.nameJa : c.name;
+                  ctx.save();
+                  ctx.font = 'bold 12px sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.shadowColor = 'black';
+                  ctx.shadowBlur = 4;
+                  ctx.fillStyle = 'rgba(34, 211, 238, 0.85)';
+                  ctx.fillText(name, centerX, centerY);
+                  ctx.restore();
+              }
+          });
+
+          ctx.restore();
+      }
+  }, [showAnnotations, nativeAnnotations, solverImageDimensions, solvedCalibration, language]);
 
     const applyLutAndDraw = useCallback((ctx: CanvasRenderingContext2D, imageData: ImageData) => {
         const data = imageData.data;

@@ -45,6 +45,8 @@ export interface ConnectionSettings {
 export interface SampSettings {
     host: string;
     port: number;
+    secret?: string; // Added secret for external hub
+    sourceDevice?: string; // Added source device selection
 }
 
 export interface PlanetariumSettings {
@@ -65,6 +67,8 @@ export interface PlanetariumSettings {
   showGalaxies: boolean;
   showNebulae: boolean;
   showClusters: boolean;
+  showSatellites: boolean;
+  showComets: boolean;
 }
 
 export interface Constellation {

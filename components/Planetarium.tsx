@@ -11,6 +11,7 @@ import { CrosshairIcon } from './icons/CrosshairIcon';
 import { StarIcon } from './icons/StarIcon';
 import { TelescopeIcon } from './icons/TelescopeIcon';
 import * as AstroService from '../services/AstroService';
+import { loadSettings } from '../services/SettingsService';
 import { satelliteService, Satellite } from '../services/satelliteService';
 import { cometService, Comet } from '../services/cometService';
 import { useTranslation } from '../contexts/LanguageContext';
@@ -113,6 +114,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const [satellitesList, setSatellitesList] = useState<Satellite[]>([]);
     const [cometsList, setCometsList] = useState<Comet[]>([]);
     const promptFocalLengthRef = useRef(false);
+    const [manualFocalLength, setManualFocalLength] = useState<number>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('planetarium_manual_focal_length');
+            return saved ? parseFloat(saved) : 0;
+        }
+        return 0;
+    });
 
     const effLocation = location || { latitude: 35.6, longitude: 139.6 };
     const effTime = localTime || new Date();
@@ -552,14 +560,18 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     focalLength = AstroService.getNumericValue(activeCam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 
                                   AstroService.getNumericValue(activeCam, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') ||
                                   AstroService.getNumericValue(activeCam, 'FocalLength', 'FocalLength') || 0;
+                    
+                    if ((focalLength === 0 || focalLength === null) && manualFocalLength > 0) {
+                        focalLength = manualFocalLength;
+                    }
                 }
 
-                if (isConnected && activeCam && (focalLength === 0 || focalLength === null) && !promptFocalLengthRef.current) {
+                if (isConnected && activeCam && driver !== 'Simulator' && (focalLength === 0 || focalLength === null) && !promptFocalLengthRef.current) {
                     promptFocalLengthRef.current = true;
                     setTimeout(() => {
                         let val: string | null = null;
                         try {
-                            val = window.prompt("望遠鏡の焦点距離(TELESCOPE_FOCAL_LENGTH)がドライバ側で設定されていません。画像取得時に画角を正確に表示するために、焦点距離 (mm) を入力してください:", "180");
+                            val = window.prompt("CCDカメラドライバ内に焦点距離(TELESCOPE_FOCAL_LENGTH)が設定されていません。画角（FOV）を正確に表示するために、望遠鏡の焦点距離 (mm) を入力してください（入力値はブラウザに保存され、ドライバへの直接書き込みは行われません）:", "180");
                         } catch (e) {
                             console.warn("window.prompt is blocked in iframe sandbox. Using default 180mm.", e);
                             val = "180";
@@ -567,7 +579,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         if (val) {
                             const num = parseFloat(val);
                             if (!isNaN(num) && num > 0) {
-                                AstroService.updateDeviceSetting(activeCam, 'TELESCOPE_TYPE', { 'TELESCOPE_FOCAL_LENGTH': num });
+                                localStorage.setItem('planetarium_manual_focal_length', num.toString());
+                                setManualFocalLength(num);
                             }
                         }
                     }, 1000);
@@ -638,7 +651,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading, satellitesList, cometsList]);
+    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading, satellitesList, cometsList, manualFocalLength]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }

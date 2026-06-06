@@ -557,7 +557,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 if (isConnected && activeCam && (focalLength === 0 || focalLength === null) && !promptFocalLengthRef.current) {
                     promptFocalLengthRef.current = true;
                     setTimeout(() => {
-                        const val = window.prompt("望遠鏡の焦点距離(TELESCOPE_FOCAL_LENGTH)がドライバ側で設定されていません。画像取得時に画角を正確に表示するために、焦点距離 (mm) を入力してください:", "180");
+                        let val: string | null = null;
+                        try {
+                            val = window.prompt("望遠鏡の焦点距離(TELESCOPE_FOCAL_LENGTH)がドライバ側で設定されていません。画像取得時に画角を正確に表示するために、焦点距離 (mm) を入力してください:", "180");
+                        } catch (e) {
+                            console.warn("window.prompt is blocked in iframe sandbox. Using default 180mm.", e);
+                            val = "180";
+                        }
                         if (val) {
                             const num = parseFloat(val);
                             if (!isNaN(num) && num > 0) {

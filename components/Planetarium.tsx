@@ -556,11 +556,63 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 
                 if (driver === 'Simulator') {
                     focalLength = loadSettings().simulatorSettings.focalLength || 0;
-                } else if (activeCam) {
-                    focalLength = AstroService.getNumericValue(activeCam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 
-                                  AstroService.getNumericValue(activeCam, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') ||
-                                  AstroService.getNumericValue(activeCam, 'FocalLength', 'FocalLength') || 0;
+                } else {
+                    // --- 読み込み最適化（インテリジェント自動スキャン） ---
+                    // 1. まず標準的なキーでカメラ側から取得
+                    if (activeCam) {
+                        focalLength = AstroService.getNumericValue(activeCam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 
+                                      AstroService.getNumericValue(activeCam, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') ||
+                                      AstroService.getNumericValue(activeCam, 'FocalLength', 'FocalLength') || 0;
+                    }
                     
+                    // 2. マウント側からも標準的なキーで取得を試みる
+                    if (focalLength === 0 || focalLength === null) {
+                        const activeMount = (AstroService as any).getActiveMount?.();
+                        if (activeMount) {
+                            focalLength = AstroService.getNumericValue(activeMount, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 
+                                          AstroService.getNumericValue(activeMount, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') ||
+                                          AstroService.getNumericValue(activeMount, 'FocalLength', 'FocalLength') || 0;
+                        }
+                    }
+
+                    // 3. カメラ側の全プロパティから 'focal' という語を部分一致で自動スキャン
+                    if ((focalLength === 0 || focalLength === null) && activeCam) {
+                        const props = AstroService.getDeviceProperties(activeCam);
+                        for (const prop of props) {
+                            for (const [elName, el] of prop.elements.entries()) {
+                                const containsFocal = elName.toLowerCase().indexOf('focal') !== -1 || 
+                                                     (el.label && el.label.toLowerCase().indexOf('focal') !== -1) ||
+                                                     prop.name.toLowerCase().indexOf('focal') !== -1;
+                                if (containsFocal && typeof el.value === 'number' && el.value > 0) {
+                                    focalLength = el.value;
+                                    break;
+                                }
+                            }
+                            if (focalLength > 0) break;
+                        }
+                    }
+
+                    // 4. マウント側の全プロパティからも 'focal' という語を部分一致で自動スキャン
+                    if (focalLength === 0 || focalLength === null) {
+                        const activeMount = (AstroService as any).getActiveMount?.();
+                        if (activeMount) {
+                            const props = AstroService.getDeviceProperties(activeMount);
+                            for (const prop of props) {
+                                for (const [elName, el] of prop.elements.entries()) {
+                                    const containsFocal = elName.toLowerCase().indexOf('focal') !== -1 || 
+                                                         (el.label && el.label.toLowerCase().indexOf('focal') !== -1) ||
+                                                         prop.name.toLowerCase().indexOf('focal') !== -1;
+                                    if (containsFocal && typeof el.value === 'number' && el.value > 0) {
+                                        focalLength = el.value;
+                                        break;
+                                    }
+                                }
+                                if (focalLength > 0) break;
+                            }
+                        }
+                    }
+
+                    // 5. ローカルに保存されている手動入力値を使用
                     if ((focalLength === 0 || focalLength === null) && manualFocalLength > 0) {
                         focalLength = manualFocalLength;
                     }

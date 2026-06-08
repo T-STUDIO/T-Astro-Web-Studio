@@ -11,6 +11,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { MainView } from './components/MainView';
 import { StatusBar } from './components/StatusBar';
 import { GeminiInfoModal } from './components/GeminiInfoModal';
+import { GeminiApiKeyModal } from './components/GeminiApiKeyModal'; // New Import
 import { DeviceSettingsModal } from './components/DeviceSettingsModal';
 import { DiagnosticsModal } from './components/DiagnosticsModal';
 import { TSConnect } from './components/TSConnect'; // Import TSConnect
@@ -104,6 +105,29 @@ const App: React.FC = () => {
   const [isGeminiModalOpen, setIsGeminiModalOpen] = useState(false);
   const [geminiContent, setGeminiContent] = useState('');
   const [isGeminiLoading, setIsGeminiLoading] = useState(false);
+
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+
+  useEffect(() => {
+    const savedKey = localStorage.getItem('gemini_api_key');
+    const params = new URLSearchParams(window.location.search);
+    const triggerParam = params.get('set_api_key') === 'true';
+
+    if (!savedKey || triggerParam) {
+      setIsApiKeyModalOpen(true);
+    }
+  }, []);
+
+  const handleRegisterApiKey = (key: string) => {
+    localStorage.setItem('gemini_api_key', key);
+    setIsApiKeyModalOpen(false);
+    
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('set_api_key')) {
+      url.searchParams.delete('set_api_key');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+  };
 
   const [isDeviceSettingsOpen, setIsDeviceSettingsOpen] = useState(false);
   const [selectedDeviceType, setSelectedDeviceType] = useState<DeviceType | null>(null);
@@ -693,6 +717,11 @@ const App: React.FC = () => {
       />
       <DiagnosticsModal isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} currentSettings={connectionSettings} />
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <GeminiApiKeyModal 
+        isOpen={isApiKeyModalOpen} 
+        onClose={() => setIsApiKeyModalOpen(false)} 
+        onRegister={handleRegisterApiKey} 
+      />
     </div>
   );
 };

@@ -12,6 +12,7 @@ import { ControlPanelSimulator as ControlPanel } from './components/ControlPanel
 import { MainViewSimulator as MainView } from './components/MainViewSimulator';
 import { StatusBarSimulator as StatusBar } from './components/StatusBarSimulator';
 import { GeminiInfoModal } from './components/GeminiInfoModal';
+import { GeminiApiKeyModal } from './components/GeminiApiKeyModal';
 import { DeviceSettingsModalSimulator as DeviceSettingsModal } from './components/DeviceSettingsModalSimulator';
 import { DiagnosticsModalSimulator as DiagnosticsModal } from './components/DiagnosticsModalSimulator';
 import { useTranslation } from './contexts/LanguageContext';
@@ -101,6 +102,29 @@ const AppSimulator: React.FC = () => {
   const [isGeminiModalOpen, setIsGeminiModalOpen] = useState(false);
   const [geminiContent, setGeminiContent] = useState('');
   const [isGeminiLoading, setIsGeminiLoading] = useState(false);
+
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+
+  useEffect(() => {
+    const savedKey = localStorage.getItem('gemini_api_key');
+    const params = new URLSearchParams(window.location.search);
+    const triggerParam = params.get('set_api_key') === 'true';
+
+    if (!savedKey || triggerParam) {
+      setIsApiKeyModalOpen(true);
+    }
+  }, []);
+
+  const handleRegisterApiKey = (key: string) => {
+    localStorage.setItem('gemini_api_key', key);
+    setIsApiKeyModalOpen(false);
+    
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('set_api_key')) {
+      url.searchParams.delete('set_api_key');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+  };
 
   const [isDeviceSettingsOpen, setIsDeviceSettingsOpen] = useState(false);
   const [selectedDeviceType, setSelectedDeviceType] = useState<DeviceType | null>(null);
@@ -601,6 +625,11 @@ const AppSimulator: React.FC = () => {
       />
       <DiagnosticsModal isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} currentSettings={connectionSettings} />
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <GeminiApiKeyModal 
+        isOpen={isApiKeyModalOpen} 
+        onClose={() => setIsApiKeyModalOpen(false)} 
+        onRegister={handleRegisterApiKey} 
+      />
     </div>
   );
 };

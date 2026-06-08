@@ -53,15 +53,12 @@ Use this precise scientific data as the primary source of truth, and describe th
   `;
 
   try {
-    /* GUIDELINE: Always obtain API key exclusively from process.env.API_KEY and initialize inside the function. */
-    const getEnvVar = (name: string) => {
-      try {
-        return (import.meta.env && import.meta.env[`VITE_${name}`]) || (typeof process !== 'undefined' ? process.env[name] : '');
-      } catch (e) {
-        return '';
-      }
-    };
-    const apiKey = getEnvVar('API_KEY');
+    const apiKey = (typeof window !== 'undefined' ? window.localStorage.getItem('gemini_api_key') : null) || '';
+    if (!apiKey) {
+      return language === 'ja'
+        ? "Gemini APIキーが設定されていません。AI機能を使用するにはAPIキーを登録してください。ブラウザURLの末尾に「?set_api_key=true」を入力して移動すると、再書き換え画面を表示できます。"
+        : "Gemini API Key is not set. Please set your API key to use dynamic AI descriptions. Append '?set_api_key=true' to the URL to show the API key installation dialog.";
+    }
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: model,
@@ -127,14 +124,10 @@ export const summarizeExternalInfo = async (objectName: string, rawText: string,
   `;
 
   try {
-    const getEnvVar = (name: string) => {
-      try {
-        return (import.meta.env && import.meta.env[`VITE_${name}`]) || (typeof process !== 'undefined' ? process.env[name] : '');
-      } catch (e) {
-        return '';
-      }
-    };
-    const apiKey = getEnvVar('API_KEY');
+    const apiKey = (typeof window !== 'undefined' ? window.localStorage.getItem('gemini_api_key') : null) || '';
+    if (!apiKey) {
+      return language === 'ja' ? "Gemini APIキーが設定されていません。" : "Gemini API Key is not set.";
+    }
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: model,

@@ -29,7 +29,27 @@ export interface SolveResult {
 }
 
 const API_BASE = "https://nova.astrometry.net/api";
-const PROXY_BASE = "https://corsproxy.io/?";
+
+const isLocalHostname = (hostname: string): boolean => {
+    return (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '[::1]' ||
+        /^192\.168\./.test(hostname) ||
+        /^10\./.test(hostname) ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
+        hostname.endsWith('.local')
+    );
+};
+
+const getAstrometryNetApiUrl = (originalUrl: string): string => {
+    const hostname = window.location.hostname;
+    if (isLocalHostname(hostname)) {
+        return originalUrl.replace('https://nova.astrometry.net/api', `http://${hostname}:6004/api`);
+    } else {
+        return `https://api.allorigins.win/raw?url=${encodeURIComponent(originalUrl)}`;
+    }
+};
 
 const safeJson = async (res: Response) => {
     const text = await res.text();
@@ -43,7 +63,22 @@ const safeJson = async (res: Response) => {
 
 const fetchWithCorsFallback = async (url: string, options: RequestInit = {}): Promise<Response> => {
     if (url.includes('nova.astrometry.net')) {
-        const proxyUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
+        const hostname = window.location.hostname;
+        if (!isLocalHostname(hostname)) {
+            const sessionKey = 'astrometry_net_online_warned';
+            if (!sessionStorage.getItem(sessionKey)) {
+                const proceed = window.confirm(
+                    "GitHub Pages / オンライン環境を検出しました。\n" +
+                    "オンラインプロキシ（AllOrigins）を介して Astrometry.net (nova.astrometry.net) にアクセスします。\n" +
+                    "Astrometry.netのAPI Keyが登録されている必要があります。よろしいですか？"
+                );
+                if (!proceed) {
+                    throw new Error("オンラインプロキシ経由の解析がキャンセルされました。");
+                }
+                sessionStorage.setItem(sessionKey, 'true');
+            }
+        }
+        const proxyUrl = getAstrometryNetApiUrl(url);
         return await fetch(proxyUrl, { ...options, mode: 'cors' });
     }
     return await fetch(url, { ...options });

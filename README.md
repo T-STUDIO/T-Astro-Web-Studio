@@ -24,7 +24,25 @@ You will also need to install INDI and Astrometry.net in your local environment.
 
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local]to your Gemini API key
-3. Run the app:
+2. Run the app:
    `npm run build`竊蛋npm run preview`
+
+A dialog box to obtain a "geminiAPIKey" will appear upon first launch.
+You can use the app after registering your API key. (BYOK supported.)
+
+If you integrate it locally, you will also need to install the following services to use PlateSolver:
+1. Astrometry.net
+sudo apt install astrometry.net
+
+2. The Astrometry API server to be distributed
+https://github.com/T-STUDIO/TSPS
+
+Reason: nova.astrometory.net is no longer accessible from browsers due to changes in usage.
+
+## Github Pages
+https://t-studio.github.io/T-Astro-Web-Studio/
+
+A dialog box to obtain a "geminiAPIKey" will appear upon first launch.
+You can use the app after registering your API key. (BYOK supported.)
+
+Since GitHub Pages does not have a local Astrometry.net instance, please use an API key for PlateSolving.

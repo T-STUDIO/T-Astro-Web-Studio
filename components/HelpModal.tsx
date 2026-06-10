@@ -32,449 +32,291 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
     const helpContent: HelpSection[] = language === 'ja' ? [
         {
-            title: '🚀 クイックスタート',
+            title: '🚀 クイックスタートガイド',
             subsections: [
                 {
-                    title: '初期セットアップ',
-                    content: '1. [機材]タブでドライバを選択します（INDI/Alpaca/シミュレータ）\n2. ホストとポートを入力します\n3. [接続]ボタンをクリックして接続します\n4. デバイスリストから使用する機材をオンにします'
+                    title: '1. 事前のドライバ起動（※最重要）',
+                    content: '本アプリにドライバ自体の起動機能はありません。事前に外部PCやRaspberry Pi等でINDIサーバーやASCOM Alpacaサーバー（物理接続デバイス）を必ず起動しておいてください。'
                 },
                 {
-                    title: '天体の検索と導入',
-                    content: '1. [導入]タブの検索ボックスに天体名を入力します（例：M42, NGC 7000, Vega）\n2. 検索結果から対象を選択します\n3. [天体へ移動]ボタンをクリックして望遠鏡を向けます\n4. プラネタリウム画面で現在位置を確認できます'
+                    title: '2. 機材の接続設定',
+                    content: '・[機材]タブでドライバ種別を選択します。\n・ホスト名や中継ポートを入力し、「接続」ボタンを押します。\n・接続成功後、使用するカメラやマウントの個別のスイッチをONにし、右側の歯車マークからセンサーピクセルサイズや望遠鏡焦点距離などの設定を行います。'
                 },
                 {
-                    title: '撮影の開始',
-                    content: '1. [撮影制御]タブで露出時間（ms）を設定します\n2. ゲイン、オフセット、ビニングを必要に応じて調整します\n3. [プレビュー]で単一フレームを撮影するか、[Loop]で連続撮影を開始します\n4. 撮影済み画像は画面に表示されます'
+                    title: '3. 対象天体の検索と導入',
+                    content: '・[導入]タブでメシエ番号（M42など）やNGC番号、星名を入力して候補から天体を選択します。\n・「天体へ移動（GoTo）」をクリックすると、望遠鏡マウントがそこへ向けて自動駆動します。'
+                },
+                {
+                    title: '4. 撮影とライブスタックの開始',
+                    content: '・[撮影制御]タブで露出時間（ms）やゲインなどを設定します。\n・「プレビュー」で構図やピントを確認し、「Loop」で連続撮影を開始します。\n・「ライブスタッキング開始」を押すと、複数撮影された画像が自動でズレ補正されながら重ね合わされ、暗い星雲や星団が鮮明に浮かび上がります。'
                 }
             ]
         },
         {
-            title: '🔌 接続設定（機材タブ）',
+            title: '🔌 ドライバ接続手順と環境設定',
             subsections: [
                 {
-                    title: 'ドライバの選択',
-                    content: '・INDI: Linux/Raspberry Piで動作するオープンソースドライバ\n・Alpaca: Windows/Macで動作する標準プロトコル\n・シミュレータ: 実機がない場合のテスト用'
+                    title: '【重要】事前準備（ドライバの別途起動）',
+                    content: 'INDI / ASCOM Alpaca ともに、本アプリを使用する前に「外部ソフト上でドライバを起動完了させておく」必要があります。\n・INDIの場合: INDI Web ManagerやKStarsなどで事前にINDIサーバーと対象機器のプロファイル等を起動させます。\n・Alpacaの場合: ASCOM Platform、ASCOM Remote、またはAlpaca対応デバイス自体を別途起動させ、ネットワーク上に公開しておく必要があります。'
+                },
+                {
+                    title: 'INDI接続（WebSocketプロトコルについて）',
+                    content: '・本アプリはブラウザ上で動作する仕様上、通常のINDIポート（TCP 7624）へ直接ソケットを繋ぐことができません。\n・そのため、事前に外部で「Websockify（ウェブソキシファイ）」などの仲介サーバー等を動かし、TCPポート(7624)を『WebSocket対応の変換ポート』へと中継・変換した上で、本アプリのINDI接続設定にその変換されたポートを指定してください。'
                 },
                 {
                     title: 'Alpaca接続',
-                    content: '・デフォルトホスト: localhost→接続ホスト名に変更\n・デフォルトポート: 11111\n・リモート接続の場合はIPアドレスを入力します\n・ファイアウォール設定を確認してください'
+                    content: '・デフォルトホスト: localhost（接続先Alpacaサーバーに合わせてIPアドレスを指定してください）\n・デフォルトポート: 11111\n・ルーター、ファイアウォールなどのネットワーク設定で11111番ポートのプライベートパケット通信が許可されている必要があります。'
                 },
                 {
-                    title: 'INDI接続',
-                    content: '・デフォルトホスト: localhost→接続ホスト名に変更\n・デフォルトポート: 7624→WebSocketポートに変更\n・INDIサーバーが起動していることを確認してください\n・複数デバイスは自動検出されます'
-                },
-                {
-                    title: 'デバイス管理',
-                    content: '・接続後、デバイスリストに利用可能な機材が表示されます\n・各デバイスの横のトグルスイッチでON/OFFを切り替えます\n・デバイス設定アイコンで詳細パラメータを調整できます\n・複数のカメラ、フォーカサー、フィルターホイールに対応'
-                },
-                {
-                    title: '接続診断',
-                    content: '・[接続診断]ボタンをクリックしてネットワーク接続をテストします\n・エラーが表示された場合、ホスト/ポート設定を確認してください\n・ファイアウォール、ルーター設定の問題がないか確認してください'
+                    title: 'セキュリティとブラウザ設定 (HttpsでのMixed Content問題)',
+                    content: '・HTTPS（セキュアなインターネット接続、本AI Studioプレビューを含む）で本アプリをご利用の場合、ブラウザのセキュリティ制限（Mixed Contentブロック）により、イントラネットやローカルPC上の通信（HTTP, http://localhost:6001等）へのリクエストが強制遮断されます。\n・【対策】動作を有効にするには、ブラウザのURL欄左のセキュリティ設定（鍵マークやサイト情報など）を開き、「サイトの設定」から『安全でないコンテンツ (Insecure content)』を「許可 (Allow)」に指定するか、安全なHTTP（非セキュア）の接続で本アプリを開くようにしてください。'
                 }
             ]
         },
         {
-            title: '🌌 プラネタリウム（導入タブ）',
-            subsections: [
-                {
-                    title: '画面操作',
-                    content: '・マウスドラッグ: 視野を移動\n・マウスホイール: ズームイン/アウト\n・右クリック: 中心位置をリセット\n・タッチスクリーン: ピンチズーム対応'
-                },
-                {
-                    title: '天体検索',
-                    content: '・検索ボックスに天体名を入力します\n・メシエ番号（M1～M110）に対応\n・NGC/IC番号に対応\n・星名（Vega, Altairなど）に対応\n・自動補完機能で候補が表示されます'
-                },
-                {
-                    title: '表示設定',
-                    content: '・星座線: 星座の枠線を表示/非表示\n・星ラベル: 明るい星の名前を表示\n・DSO（深空天体）ラベル: 星雲・銀河の名前を表示\n・星座名: 星座の名前を表示\n・Az/Altグリッド: 方位角・高度の格子線\n・RA/Decグリッド: 赤経・赤緯の格子線\n・地平線: 観測地点の地平線を表示'
-                },
-                {
-                    title: 'DSS表示機能',
-                    content: '・[設定]タブで「DSSを表示」をONにします\n・プラネタリウムでズームイン（2.0倍以上）します\n・星雲や銀河に実際のDigitized Sky Survey画像が重畳表示されます\n・インターネット接続が必須です\n・画像はAladin Liteサービスから取得されます'
-                },
-                {
-                    title: '天の川表示',
-                    content: '・[設定]タブで「天の川を表示」をONにします\n・「天の川の明度」スライダーで明るさを調整します\n・スライダーを右に移動させるほど明るく表示されます\n・銀河系の平面を視覚的に確認できます'
-                },
-                {
-                    title: '推奨モード',
-                    content: '・[推奨]ボタンをクリックすると、現在の観測地点から見える興味深い天体がハイライトされます\n・季節ごとに異なる天体が推奨されます\n・初心者向けの観測対象を自動選択します'
-                },
-                {
-                    title: '天体情報',
-                    content: '・プラネタリウム上の天体をクリックして選択します\n・下部パネルに天体の詳細情報が表示されます\n・赤経・赤緯、方位角・高度、等級などを確認できます\n・[天体情報を表示]ボタンでAI生成の詳細説明を表示します'
-                }
-            ]
-        },
-        {
-            title: '📷 撮影制御（撮影制御タブ）',
-            subsections: [
-                {
-                    title: '露出設定',
-                    content: '・露出時間（ms）: シャッターが開いている時間\n・ゲイン: センサーの感度（高いほど暗い天体が見えやすい）\n・オフセット: 明るさの基準値（黒つぶれを防ぐ）\n・ビニング: ピクセルを統合して感度を上げる（解像度は低下）'
-                },
-                {
-                    title: 'カラーバランス',
-                    content: '・赤（R）、緑（G）、青（B）チャンネルの係数を調整\n・センサーの色かぶりを補正\n・プレビュー画像の色を最適化\n・カメラの特性に応じてカスタマイズ'
-                },
-                {
-                    title: 'ライブビュー',
-                    content: '・[レイブビュー]ボタンで高速ストリーミング開始\n・フォーカシングやガイド星選択に最適\n・低遅延で実時間フィードバック'
-                },
-                {
-                    title: 'プレビュー',
-                    content: '・[プレビュー]ボタンで単一フレームを撮影\n・構図確認やフォーカス調整に便利\n・撮影後、画像が画面に表示されます'
-                },
-                {
-                    title: 'Loop',
-                    content: '・[Loop]ボタンで連続撮影を開始\n・設定した露出で繰り返し撮影\n・リアルタイムでフォーカス調整が可能\n・[停止]ボタンで撮影を終了'
-                },
-                {
-                    title: 'ライブスタッキング',
-                    content: '・[ライブスタッキング開始]ボタンで複数フレームを自動合成\n・ノイズ低減と詳細表現が向上\n・リアルタイムで合成結果を確認\n・スタック数は自動調整されます'
-                }
-            ]
-        },
-        {
-            title: '⚙️ 設定（設定タブ）',
-            subsections: [
-                {
-                    title: '観測地点設定',
-                    content: '・緯度・経度・標高を入力\n・[Web取得]で現在位置を自動取得\n・[デバイスから取得]で望遠鏡内部の設定を読み込み\n・[マウントに送信]で望遠鏡に設定を送信\n・正確な位置情報は天体計算の精度に影響します'
-                },
-                {
-                    title: '時刻設定',
-                    content: '・システム時刻を使用\n・[マウントに送信]で望遠鏡の時刻を同期\n・UTC時刻で内部計算\n・タイムゾーン設定は自動検出'
-                },
-                {
-                    title: 'プラネタリウム表示設定',
-                    content: '・星座線、ラベル、グリッドの表示/非表示\n・星の大きさスケール: 0.1～3.0倍\n・星の等級制限: 表示する最暗星の明るさ\n・DSO等級制限: 表示する最暗DSO\n・天の川の明度: 0～100%'
-                },
-                {
-                    title: 'DSO表示フィルタ',
-                    content: '・銀河の表示/非表示\n・星雲の表示/非表示\n・星団の表示/非表示\n・各カテゴリーを個別に制御'
-                },
-                {
-                    title: 'バックアップ・復元',
-                    content: '・[デバイスに保存]: 現在の設定をJSONファイルとしてダウンロード\n・[デバイスから読込]: 保存したJSONファイルから復元\n・[Google Driveに保存]: クラウドにバックアップ（要認証）\n・[Google Driveから読込]: クラウドから復元'
-                }
-            ]
-        },
-        {
-            title: '🎯 プレートソルビング',
+            title: '🎯 プレートソルビング（Plate Solving）',
             subsections: [
                 {
                     title: 'プレートソルビングとは',
-                    content: '・撮影した画像から天体の正確な座標を自動計算\n・望遠鏡の指向精度を大幅に向上\n・自動導入の精度が向上'
+                    content: '・撮影した星野写真に含まれる星々のパターンを解析し、望遠鏡が本当に向いている「正確な天球座標（赤経・赤緯）」を算出・特定する機能です。これにより、マウントの機械的ズレを補正しながら、天体を寸分狂わず視野中央に自動導入します。'
                 },
                 {
-                    title: 'ローカルソルバー',
-                    content: '・ローカルコンピュータで実行\n・インターネット接続不要\n・高速処理（1～2秒）\n・ローカル版Astrometry.net＋TSPSを使用'
+                    title: 'ローカルソルバー（TSPS＋Astrometry）',
+                    content: '・動作ポート：【6001】\n・お手元のPCまたは同一ネットワーク内でローカル型ソルバー「Astrometry.net」および「TSPS (T-Studio Plate Solver)」のAPIサーバーを稼働して解決します。\n・インターネットが無くても動作し、1〜2秒前後で非常に高速に解析可能です。TSPSを事前に起動しておき、本アプリの設定から6001ポートのAPIへ接続するパスを指定してください。'
                 },
                 {
-                    title: 'クラウドソルバー（Nova Solver）',
-                    content: '・Astrometry.netクラウドサービスを使用\n・インターネット接続が必須\n・より高精度な結果\n・処理時間は数秒～数十秒'
+                    title: 'リモートソルバー（nova.astrometryへのプロキシ）',
+                    content: '・動作プロキシポート：【6004】\n・オンライン上のパブリックサービス「Astrometry.net（nova.astrometry）」へ画像を送信して解析・解決します。インターネット接続が必須です。\n・【ポート6004の役割】ブラウザ上でCORS制限によりnova.astrometryへの直接APIリクエストが弾かれるのを防ぐため、ローカルで実行（http://localhost:3000 や http://stellarmate.local:3000 等の運用環境）している場合、本アプリはバックエンドで立ち上がっているプロキシサーバーである「6004ポート」を仲介してnova.astrometryにアクセスします。事前にAstrometry.netの「API Key」を取得・設定しておく必要があります。\n※オンライン(GitHub Pages等の非ローカル運用環境)で実行している場合は、外部オープンWebプロキシ「AllOrigins」を介した通信へとフォールバックされます。'
                 },
                 {
-                    title: '自動センタリング',
-                    content: '・[自動センタリング]をONにすると以下を自動実行:\n  1. 画像を撮影\n  2. プレートソルビングで座標を計算\n  3. 望遠鏡の位置を同期\n  4. 必要に応じて望遠鏡を移動\n・目標天体を正確に中心に配置'
+                    title: '自動センタリング機能',
+                    content: '・撮影パラメータ設定後、この機能をオンにすると「撮影 → プレートソルビング → ずれ検出 → マウント自動補正」をシームレスに自動実行し、ターゲットを完全に画面の中心に捉え続けます。'
                 }
             ]
         },
         {
-            title: '🔗 INDI→Alpacaブリッジ',
+            title: '🔗 TS-Connect ＆ Alpacaブリッジ',
             subsections: [
                 {
-                    title: 'ブリッジ機能とは',
-                    content: '・INDIドライバで接続した機材をAlpacaプロトコルで利用可能に\n・異なるプロトコルのアプリケーション間で相互運用\n・INDI機材をAlpaca対応アプリで制御'
+                    title: 'Alpacaブリッジ機能とは',
+                    content: '・本アプリに接続済みのINDIドライバ対応機器を、ASCOM Alpaca互換の仮想デバイスとしてネットワーク上に再公開する機能（ブリッジ＝架け橋）です。\n・これにより、本アプリをインフラ中継機として機能させ、外部の「ASCOM / Alpaca対応の天文シミュレーション・アプリや自動導入ソフトウェア」などから、本機に繋がった実機器をシームレスに操作可能にします。'
                 },
                 {
-                    title: '有効化方法',
-                    content: '1. INDI接続を確立します\n2. TS-Connect→Alpacaボタンで起動\n3. Alpacaクライアントが自動検出\n4. INDI機材がAlpacaデバイスとして利用可能に'
+                    title: 'ブリッジの起動方法',
+                    content: '1. 事事前に外部でINDIサーバー及び中継機を起動し、本アプリの「機材」タブからINDI接続を確立します。\n2. TS-Connectが利用可能な状態で「Alpacaブリッジ」ボタンをクリックして開始（ブリッジ機能をONにする）します。\n3. 同一LAN内の外部Alpaca対応アプリケーション等から機器が自動検出され、外部からのコマンドをINDI機材へダイレクトに転送・制御することが可能になります。'
                 }
             ]
         },
         {
-            title: '📡 WebSocket接続',
+            title: '🖱️ アノテーション（天体情報のクリック）',
             subsections: [
                 {
-                    title: 'WebSocketについて',
-                    content: '・リアルタイム双方向通信プロトコル\n・低遅延のデータ転送\n・ライブビューやストリーミングに最適\n・ネットワーク経由での機材制御'
+                    title: 'アノテーションクリック解説',
+                    content: '・プレートソルビング完了後、撮影写真のビューアー上、またはスタッキングビューアー上に実在する天体の名前や識別マーカーが表示されます。\n・これらの天体枠/文字をマウスで「クリック」すると、画面に「プレビュー天体情報（PreviewModal）」が表示され、そこから様々な天文学Webリソースへ1クリックで直行できます。'
                 },
                 {
-                    title: '接続状態の確認',
-                    content: '・ステータスバーで接続状態を表示\n・緑: 接続済み\n・黄: 接続中\n・赤: 切断/エラー\n・詳細は[接続診断]で確認'
+                    title: 'AI 天体解説 (Gemini AI)',
+                    content: '・検出された主要な天体に関して、Gemini AIが歴史、内部の物理的特徴、および初心者向けの眼視・写真観測のコツを優しくまとめた多言語の天体解説カードです（インターネット接続、及びGemini API Keyが必要）。'
+                },
+                {
+                    title: '天文学Webリソースへの自動リンク(SIMBAD / Wiki / Aladin)',
+                    content: '・[Wikiで調べる]: Wikipediaの該当地点の一般解説ページへ直接リンクします。\n・[SIMBADリンク]: プロの天文学者も使用する世界最高峰の恒星/星雲星団データベース「SIMBAD」のデータベースを参照し、正式学術データを引っ張ります。\n・[Aladinで見る / Aladin Lite]: DSS（Digitized Sky Survey）の高品質実写画像をブラウザ上でズーム操作しながら、撮影した天体の元の姿と見比べることができます。'
                 }
             ]
         },
         {
-            title: '🛠️ 画像処理ツール',
+            title: '🌌 プラネタリウム画面（導入タブ）',
             subsections: [
                 {
-                    title: 'ヒストグラム',
-                    content: '・撮影画像の明るさ分布を表示\n・露出不足/過度を視覚的に確認\n・撮影パラメータの最適化に活用'
+                    title: '表示操作とコントロール',
+                    content: '・ドラッグ: 視点をシームレスに全方位へ移動します。\n・マウスホイール: 視野をダイナミックにズームイン / ズームアウトします。\n・右クリック: プラネタリウム表示の視野中心を初期化・復元します。\n・タッチ（タブレット等）: 指2本でのピンチイン・アウトに対応しています。'
                 },
                 {
-                    title: 'オートストレッチ',
-                    content: '・ヒストグラムに基づいてコントラストを自動最適化\n・暗い天体の詳細が見やすくなる\n・一時的な表示調整（画像ファイルには影響しない）'
+                    title: 'DSS実写画像表示（Digitized Sky Survey）',
+                    content: '・「設定」タブから「DSSを表示」ボタンをオンにし、プラネタリウムの倍率を2.0倍以上にズームアップすると、星雲や銀河のCGの位置に、Aladin Liteから取得された『実際のカラー写真（Digitized Sky Survey）』がそのまま美しく重ね合わされて表示されます。（外部データ取得のため、インターネット接続が必要です）'
                 },
                 {
-                    title: '画像反転',
-                    content: '・水平反転: 左右を反転\n・垂直反転: 上下を反転\n・光学系の鏡像補正に使用'
-                },
-                {
-                    title: 'RB入れ替え',
-                    content: '・赤と青のチャンネルを交換\n・BGRセンサーの色補正に使用\n・カラーバランスの調整'
-                },
-                {
-                    title: '画像保存',
-                    content: '・JPEG: 圧縮形式、ファイルサイズ小\n・PNG: ロスレス圧縮、品質重視\n・TIFF: 高品質、ファイルサイズ大\n・RAW: 生データ、最高品質'
+                    title: '天の川・星座表示の設定',
+                    content: '・「天の川を表示」の切り替えと明度スライダー調整、星座線、星座ラベル、明るい恒星名、星の大きさの調整スライダー。地平線のON/OFFやRa/Dec（赤道座標系）、Az/Alt（地平座標系）グリッド線の切り替えを好みに応じてカスタマイズできます。'
                 }
             ]
         },
         {
-            title: '🌍 統合機能',
+            title: '📊 タブ項目 ＆ すべてのボタン機能一覧',
             subsections: [
                 {
-                    title: 'SAMP（Simple Application Messaging Protocol）',
-                    content: '・外部アプリケーション（Aladin, Stellarium等）との連携\n・天体座標の共有\n・観測計画の共有\n・[SAMP接続]で有効化'
+                    title: '🔌【機材】タブ (Equipment)',
+                    content: '・「接続」(Connect) /「切断」(Disconnect): 外部で起動済みの各ドライバサーバーに通信セッションを開設、または遮断します。\n・「接続診断」(Diagnostics): ネットワークやポートの疎通テストを自動診断し、どこにトラブルがあるかを可視化します。\n・「ドライバスイッチ(トグル)」: 接続された主カメラ、サブマウント、マウント、フォーカサー、ドーム、フィルターホイールを個別にON/OFFします。\n・「設定」(歯車ボタン): ピクセルサイズ、焦点距離、接続アドレス等の機材ごとの固有プロパティダイアログを開き保存します。'
                 },
                 {
-                    title: 'Google Drive連携',
-                    content: '・設定のクラウドバックアップ\n・複数デバイス間での設定同期\n・Google Cloud ConsoleでクライアントIDを取得\n・プライバシーとセキュリティに配慮'
+                    title: '🔭【導入】タブ (Planetarium / Target)',
+                    content: '・「天体へ移動」(GoTo Target): 現在プラネタリウムで選択されている、あるいは検索して選択した天体座標に向けて、マウント望遠鏡モーターを指定駆動（導入）させます。\n・「マウント同期」(Sync): 現在選択中の天体の位置にマウント側の持っている内部天球基準座標マップを補正同期（アライメント）させ、ずれを修正します。\n・「マウント停止」(Abort / STOP): 望遠鏡の自動導入や追尾を緊急停止させ、機材同士の干渉や暴走を防ぐ安全ボタンです。\n・「推奨」(Recommended Mode): 設置された緯度経度・現在の日付から、現時刻に空で見頃を迎えているおすすめのDSO天体（星雲や銀河）を自動分析して、プラネタリウム上で目立たせます。\n・「天体情報を表示」(Object Info / AI Explanation): 選択した天体の詳細情報、およびGemini AIによるわかりやすい天文解説パネルをポップアップ表示します。'
                 },
                 {
-                    title: 'AI天体情報',
-                    content: '・Gemini AIを使用した天体情報生成\n・天体の歴史、特徴、観測のコツ\n・多言語対応\n・インターネット接続が必須'
+                    title: '📷【撮影制御】タブ (Imaging Control)',
+                    content: '・「ライブビュー」(Live View): 超高フレームレートでカメラ撮影とデータ転送をストリーミング。ピント合わせ（合焦）や視野の中心決め、極軸合わせで利用します。\n・「プレビュー」(Preview): 設定した露出(ms)で精密画質の画像を1枚撮り、即座に画像を表示・解析にかけます。\n・「Loop」(Loop Continuous): 指定露出で連続キャプチャを行います。ピント調整のリアルタイム評価や、構図確認を連続して行うのに最適です。\n・「停止」(Stop Capture): ライブビュー、単写露出、またはループ処理の実行プロセスを途中安全に強制終了します。\n・「ライブスタッキング開始/停止」(Live Stacking): 撮り溜めた複数コマをソフトウェア内部でリアルタイム演算合成。ノイズを劇的に減らし、DSOの淡い部分をよりハッキリと描画します。\n・「オートストレッチ」(Auto Stretch): 暗い空に沈んだ階調から天体データを自動でコントラスト最大最適調整して表示するデジタルストレッチ。元のファイル自体はそのまま変更されません。\n・「クリア」(Clear Display): 画面に保持されている前回の表示画像（スタック中の一時データ等）を破棄し、ビューを真っ白なニュートラルな状態に戻します。\n・「保存フォーマット(JPEG / PNG / TIFF / RAW / FITS)」: システム上に展開されているリアルタイム撮影（スタック完了）画像を、選択した画像データ形式でローカルデバイスPC等にダウンロードして静的に保存します。'
+                },
+                {
+                    title: '⚙️【設定】タブ (Settings)',
+                    content: '・「Web取得」(Get from Web): ブラウザのGPS/Geolocation APIを叩き、現在の緯度・経度・高度データを自動で読み込みます。\n・「デバイスから取得」(Get from Device): マウント側に現在焼き込まれている位置・経緯度・基準時刻を吸い出します。\n・「マウントに送信」(Send to Mount): 本アプリで入力した経緯度やPC内部時刻などの現在データを、相手マウント機器内部へと転送・上書き補正します。\n・「デバイスに保存」(Save Config to Localfile): カラーバランス、星図等級制限、ピクセル比、その他の設定項目一式をJSONとしてPC内にダウンロード・保存します。\n・「デバイスから読込」(Load Config from Localfile): PC内に置かれたJSON設定ファイルをアプリ内にインポートし、以前の状態を一撃で蘇らせます。\n・「Google Driveに保存/読込」: Googleクラウド認証機能を用いて、異なるPC端末間でも同じ天体撮影設定データを同期・共有管理します。'
                 }
             ]
         },
         {
-            title: '❓ トラブルシューティング',
+            title: '❓ お困りの場合 (トラブルシューティング)',
             subsections: [
                 {
-                    title: '接続できない',
-                    content: '・ホスト/ポートが正しいか確認\n・ファイアウォール設定を確認\n・ルーター設定を確認\n・[接続診断]ツールを実行\n・サーバーログを確認'
+                    title: 'Q. 「接続エラー」や「接続診断」でエラーが表示される',
+                    content: '1. 本機に繋がる本体（INDI ServerやAlpaca Server）自体が本当に外部で起動しているか再確認してください。本アプリ単体ではドライバを立ち上げられません。\n2. INDIの場合、Websocket変換中継が起動し、変換後のWebSocketポートを指定できているか確認してください。\n3. HTTPSからHTTP(localhost等)に繋ぐ際、ブラウザ設定の「安全でないコンテンツ(Mixed Content)」を有効にする、またはセキュリティ許可の設定が完了しているか確認してください。'
                 },
                 {
-                    title: '天の川が表示されない',
-                    content: '・[設定]タブで「天の川を表示」がONか確認\n・「天の川の明度」スライダーを右に移動\n・ズームレベルを調整\n・ブラウザキャッシュをクリア'
-                },
-                {
-                    title: 'DSS画像が表示されない',
-                    content: '・インターネット接続を確認\n・[設定]タブで「DSSを表示」がONか確認\n・ズームレベルを2.0倍以上にする\n・天体のサイズが5分角以上か確認\n・ブラウザコンソールでエラーを確認'
-                },
-                {
-                    title: 'プレートソルビングが失敗する',
-                    content: '・画像に十分な星が写っているか確認\n・ローカルソルバーのインストール確認\n・クラウドソルバーの場合、インターネット接続確認\n・画像の向きが正しいか確認'
-                },
-                {
-                    title: 'パフォーマンスが低い',
-                    content: '・表示する星の数を減らす（等級制限を上げる）\n・DSO表示を一時的に無効化\n・ブラウザのタブ数を減らす\n・コンピュータのリソース使用状況を確認\n・ブラウザを再起動'
+                    title: 'Q. プレートソルビングが失敗する、解析に時間がかかる',
+                    content: '・ピント（フォーカス）が緩んでいたり、雲の発生、ゲイン設定が低すぎて「星が少ない（検出に必要な星が画像にまともに写っていない）」状態だと失敗します。\n・ローカルソルバーの場合は、TSPS（ポート6001）が手元のPCで正常に起動し、本アプリと繋がっているか確認してください。\n・リモートソルバー（ポート6004プロキシ）の場合は、正しいAstrometry.netの「API Key」が入力されているか再確認し、インターネット接続状態が正常であることをご確認ください。'
                 }
             ]
         }
     ] : [
         {
-            title: '🚀 Quick Start',
+            title: '🚀 Quick Start Guide',
             subsections: [
                 {
-                    title: 'Initial Setup',
-                    content: '1. Select driver in [Equipment] tab (INDI/Alpaca/Simulator)\n2. Enter host and port\n3. Click [Connect] button\n4. Toggle devices you want to use in the device list'
+                    title: '1. Start Drivers First (※ Most Important)',
+                    content: 'This application cannot activate hardware drivers directly. Ensure your INDI Server or ASCOM Alpaca Server runs externally on your PC, Raspberry Pi, etc., before using this app.'
                 },
                 {
-                    title: 'Search and Slew to Objects',
-                    content: '1. Enter object name in [Target] tab search box (e.g., M42, NGC 7000, Vega)\n2. Select target from search results\n3. Click [GoTo Target] button to slew telescope\n4. Verify current position on planetarium screen'
+                    title: '2. Connect Your Hardware',
+                    content: '・Go to the [Equipment] tab and select your driver protocol.\n・Define the correct hostname and WebSocket relay/Alpaca port, then click "Connect".\n・Once connection succeeds, toggle individual switches ON to activate your specific camera, mount, focuser etc., and click the gear icon to adjust sensor specs and focal length.'
                 },
                 {
-                    title: 'Start Imaging',
-                    content: '1. Set exposure time (ms) in [Imaging] tab\n2. Adjust gain, offset, binning as needed\n3. Click [Preview] for single frame or [Loop] for continuous capture\n4. Captured images display on screen'
+                    title: '3. Slew (GoTo) Objects',
+                    content: '・Under the [Target] tab, type an object index (M42, NGC, etc.) or star name, select it from auto-completion, and click "GoTo Target" to slew your mount automatically.'
+                },
+                {
+                    title: '4. Expose and Live Stack',
+                    content: '・Go to the [Imaging] tab, adjust exposure time (ms) and gain.\n・Use "Preview" to confirm, "Loop" to stream continuously.\n・Click "Start Live Stacking" to accumulate frames. The software will auto-align and mathematically blend frames to reveal faint, beautiful deep sky nebulae and star clusters.'
                 }
             ]
         },
         {
-            title: '🔌 Connection Settings (Equipment Tab)',
+            title: '🔌 Driver Setup & Requirements',
             subsections: [
                 {
-                    title: 'Driver Selection',
-                    content: '・INDI: Open-source driver for Linux/Raspberry Pi\n・Alpaca: Standard protocol for Windows/Mac\n・Simulator: Test mode without hardware'
+                    title: '【Crucial】Pre-launching Drivers Externally',
+                    content: 'For both INDI and ASCOM Alpaca protocols, physical device drivers must be running in external services (e.g., INDI Web Manager, kstars, ASCOM Platform, ASCOM Remote) beforehand.'
+                },
+                {
+                    title: 'INDI Connection (WebSocket Port Rule)',
+                    content: '・Browsers cannot open direct raw TCP socket ports (like default TCP 7624).\n・You must run "Websockify" or a similar bridge utility externally to relay standard TCP port 7624 into a Web-friendly WebSocket Port, and specify that converted websocket relay port in this client application setup.'
                 },
                 {
                     title: 'Alpaca Connection',
-                    content: '・Default host: localhost→Alpaca Server IP\n・Default port: 11111\n・For remote connection, enter IP address\n・Verify firewall settings'
+                    content: '・Default Host: localhost (Specify your targeted remote Alpaca IP where ASCOM Remote is running).\n・Default Port: 11111\n・Ensure firewall settings permit private packet transactions on port 11111.'
                 },
                 {
-                    title: 'INDI Connection',
-                    content: '・Default host: localhost→INDI Server IP\n・Default port: 7624→WebSocket Port\n・Verify INDI server is running\n・Multiple devices auto-detected'
-                },
-                {
-                    title: 'Device Management',
-                    content: '・Available devices appear after connection\n・Toggle switches to enable/disable devices\n・Click settings icon for detailed parameters\n・Supports multiple cameras, focusers, filter wheels'
-                },
-                {
-                    title: 'Connection Diagnostics',
-                    content: '・Click [Diagnostics] to test network connection\n・If error appears, verify host/port settings\n・Check firewall and router configuration\n・Review browser console for detailed messages'
+                    title: 'Browser Security & HTTPS Mixed Content blocks',
+                    content: '・When running this app via HTTPS (e.g. this AI Studio environment), browsers block connection attempts to unencrypted local service routes (HTTP, http://localhost:6001 etc.).\n・【Solution】Click the lock icon (site settings) next to the browser URL, go to "Site Settings", find "Insecure content" and select "Allow". Alternatively, boot this application using a standard unencrypted HTTP URL.'
                 }
             ]
         },
         {
-            title: '🌌 Planetarium (Target Tab)',
+            title: '🎯 Plate Solving Mechanics',
             subsections: [
                 {
-                    title: 'Screen Controls',
-                    content: '・Mouse drag: Move view\n・Mouse wheel: Zoom in/out\n・Right-click: Reset center position\n・Touch screen: Pinch zoom supported'
+                    title: 'What is Plate Solving?',
+                    content: '・An automated astronomical algorithm which analyzes star distributions from captured images to parse the exact coordinates (RA/Dec) of the telescope field. This aligns the sky tracker mapping accurately, correcting mechanical slues.'
                 },
                 {
-                    title: 'Object Search',
-                    content: '・Enter object name in search box\n・Messier numbers (M1-M110) supported\n・NGC/IC numbers supported\n・Star names (Vega, Altair, etc.) supported\n・Auto-complete suggestions available'
+                    title: 'Local Solver (TSPS + Astrometry)',
+                    content: '・Operational Port: 【6001】\n・Provides offline solving using local installations of Astrometry.net via "TSPS (T-Studio Plate Solver)" backend on your machine.\n・Requires no internet connection and resolves fields in just 1-2 seconds. Keep TSPS running in the background and configure the 6001 route in Settings.'
                 },
                 {
-                    title: 'Display Settings',
-                    content: '・Constellation Lines: Show/hide constellation borders\n・Star Labels: Display bright star names\n・DSO Labels: Display nebula/galaxy names\n・Constellation Names: Display constellation names\n・Az/Alt Grid: Show azimuth/altitude grid\n・RA/Dec Grid: Show RA/Dec grid\n・Horizon: Display local horizon line'
+                    title: 'Remote Solver (nova.astrometry Proxy Gateway)',
+                    content: '・Operational Proxy Port: 【6004】\n・Sends frames to the official Astrometry.net (nova.astrometry.net) web API. Requires Internet.\n・【Role of Port 6004】To prevent raw CORS restriction blocks on browser clients in local deployment, the app channels raw Astrometry.net payloads through local proxy "Port 6004" when running locally (such as http://localhost:3000 or http://stellarmate.local:3000). Pre-configure the Astrometry.net "API Key" to proceed. In online deployments (GitHub Pages), the client falls back to the "AllOrigins" CORS relay.'
                 },
                 {
-                    title: 'DSS Display Feature',
-                    content: '・Enable "Show DSS" in [Settings] tab\n・Zoom in on planetarium (2.0x or more)\n・Real Digitized Sky Survey images overlay on nebulae/galaxies\n・Internet connection required\n・Images fetched from Aladin Lite service'
-                },
-                {
-                    title: 'Milky Way Display',
-                    content: '・Enable "Show Milky Way" in [Settings] tab\n・Adjust "Milky Way Brightness" slider\n・Move slider right for brighter display\n・Visually confirm galactic plane'
-                },
-                {
-                    title: 'Recommended Mode',
-                    content: '・Click [Recommended] to highlight interesting objects visible from current location\n・Different objects recommended by season\n・Auto-selects observing targets for beginners'
-                },
-                {
-                    title: 'Object Information',
-                    content: '・Click object on planetarium to select\n・Detailed information displays in bottom panel\n・View RA/Dec, Az/Alt, magnitude, etc.\n・Click [Object Info] for AI-generated detailed description'
+                    title: 'Auto-Centering Mode',
+                    content: '・When enabled, the application seamlessly triggers "Capture → Solve field → Resolve delta → Shift/Mount corrections" to keep the targeted object in the precise center.'
                 }
             ]
         },
         {
-            title: '📷 Imaging Control (Imaging Tab)',
+            title: '🔗 TS-Connect ＆ Alpaca Bridge',
             subsections: [
                 {
-                    title: 'Exposure Settings',
-                    content: '・Exposure Time (ms): Duration shutter remains open\n・Gain: Sensor sensitivity (higher = fainter objects visible)\n・Offset: Brightness baseline (prevents black clipping)\n・Binning: Combine pixels to increase sensitivity (reduces resolution)'
+                    title: 'What is the Alpaca Bridge?',
+                    content: '・A transparent bridge proxy that republishes INDI-connected physical devices as virtual ASCOM Alpaca units on the network.\n・This converts your telescope rig into an ASCOM-compliant target, allowing you to control devices using advanced external planetariums or software.'
                 },
                 {
-                    title: 'Color Balance',
-                    content: '・Adjust Red (R), Green (G), Blue (B) channel coefficients\n・Correct sensor color cast\n・Optimize preview image colors\n・Customize for camera characteristics'
-                },
-                {
-                    title: 'Live View',
-                    content: '・Click [Live View] to start high-speed streaming\n・Optimal for focusing and guide star selection\n・Low-latency real-time feedback'
-                },
-                {
-                    title: 'Preview',
-                    content: '・Click [Preview] to capture single frame\n・Convenient for composition check and focus adjustment\n・Image displays on screen after capture'
-                },
-                {
-                    title: 'Loop',
-                    content: '・Click [Loop] to start continuous capture\n・Repeats capture with configured exposure\n・Real-time focus adjustment possible\n・Click [Stop] to end capture'
-                }, 
-                {
-                    title: 'Live Stacking',
-                    content: '・Click [Start Live Stacking] to auto-combine multiple frames\n・Reduces noise and enhances detail\n・View composite result in real-time\n・Stack count auto-adjusted'
+                    title: 'Activation Flow',
+                    content: '1. Establish an active INDI connection in the "Equipment" tab.\n2. Open TS-Connect and toggle "Alpaca Bridge" to ON.\n3. External Alpaca-compatible software inside your LAN will automatically detect the devices and relay commands straight to the physical INDI drivers.'
                 }
             ]
         },
         {
-            title: '⚙️ Settings (Settings Tab)',
+            title: '🖱️ Interstellar Catalog Clicking (Annotations)',
             subsections: [
                 {
-                    title: 'Observation Site Settings',
-                    content: '・Enter latitude, longitude, elevation\n・[Get from Web] auto-detects current location\n・[Get from Device] reads telescope internal settings\n・[Send to Mount] syncs settings to telescope\n・Accurate position affects celestial calculation accuracy'
+                    title: 'How It Works',
+                    content: '・After solving a field, a vector annotation overlay overlays known astronomical targets in the viewport.\n・Clicking on these labels/outlines opens a detail preview menu (PreviewModal), letting you deep dive into astronomical registries in 1 click.'
                 },
                 {
-                    title: 'Time Settings',
-                    content: '・Uses system time\n・[Send to Mount] syncs telescope time\n・Internal calculations use UTC\n・Timezone auto-detected'
+                    title: 'AI Astronomical Commentary (Gemini AI)',
+                    content: '・Retrieves detailed notes, structural physics, history, and handy observation suggestions using Gemini AI (Requires Internet and Gemini API key configuration).'
                 },
                 {
-                    title: 'Planetarium Display Settings',
-                    content: '・Show/hide constellation lines, labels, grids\n・Star size scale: 0.1x to 3.0x\n・Star magnitude limit: Faintest star to display\n・DSO magnitude limit: Faintest DSO to display\n・Milky Way brightness: 0-100%'
-                },
-                {
-                    title: 'DSO Display Filter',
-                    content: '・Toggle galaxy display\n・Toggle nebula display\n・Toggle star cluster display\n・Individual control for each category'
-                },
-                {
-                    title: 'Backup and Restore',
-                    content: '・[Save to Device]: Download current settings as JSON file\n・[Load from Device]: Restore from saved JSON file\n・[Save to Drive]: Cloud backup (requires authentication)\n・[Load from Drive]: Restore from cloud'
+                    title: 'Web Registry Integrations (SIMBAD / Wiki / Aladin)',
+                    content: '・[Wiki Search]: Explores Wikipedia listings for historical background.\n・[SIMBAD Link]: Coordinates with SIMBAD, the gold-standard observatory catalog, for professional research logs.\n・[Aladin Viewer]: Loads an interactive Aladin Lite container, showing DSS high-fidelity images of the target to compare with your capture.'
                 }
             ]
         },
         {
-            title: '🎯 Plate Solving',
+            title: '🌌 Interactive Planetarium (Target Tab)',
             subsections: [
                 {
-                    title: 'What is Plate Solving',
-                    content: '・Auto-calculate exact celestial coordinates from captured image\n・Significantly improve telescope pointing accuracy\n・Enhance auto-goto accuracy'
+                    title: 'User Interface Map Navigation',
+                    content: '・Drag: Panning across the celestial sphere.\n・Scroll Wheel: Seamlessly zoom-in/out to inspect fields.\n・Right Click: Resets the viewport center to default settings.\n・Touch controls: Pinch-to-zoom is supported.'
                 },
                 {
-                    title: 'Local Solver',
-                    content: '・Runs on local computer\n・No internet connection required\n・Fast processing (1-2 seconds)\n・Uses local Astrometry.net + TSPS version'
+                    title: 'Actual DSS Overlay (Digitized Sky Survey)',
+                    content: '・Toggle "Show DSS" in Settings and zoom in beyond 2.0x in the planetarium. Actual astrophotography tiles from the Digitized Sky Survey smoothly overlay on Deep Sky Objects (Requires internet connection to stream from Aladin Lite server).'
                 },
                 {
-                    title: 'Cloud Solver (Nova Solver)',
-                    content: '・Uses Astrometry.net cloud service\n・Internet connection required\n・Higher accuracy results\n・Processing time: several seconds to tens of seconds'
-                },
-                {
-                    title: 'Auto-Centering',
-                    content: '・Enable [Auto-Center] to auto-execute:\n  1. Capture image\n  2. Calculate coordinates via plate solving\n  3. Sync telescope position\n  4. Move telescope if needed\n・Precisely center target object'
+                    title: 'Visual Options',
+                    content: '・Toggle constellation borders, star label caps, Milky Way layers, grid lines (Az/Alt horizontal or RA/Dec equatorial), local horizon indicators, and star sizing parameters to fit screen density.'
                 }
             ]
         },
         {
-            title: '🔗 INDI to Alpaca Bridge',
+            title: '📊 Tab Panels ＆ Every Icon Button Guide',
             subsections: [
                 {
-                    title: 'Bridge Function',
-                    content: '・Make INDI-connected equipment available via Alpaca protocol\n・Enable interoperability between different protocol applications\n・Control INDI equipment with Alpaca-compatible apps'
+                    title: '🔌【Equipment】Tab (機材)',
+                    content: '・"Connect" / "Disconnect": Open/close terminal sessions to your external ASCOM/INDI servers.\n・"Diagnostics": Runs automated diagnostic checks to catch network or mixed content blocks.\n・"Device Switches (Toggle)": Toggles power to cameras, mounts, focusers, domes, and filter wheels individually.\n・"Settings" (Gear Icon): Fine-tunes sensor pixel pitch, scope aperture, focal specs, and custom connection IPs.'
                 },
                 {
-                    title: 'Enable Method',
-                    content: '1. Establish INDI connection\n2. Enable bridge function\n3. Alpaca clients auto-detect\n4. INDI equipment available as Alpaca devices'
-                }
-            ]
-        },
-        {
-            title: '📡 WebSocket Connection',
-            subsections: [
-                {
-                    title: 'About WebSocket',
-                    content: '・Real-time bidirectional communication protocol\n・Low-latency data transfer\n・Optimal for live view and streaming\n・Equipment control via network'
+                    title: '🔭【Target / Planetarium】Tab (導入)',
+                    content: '・"GoTo Target": Commands the mount motor to slew toward selected orbital objects.\n・"Sync": Syncs current targeted spatial coordinates to the mount mapping database to align physical points.\n・"Abort/STOP Mount": Immediately halts physical motors to protect equipment from crash risks or cable binds.\n・"Recommended": Auto-gathers and highlights seasonal star clouds and dark dust lanes optimal for your location.\n・"Object Info": Opens deep spatial details and AI commentary cards.'
                 },
                 {
-                    title: 'Connection Status',
-                    content: '・Status bar displays connection state\n・Green: Connected\n・Yellow: Connecting\n・Red: Disconnected/Error\n・Check logs for detailed error messages.'
+                    title: '📷【Imaging】Tab (撮影制御)',
+                    content: '・"Live View": High-speed video streaming. Used for focus tracking, star aiming, or alignment diagnostics.\n・"Preview": Snap a premium single-frame image at defined exposure parameters for analysis.\n・"Loop": Continuously capture frame data. Excellent for refining target framing or live-judging focus.\n・"Stop": Halts any active imaging streams cleanly.\n・"Start/Stop Live Stacking": Sums and average-aligns photos live. Cancels background camera sensor static noise, yielding vivid and clean DSO details.\n"Auto Stretch": Intelligently adjusts displays to reveal faint deep-sky nebulae. Original captured pixel counts are not compromised.\n・"Clear": Resets active stacking buffers and clears viewports.\n・"Save image formats (JPEG / PNG / TIFF / RAW)": Direct export of active frame buffers to local drive files.'
+                },
+                {
+                    title: '⚙️【Settings】Tab (設定)',
+                    content: '・"Get from Web": Runs Geolocation requests to obtain current latitude/longitude.\n・"Get from Device": Loads Mount internal alignment registers.\n・"Send to Mount": Sets coordinates and computer clock times to your physical mount registers.\n・"Save to Local Device": Exports global profile variables to setup JSON files.\n・"Load from Local Device": Re-imports profile parameters from local JSON backups.\n・"Google Drive Sync": Backs up or loads custom calibration parameters to Google Cloud Storage.'
                 }
             ]
         },
         {
-            title: '🛠️ Image Processing Tools',
+            title: '❓ Troubleshooting & Diagnostic Steps',
             subsections: [
                 {
-                    title: 'Histogram',
-                    content: '・Display brightness distribution of captured image\n・Visually confirm under/over exposure\n・Adjust contrast and stretch to reveal details.'
-                }
-            ]
-        },
-        {
-            title: '🌍 Integration Features',
-            subsections: [
+                    title: 'Q: Equipment fails "Diagnostics" or "Connect" operations',
+                    content: '1. Verify your external INDI/Alpaca server profiles are fully operational first. This web instance cannot start physical hardware.\n2. Ensure INDI uses Websockify forwarding to convert TCP 7624 to a Websocket-ready channel.\n3. Make sure to enable "Insecure content (Mixed Content)" in your browser settings if running on HTTPS.'
+                },
                 {
-                    title: 'SAMP (Simple Application Messaging Protocol)',
-                    content: '・Integrate with external applications (Aladin, Stellarium, etc.)\n・Synchronize target coordinates across software.'
-                }
-            ]
-        },
-        {
-            title: '❓ Troubleshooting',
-            subsections: [
-                {
-                    title: 'Cannot Connect',
-                    content: '・Verify host/port are correct\n・Check network connectivity\n・Ensure INDI/Alpaca server is running.'
+                    title: 'Q: Plate solving fails or stays on pending loop',
+                    content: '・Analyze focus and exposure. Weak star signals or star blobs make pattern parsing impossible.\n・If local, check TSPS (Port 6001) is active on your host PC.\n・If remote, ensure a correct Astrometry.net API Key is configured and your network is online.'
                 }
             ]
         }

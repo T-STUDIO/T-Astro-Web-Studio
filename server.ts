@@ -10,6 +10,7 @@ import fs from 'fs';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const xmlrpc = require('xmlrpc');
+import { registerIndiDriverManager } from './indiDriverManager';
 
 let Deserializer: any;
 let Serializer: any;
@@ -65,36 +66,39 @@ const externalHubConnections = new Map<string, {
 function createXmlRpcClient(urlStr: string) {
     console.log(`[Server] Creating XML-RPC client for: ${urlStr}`);
     try {
-        // Try to use the URL string directly first, as it's more robust for some libraries
+        const u = new URL(urlStr);
+        // Use options object for more control, especially for localhost/IPs
+        const options: any = {
+            host: u.hostname,
+            port: parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80),
+            path: u.pathname + u.search,
+            headers: {
+                'User-Agent': 'T-Astro-SAMP-Hub/1.0',
+                'Connection': 'close' // Avoid keeping connections open for many clients
+            }
+        };
+        
+        // Basic auth support if provided in URL (common for some hubs)
+        if (u.username || u.password) {
+            options.basic_auth = {
+                user: u.username,
+                pass: u.password
+            };
+        }
+
+        console.log(`[Server] XML-RPC client options:`, JSON.stringify(options));
+        
+        if (typeof xmlrpc.createClient !== 'function') {
+            throw new Error('xmlrpc.createClient is not a function');
+        }
+        
+        return xmlrpc.createClient(options);
+    } catch (e) {
+        console.warn(`[Server] URL parsing failed or createClient error for ${urlStr}, falling back to string-based:`, e);
         if (typeof xmlrpc.createClient === 'function') {
             return xmlrpc.createClient(urlStr as any);
         }
-        throw new Error('xmlrpc.createClient is not a function');
-    } catch (e) {
-        // Fallback to manual parsing if string-based creation fails
-        try {
-            const u = new URL(urlStr);
-            const options: any = {
-                host: u.hostname,
-                port: parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80),
-                path: u.pathname + u.search
-            };
-            // Basic auth support if provided in URL
-            if (u.username || u.password) {
-                options.basic_auth = {
-                    user: u.username,
-                    pass: u.password
-                };
-            }
-            console.log(`[Server] XML-RPC client options:`, options);
-            if (typeof xmlrpc.createClient === 'function') {
-                return xmlrpc.createClient(options);
-            }
-            throw new Error('xmlrpc.createClient is not a function');
-        } catch (e2) {
-            console.error(`[Server] Failed to create XML-RPC client for ${urlStr}:`, e2);
-            throw e2;
-        }
+        throw e;
     }
 }
 
@@ -503,25 +507,70 @@ async function startServer() {
             const message = params[1];
             
             const sender = getClientByPk(privateKey);
-            if (!sender) return callback(new Error('Invalid private key'), null);
+            if (!sender) {
+                console.warn(`[SAMP Hub] notifyAll failed: Invalid private key ${privateKey}`);
+                return callback(null, ""); // Return empty string as per SAMP spec even on error to avoid hanging
+            }
 
-            const mtype = message['samp.mtype'];
-            console.log(`[SAMP Hub] Broadcast from ${sender.id}: ${mtype}`);
+            // Robust mtype extraction
+            let mtype = undefined;
+            if (message && typeof message === 'object') {
+                mtype = message['samp.mtype'];
+                // Handle wrapped values if any
+                if (!mtype && typeof message.getValue === 'function') {
+                    const val = message.getValue();
+                    if (val) mtype = val['samp.mtype'];
+                }
+            }
             
+            console.log(`[SAMP Hub] Broadcast from ${sender.id} (${sender.metadata['samp.name'] || 'unknown'}): ${mtype}`);
+            
+            const clients = Array.from(sampClients.values());
+            console.log(`[SAMP Hub] Total registered clients: ${clients.length}`);
+
             // Broadcast to all other clients
-            for (const client of sampClients.values()) {
-                if (client.id !== sender.id && client.xmlrpcUrl) {
+            for (const client of clients) {
+                if (client.id !== sender.id) {
+                    // Check if we have a WebSocket for this client (Browser App)
+                    if (sampWsClients.has(client.id)) {
+                        console.log(`[SAMP Hub] Relaying to browser client ${client.id} via WebSocket`);
+                        const ws = sampWsClients.get(client.id);
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'samp.notification',
+                                senderId: sender.id,
+                                message: message
+                            }));
+                        }
+                        continue;
+                    }
+
+                    if (!client.xmlrpcUrl) {
+                        console.log(`[SAMP Hub] Skipping client ${client.id}: No XML-RPC callback URL set`);
+                        continue;
+                    }
+
                     // ★修正ポイント：座標メッセージ(coord.pointAt.sky)は購読チェックをスルーして強制転送する
                     const isCoord = mtype === 'coord.pointAt.sky';
+                    const isSubscribed = client.subscriptions && (client.subscriptions[mtype] || client.subscriptions['*']);
                     
-                    if (isCoord || client.subscriptions[mtype] || client.subscriptions['*']) {
+                    if (isCoord || isSubscribed) {
                         console.log(`[SAMP Hub] Forwarding ${mtype} from ${sender.id} to ${client.id} at ${client.xmlrpcUrl}`);
                         
-                        const clientRpc = createXmlRpcClient(client.xmlrpcUrl);
-                        // 第1引数は送信元のID、第2引数はメッセージ本体
-                        clientRpc.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any, res: any) => {
-                            if (err) console.error(`[SAMP Hub] Error notifying client ${client.id} at ${client.xmlrpcUrl}:`, err.message);
-                        });
+                        try {
+                            const clientRpc = createXmlRpcClient(client.xmlrpcUrl);
+                            clientRpc.methodCall('samp.client.receiveNotification', [sender.id, message], (err: any, res: any) => {
+                                if (err) {
+                                    console.error(`[SAMP Hub] Error notifying client ${client.id} at ${client.xmlrpcUrl}:`, err.message);
+                                } else {
+                                    console.log(`[SAMP Hub] Successfully notified client ${client.id}`);
+                                }
+                            });
+                        } catch (e: any) {
+                            console.error(`[SAMP Hub] Failed to create client for ${client.xmlrpcUrl}:`, e.message);
+                        }
+                    } else {
+                        console.log(`[SAMP Hub] Client ${client.id} is not subscribed to ${mtype}`);
                     }
                 }
             }
@@ -613,6 +662,8 @@ async function startServer() {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
+    // Register safe server-side INDI driver management APIs and WS bridge
+    registerIndiDriverManager(app);
 
     const server = http.createServer(app);
 
@@ -737,7 +788,11 @@ async function startServer() {
             client.methodCall('samp.hub.register', regParams, (err: any, result: any) => {
                 if (err) {
                     console.error(`[SAMP Proxy] Registration failed at ${hubUrl}:`, err.message);
-                    return res.status(500).json({ error: `Registration failed: ${err.message}` });
+                    let errMsg = err.message;
+                    if (errMsg.includes('Bad password') || errMsg.includes('SampException')) {
+                        errMsg = "Registration failed: Bad password. Please ensure you are using the secret from the .samp file on the machine where the Hub is running.";
+                    }
+                    return res.status(500).json({ error: errMsg });
                 }
 
                 console.log(`[SAMP Proxy] Registration result from ${hubUrl}:`, result);
@@ -908,6 +963,8 @@ async function startServer() {
                 res.sendFile(path.resolve(distPath, `${page}.html`));
             } else if (page === 'viewer') {
                 res.sendFile(path.resolve(distPath, 'viewer', 'index.html'));
+            } else if (page === 'ts-connect') {
+                res.sendFile(path.resolve(distPath, 'ts-connect', 'index.html'));
             } else {
                 next();
             }
@@ -947,10 +1004,11 @@ async function startServer() {
         console.log(`[Main] Server running on http://${BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST}:${PORT}`);
     });
 
-    // Initialize SAMP WebSocket Server
-    sampWss = new WebSocketServer({ port: SAMP_WS_PORT });
-    sampWss.on('connection', (ws) => {
-        console.log('[SAMP WS] Browser client linked');
+    // Initialize SAMP WebSocket Server on the same port as the HTTP server
+    sampWss = new WebSocketServer({ server });
+    sampWss.on('connection', (ws, req) => {
+        const ip = req.socket.remoteAddress;
+        console.log(`[SAMP WS] Browser client linked from ${ip}`);
         
         ws.on('message', (data) => {
             try {
@@ -959,7 +1017,7 @@ async function startServer() {
                     const clientId = msg.clientId;
                     if (clientId) {
                         sampWsClients.set(clientId, ws);
-                        console.log(`[SAMP WS] Client registered: ${clientId}`);
+                        console.log(`[SAMP WS] Client registered: ${clientId} (${ip})`);
                     }
                 }
             } catch (e) {
@@ -968,7 +1026,6 @@ async function startServer() {
         });
 
         ws.on('close', () => {
-            // Find the clientId for this ws
             let clientIdToCleanup = null;
             for (const [id, clientWs] of sampWsClients.entries()) {
                 if (clientWs === ws) {
@@ -996,7 +1053,7 @@ async function startServer() {
             }
         });
     });
-    console.log(`[SAMP WS] WebSocket server listening on port ${SAMP_WS_PORT}`);
+    console.log(`[SAMP WS] WebSocket server is now integrated with the main HTTP server`);
 
     const SAMP_PORT = 21012;
     const sampHttpServer = http.createServer(app); // 既存のExpress(app)を21012でも受け付けるようにする

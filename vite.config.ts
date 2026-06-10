@@ -30,16 +30,14 @@ export default defineConfig(({ mode }) => {
             simulator: path.resolve(__dirname, 'simulator.html'),
             test: path.resolve(__dirname, 'test.html'),
             viewer: path.resolve(__dirname, 'viewer/index.html'),
+            ts_connect: path.resolve(__dirname, 'ts-connect/index.html'),
           },
         },
       },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
-          'react': path.resolve(__dirname, 'node_modules/react'),
-          'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
         },
-        dedupe: ['react', 'react-dom'],
       }
     };
 });

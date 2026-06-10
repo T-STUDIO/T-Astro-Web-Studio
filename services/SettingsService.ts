@@ -41,7 +41,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     connectionSettings: {
         driver: 'INDI',
         host: 'localhost',
-        port: 7624,
+        port: 8625,
         serverType: 'local'
     },
     planetariumSettings: {

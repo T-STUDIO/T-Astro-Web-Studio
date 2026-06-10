@@ -1,0 +1,523 @@
+
+import { CelestialObject, MountSpeed, LocationData, TelescopePosition } from '../types';
+import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
+import * as DriverConnection from './DriverConnection';
+import { BlobTransportService } from './BlobTransportService';
+
+import * as sampService from './sampService';
+
+// 画像受信通知をDriverConnectionに登録
+DriverConnection.setImageProcessedCallback(() => {
+    notifyImageReceived();
+});
+
+let onTelescopePositionUpdate: ((pos: TelescopePosition) => void) | null = null;
+export const setTelescopePositionCallback = (cb: typeof onTelescopePositionUpdate) => onTelescopePositionUpdate = cb;
+
+let onSampSkyCoordReceived: ((ra: number, dec: number) => void) | null = null;
+export const setSampSkyCoordReceivedCallback = (cb: typeof onSampSkyCoordReceived) => {
+    onSampSkyCoordReceived = cb;
+    if (cb) {
+        sampService.setSkyCoordCallback(cb);
+    }
+};
+
+export const syncSkyCoord = (ra: number, dec: number) => {
+    if (sampService.isConnected()) {
+        sampService.sendSkyCoord(ra, dec);
+    }
+};
+
+// 望遠鏡の座標更新時の処理（SAMP送信は行わない）
+DriverConnection.setTelescopePositionCallback((pos) => {
+    if (onTelescopePositionUpdate) onTelescopePositionUpdate(pos);
+});
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const setAppData = (loc: LocationData | null, time: Date | null) => {
+    if (loc) {
+        const mock = DriverConnection.getSimulatorMock();
+        if (mock && mock.connected) {
+            mock.setLocation(loc.latitude, loc.longitude, loc.elevation || 0);
+        }
+    }
+};
+
+// --- Re-exports for App Compatibility ---
+export { 
+    diagnoseConnection, 
+    setLogCallback, getDebugLogs,
+    setImageReceivedCallback, setIndiDeviceCallback, setIndiMessageCountCallback, setFocuserUpdateCallback, setMountLocationCallback, setMountTimeCallback,
+    updateDeviceSetting, getActiveCamera, getActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice as connectDevice, connectIndiDevice, disconnectIndiDevice as disconnectDevice, disconnectIndiDevice, refreshIndiDevices as refreshDevices, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
+    getIndiDevices as getDevices, getIndiDevices, getActiveCameraParams as getCameraParams,
+    sendRaw
+} from './DriverConnection';
+
+/**
+ * 接続ロジックを拡張：メインチャネルとBLOBチャネルを分離して接続します。
+ */
+export const connect = async (settings: any): Promise<boolean> => {
+    // INDIの場合のみ分離転送を予約
+    if (settings.driver === 'INDI') {
+        DriverConnection.setMainChannelBlobDisabled(true);
+        // Sync custom bridge port to backend server-side bridge
+        try {
+            await fetch('/api/indi/configure-port', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port: Number(settings.port || 8625) })
+            });
+        } catch (e) {
+            console.error('[IndiBridge] Failed to configure server-side bridge port', e);
+        }
+    }
+    
+    // メイン制御チャネルの接続
+    const success = await DriverConnection.connect(settings);
+    
+    // INDIの場合、画像転送用の別チャネルを並列で立ち上げ
+    if (success && settings.driver === 'INDI') {
+        BlobTransportService.getInstance().connect(settings).catch(err => {
+            console.error("[BLOB] Failed to connect secondary channel", err);
+        });
+    }
+    
+    return success;
+};
+
+/**
+ * 切断ロジックを拡張：両方の接続をクローズします。
+ */
+export const disconnect = async () => {
+    BlobTransportService.getInstance().disconnect();
+    await DriverConnection.disconnect();
+};
+
+// Helper to wait for camera idle
+export const waitForCameraIdle = async (timeoutMs: number = 30000): Promise<boolean> => {
+    const cam = DriverConnection.getActiveCamera();
+    if (!cam) return true; // No camera, assume idle
+    
+    // Check property existence first
+    if (!DriverConnection.hasProperty(cam, 'CCD_EXPOSURE')) return true;
+
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const props = DriverConnection.getDeviceProperties(cam);
+        const expProp = props.find(p => p.name === 'CCD_EXPOSURE');
+        
+        // If state is Idle or Ok, we are ready. If Busy, we wait.
+        if (expProp && (expProp.state === 'Idle' || expProp.state === 'Ok')) {
+            return true;
+        }
+        await sleep(200);
+    }
+    console.warn("Timeout waiting for camera idle state.");
+    return false;
+};
+
+// 1. Slew (GoTo)
+export const slewTo = async (obj: CelestialObject) => {
+    const mount = DriverConnection.getActiveMount();
+    const settings = DriverConnection.getSimulatorMock(); 
+    
+    if (!mount) {
+        if (settings.connected) {
+             settings.sync(hmsToDegrees(obj.ra), dmsToDegrees(obj.dec));
+             return;
+        }
+        console.warn("Cannot slew: No mount connected");
+        return;
+    }
+
+    const ra = hmsToDegrees(obj.ra);
+    const dec = dmsToDegrees(obj.dec);
+    
+    DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='ON_COORD_SET'><oneSwitch name='SLEW'>On</oneSwitch></newSwitchVector>`);
+    DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='TELESCOPE_TRACK_STATE'><oneSwitch name='TRACK_ON'>On</oneSwitch></newSwitchVector>`);
+    DriverConnection.sendRaw(`<newNumberVector device='${mount}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${ra/15}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`);
+};
+
+// 2. Sync (Object)
+export const syncTo = async (obj: CelestialObject) => {
+    const mount = DriverConnection.getActiveMount();
+    if (!mount) return;
+    const ra = hmsToDegrees(obj.ra);
+    const dec = dmsToDegrees(obj.dec);
+    
+    DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='ON_COORD_SET'><oneSwitch name='SYNC'>On</oneSwitch></newSwitchVector>`);
+    DriverConnection.sendRaw(`<newNumberVector device='${mount}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${ra/15}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`);
+};
+
+// 2b. Sync (Coordinates) - for Auto Center
+export const syncToCoordinates = async (ra: number, dec: number) => {
+    const mount = DriverConnection.getActiveMount();
+    if (!mount) return;
+    DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='ON_COORD_SET'><oneSwitch name='SYNC'>On</oneSwitch></newSwitchVector>`);
+    DriverConnection.sendRaw(`<newNumberVector device='${mount}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${ra/15}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`);
+};
+
+// Helper: Get Current Telescope Coordinates (Instant)
+export const getTelescopePosition = (): TelescopePosition | null => {
+    const mount = DriverConnection.getActiveMount();
+    if (!mount) {
+        const sim = DriverConnection.getSimulatorMock();
+        if (sim.connected) {
+            return null; 
+        }
+        return null;
+    }
+    const raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
+    const decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'DEC');
+    
+    if (raVal !== null && decVal !== null) {
+        return { ra: raVal * 15, dec: decVal };
+    }
+    return null;
+};
+
+// 3. Motion Control
+export const startMotion = (dir: string, speed: MountSpeed) => {
+    const mount = DriverConnection.getActiveMount();
+    if (!mount) return;
+    const axis = (dir === 'N' || dir === 'S') ? 'NS' : 'WE';
+    const sw = dir === 'N' ? 'MOTION_NORTH' : dir === 'S' ? 'MOTION_SOUTH' : dir === 'W' ? 'MOTION_WEST' : 'MOTION_EAST';
+    DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='TELESCOPE_MOTION_${axis}'><oneSwitch name='${sw}'>On</oneSwitch></newSwitchVector>`);
+};
+
+export const stopMotion = (dir: string) => {
+    const mount = DriverConnection.getActiveMount();
+    if (!mount) return;
+    const axis = (dir === 'N' || dir === 'S') ? 'NS' : 'WE';
+    const sw = dir === 'N' ? 'MOTION_NORTH' : dir === 'S' ? 'MOTION_SOUTH' : dir === 'W' ? 'MOTION_WEST' : 'MOTION_EAST';
+    DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='TELESCOPE_MOTION_${axis}'><oneSwitch name='${sw}'>Off</oneSwitch></newSwitchVector>`);
+};
+
+export const setTracking = (enabled: boolean) => {
+    const mount = DriverConnection.getActiveMount();
+    if (mount) DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='TELESCOPE_TRACK_STATE'><oneSwitch name='${enabled ? 'TRACK_ON' : 'TRACK_OFF'}'>On</oneSwitch></newSwitchVector>`);
+};
+
+export const setPark = (parked: boolean) => {
+    const mount = DriverConnection.getActiveMount();
+    if (mount) DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='TELESCOPE_PARK'><oneSwitch name='${parked ? 'PARK' : 'UNPARK'}'>On</oneSwitch></newSwitchVector>`);
+};
+
+// 4. Capture
+const fetchAladinImage = async (ra: number, dec: number): Promise<string> => {
+    const images = [
+        'https://images.unsplash.com/photo-1627003489379-3388a1f8b656?q=80&w=2560&auto=format&fit=crop',
+    ];
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return images[0];
+};
+
+const setCameraGain = (cam: string, gain: number) => {
+    const props = ['CCD_GAIN', 'Gain', 'GAIN'];
+    for (const prop of props) {
+        if (DriverConnection.hasProperty(cam, prop)) {
+            const el = prop === 'CCD_GAIN' ? 'GAIN' : (prop === 'Gain' ? 'Gain' : 'GAIN');
+            const current = DriverConnection.getNumericValue(cam, prop, el);
+            if (current !== null && current !== gain) {
+                DriverConnection.updateDeviceSetting(cam, prop, { [el]: gain });
+            }
+            return;
+        }
+    }
+};
+
+const setCameraOffset = (cam: string, offset: number) => {
+    const props = ['CCD_OFFSET', 'Offset', 'OFFSET'];
+    for (const prop of props) {
+        if (DriverConnection.hasProperty(cam, prop)) {
+            const el = prop === 'CCD_OFFSET' ? 'OFFSET' : (prop === 'Offset' ? 'Offset' : 'OFFSET');
+            const current = DriverConnection.getNumericValue(cam, prop, el);
+            if (current !== null && current !== offset) {
+                DriverConnection.updateDeviceSetting(cam, prop, { [el]: offset });
+            }
+            return;
+        }
+    }
+};
+
+export const updateGain = (gain: number) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) setCameraGain(cam, gain);
+};
+
+export const updateOffset = (offset: number) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) setCameraOffset(cam, offset);
+};
+
+export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (!cam) {
+         const mock = DriverConnection.getSimulatorMock();
+         if (mock.connected) {
+             const url = await fetchAladinImage(0, 0);
+             DriverConnection.triggerImageUpdate(url, 'image/jpeg');
+         }
+         return;
+    }
+    
+    // Clear buffers before starting new capture to ensure stability
+    // But avoid clearing during Loop/Stream to prevent dropping frames
+    if (!isStream) {
+        DriverConnection.clearBuffer();
+    }
+    
+    // CCD Simulator specific fixes for missing stars/parameters
+    if (cam === 'CCD Simulator') {
+        if (DriverConnection.hasProperty(cam, 'TELESCOPE_TYPE')) {
+            const focalLength = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH');
+            const aperture = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_APERTURE');
+            
+            if (focalLength === 0 || focalLength === null) {
+                console.log("[AstroService] Setting default focal length for CCD Simulator");
+                DriverConnection.updateDeviceSetting(cam, 'TELESCOPE_TYPE', { 'TELESCOPE_FOCAL_LENGTH': 1000 });
+            }
+            if (aperture === 0 || aperture === null) {
+                console.log("[AstroService] Setting default aperture for CCD Simulator");
+                DriverConnection.updateDeviceSetting(cam, 'TELESCOPE_TYPE', { 'TELESCOPE_APERTURE': 100 });
+            }
+        }
+    }
+
+    // 以前の安定したコードに近い形に戻す。過剰な待機を削除。
+    if (!isStream) {
+        setVideoStream(false);
+    }
+
+    setCameraGain(cam, gain);
+    setCameraOffset(cam, offset);
+    
+    DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
+    
+    // 静止画（プレビュー）の場合は画像が届くまで待機する
+    // これにより、App.tsxのsetIsPreviewLoading(false)が画像受信後に実行されるようになる
+    if (!isStream) {
+        await waitForImage(exp + 10000);
+    }
+};
+
+export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {
+    let count = 0;
+    const loop = async () => {
+        if(count >= 10) { done(); return; }
+        
+        await capturePreview(exp, gain, offset, true);
+        count++;
+        cb(count);
+        setTimeout(loop, 100); 
+    };
+    loop();
+};
+
+export const stopCapture = () => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='CCD_ABORT_EXPOSURE'><oneSwitch name='ABORT'>On</oneSwitch></newSwitchVector>`);
+    DriverConnection.clearBuffer(); 
+};
+
+let isLooping = false;
+let loopTimeout: ReturnType<typeof setTimeout> | null = null;
+let imageResolve: (() => void) | null = null;
+
+/**
+ * 画像受信を通知する（DriverConnectionから呼び出される想定）
+ */
+export const notifyImageReceived = () => {
+    if (imageResolve) {
+        const resolve = imageResolve;
+        imageResolve = null;
+        resolve();
+    }
+};
+
+/**
+ * 画像受信を待機する
+ */
+const waitForImage = (timeoutMs: number = 30000) => {
+    return new Promise<void>((resolve) => {
+        imageResolve = resolve;
+        setTimeout(() => {
+            if (imageResolve === resolve) {
+                imageResolve = null;
+                resolve(); // タイムアウトしても次へ進める
+            }
+        }, timeoutMs);
+    });
+};
+
+export const startLiveStacking = (exp: number, gain: number, offset: number) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) {
+        isLooping = true; 
+        const loop = async () => {
+            if (!isLooping) return;
+            try {
+                // 撮影コマンド送信
+                await capturePreview(exp, gain, offset, true); 
+                // 画像が届くまで待機（またはタイムアウト）
+                // 露出時間 + 余裕を持って待機
+                await waitForImage(exp + 5000);
+            } catch (e) {
+                console.error("[AstroService] LiveStack capture error:", e);
+            }
+            if (isLooping) {
+                loopTimeout = setTimeout(loop, 100); 
+            }
+        };
+        loop();
+    }
+};
+
+export const stopLiveStacking = () => {
+    stopLoop();
+};
+
+export const startLoop = (exp: number, gain: number, offset: number) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) {
+        // Ensure Video Stream is OFF when starting LOOP
+        setVideoStream(false);
+        
+        isLooping = true;
+        if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
+             const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
+             if (!isCompressed) {
+                 DriverConnection.updateDeviceSetting(cam, 'CCD_COMPRESSION', { 'CCD_COMPRESS': true });
+             }
+        }
+
+        const loop = async () => {
+            if (!isLooping) return;
+            
+            // カメラがアイドル状態になるのを待つ
+            const ready = await waitForCameraIdle(5000);
+            if (!isLooping) return; // 待機中に停止された場合は終了
+
+            if (ready) {
+                try {
+                    await capturePreview(exp, gain, offset, true); 
+                    // 画像が届くまで待機（またはタイムアウト）
+                    await waitForImage(exp + 10000);
+                } catch (e) {
+                    console.error("[AstroService] Loop capture error:", e);
+                }
+            }
+            
+            if (isLooping) {
+                loopTimeout = setTimeout(loop, 200); 
+            }
+        };
+        loop();
+    }
+};
+
+export const stopLoop = () => {
+    isLooping = false;
+    if (loopTimeout) {
+        clearTimeout(loopTimeout);
+        loopTimeout = null;
+    }
+    if (imageResolve) {
+        imageResolve();
+        imageResolve = null;
+    }
+    stopCapture();
+    setTimeout(() => DriverConnection.clearBuffer(), 100); 
+};
+
+export const setVideoStream = async (enabled: boolean) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (cam) {
+        DriverConnection.refreshIndiDevices();
+        if (enabled) {
+             // Ensure LOOP is OFF when starting Video Stream
+             stopLoop();
+             
+             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
+             if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
+                 const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
+                 if (!isCompressed) {
+                     DriverConnection.updateDeviceSetting(cam, 'CCD_COMPRESSION', { 'CCD_COMPRESS': true });
+                 }
+             }
+        }
+        await sleep(100); 
+        DriverConnection.updateDeviceSetting(cam, 'CCD_VIDEO_STREAM', { 'STREAM_ON': enabled, 'STREAM_OFF': !enabled });
+        if (!enabled) {
+             await sleep(500);
+             DriverConnection.clearBuffer();
+        } else {
+             await sleep(500);
+        }
+    }
+};
+
+export const toggleVideoStreamEncoder = async (encoderName: string) => {
+    const cam = DriverConnection.getActiveCamera();
+    if (!cam) return;
+    DriverConnection.updateDeviceSetting(cam, 'CCD_STREAM_ENCODER', { [encoderName]: true });
+    await sleep(200);
+};
+
+export const abortSlew = () => {
+    const mount = DriverConnection.getActiveMount();
+    if (mount) DriverConnection.sendRaw(`<newSwitchVector device='${mount}' name='TELESCOPE_ABORT_MOTION'><oneSwitch name='ABORT'>On</oneSwitch></newSwitchVector>`);
+};
+
+export const sendLocation = (loc: LocationData, time: Date) => {
+    const mock = DriverConnection.getSimulatorMock();
+    if (mock.connected) {
+        mock.setLocation(loc.latitude, loc.longitude, loc.elevation || 0);
+    }
+
+    const geoDevices = DriverConnection.getDevicesWithProperty('GEOGRAPHIC_COORD');
+    geoDevices.forEach(device => {
+        let xml = `<newNumberVector device='${device}' name='GEOGRAPHIC_COORD'>`;
+        xml += `<oneNumber name='LAT'>${loc.latitude}</oneNumber>`;
+        xml += `<oneNumber name='LONG'>${loc.longitude}</oneNumber>`;
+        xml += `<oneNumber name='ELEV'>${loc.elevation || 0}</oneNumber>`;
+        xml += `</newNumberVector>`;
+        DriverConnection.sendRaw(xml);
+    });
+
+    setTimeout(() => {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const y = time.getUTCFullYear();
+        const m = pad(time.getUTCMonth() + 1);
+        const d = pad(time.getUTCDate());
+        const h = pad(time.getUTCHours());
+        const min = pad(time.getUTCMinutes());
+        const s = pad(time.getUTCSeconds());
+        
+        const utcStr = `${y}-${m}-${d}T${h}:${min}:${s}`;
+        const offset = -time.getTimezoneOffset() / 60;
+        const offsetStr = offset.toFixed(2);
+        
+        const timeDevices = DriverConnection.getDevicesWithProperty('TIME_UTC');
+        
+        timeDevices.forEach(device => {
+            const timeXml = `<newTextVector device='${device}' name='TIME_UTC'>` + 
+                            `<oneText name='UTC'>${utcStr}</oneText>` + 
+                            `<oneText name='OFFSET'>${offsetStr}</oneText>` + 
+                            `</newTextVector>`;
+            DriverConnection.sendRaw(timeXml);
+            DriverConnection.injectIndiValue(device, 'TIME_UTC', 'UTC', utcStr);
+            DriverConnection.injectIndiValue(device, 'TIME_UTC', 'OFFSET', offsetStr);
+        });
+    }, 1000);
+};
+
+export interface FitsConversionResult {
+    url: string | null;
+    headers: Record<string, any>;
+}
+
+export const reprocessLastFITS = (fmt: string) => {
+    DriverConnection.reprocessRawFITS(fmt);
+};

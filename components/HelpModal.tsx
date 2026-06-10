@@ -42,7 +42,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             subsections: [
                 {
                     title: '1. 事前のドライバ起動（※最重要）',
-                    content: '本アプリにドライバ自体の起動機能はありません。事前に外部PCやRaspberry Pi等でINDIサーバーやASCOM Alpacaサーバー（物理接続デバイス）を必ず起動しておいてください。'
+                    content: '本アプリは事前に外部でドライバを起動しておく必要がありますが、サポートされている環境下では、INDI接続時に利用可能なドライバの「一括自動起動機能（INDI Driver Selection）」を利用してブラウザから直接、サーバー側でドライバを選んでバックエンド連携起動することも可能です。'
                 },
                 {
                     title: '2. 機材の接続設定',
@@ -76,6 +76,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 {
                     title: 'セキュリティとブラウザ設定 (HttpsでのMixed Content問題)',
                     content: '・HTTPS（セキュアなインターネット接続、本AI Studioプレビューを含む）で本アプリをご利用の場合、ブラウザのセキュリティ制限（Mixed Contentブロック）により、イントラネットやローカルPC上の通信（HTTP, http://localhost:6001等）へのリクエストが強制遮断されます。\n・【対策】動作を有効にするには、ブラウザのURL欄左のセキュリティ設定（鍵マークやサイト情報など）を開き、「サイトの設定」から『安全でないコンテンツ (Insecure content)』を「許可 (Allow)」に指定するか、安全なHTTP（非セキュア）の接続で本アプリを開くようにしてください。'
+                },
+                {
+                    title: 'INDIドライバ自動起動接続機能',
+                    content: '・INDI接続を選択して「接続」ボタンを押すと、サーバー側でインストールされている利用可能ドライバ群（CCDs、Telescopes、Focusers、Domes、Filter Wheels等）の一覧をダイナミックに取得します。\n・起動したいドライバを選択し、「Start & Connect」をクリックすると、サーバーサイドで必要なデバイスドライバを自動立ち上げし、シームレスに接続を開始できます。'
                 }
             ]
         },
@@ -110,6 +114,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 {
                     title: 'ブリッジの起動方法',
                     content: '1. 事事前に外部でINDIサーバー及び中継機を起動し、本アプリの「機材」タブからINDI接続を確立します。\n2. TS-Connectが利用可能な状態で「Alpacaブリッジ」ボタンをクリックして開始（ブリッジ機能をONにする）します。\n3. 同一LAN内の外部Alpaca対応アプリケーション等から機器が自動検出され、外部からのコマンドをINDI機材へダイレクトに転送・制御することが可能になります。'
+                },
+                {
+                    title: 'TS-Connect スタンドアロン管理画面（/ts-connect）',
+                    content: '・コントロール用のメインUIやサイドバー等を持たず、Alpacaブリッジ、INDI接続、GPS・API同期、機材管理に特化した単一のシステム連携管理フロントエンド画面です。\n・URL: http://[本機IPアドレス]:6002/ts-connect\n\nパソコン単体で表示やテストをする場合は、以下の直接リンクを開いてください。',
+                    link: { text: 'TS-Connectスタンドアロン画面（/ts-connect）を開く', url: '/ts-connect', external: true }
                 }
             ]
         },
@@ -160,7 +169,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 },
                 {
                     title: '📷【撮影制御】タブ (Imaging Control)',
-                    content: '・「ライブビュー」(Live View): 超高フレームレートでカメラ撮影とデータ転送をストリーミング。ピント合わせ（合焦）や視野の中心決め、極軸合わせで利用します。\n・「プレビュー」(Preview): 設定した露出(ms)で精密画質の画像を1枚撮り、即座に画像を表示・解析にかけます。\n・「Loop」(Loop Continuous): 指定露出で連続キャプチャを行います。ピント調整のリアルタイム評価や、構図確認を連続して行うのに最適です。\n・「停止」(Stop Capture): ライブビュー、単写露出、またはループ処理の実行プロセスを途中安全に強制終了します。\n・「ライブスタッキング開始/停止」(Live Stacking): 撮り溜めた複数コマをソフトウェア内部でリアルタイム演算合成。ノイズを劇的に減らし、DSOの淡い部分をよりハッキリと描画します。\n・「オートストレッチ」(Auto Stretch): 暗い空に沈んだ階調から天体データを自動でコントラスト最大最適調整して表示するデジタルストレッチ。元のファイル自体はそのまま変更されません。\n・「クリア」(Clear Display): 画面に保持されている前回の表示画像（スタック中の一時データ等）を破棄し、ビューを真っ白なニュートラルな状態に戻します。\n・「保存フォーマット(JPEG / PNG / TIFF / RAW / FITS)」: システム上に展開されているリアルタイム撮影（スタック完了）画像を、選択した画像データ形式でローカルデバイスPC等にダウンロードして静的に保存します。'
+                    content: '・「ライブビュー」(Live View): 超高フレームレートでカメラ撮影とデータ転送をストリーミング。ピント合わせ（合焦）や視野の中心決め、極軸合わせで利用します。\n・「プレビュー」(Preview): 設定した露出(ms)で精密画質の画像を1枚撮り、即座に画像を表示・解析にかけます。\n・「Loop」(Loop Continuous): 指定露出で連続キャプチャを行います。ピント調整のリアルタイム評価や、構図確認を連続して行うのに最適です。\n・「停止」(Stop Capture): ライブビュー、単写露出、またはループ処理の実行プロセスを途中安全に強制終了します。\n・「ライブスタッキング開始/停止」(Live Stacking): 撮り溜めた複数コマをソフトウェア内部でリアルタイム演算合成。ノイズを劇的に減らし、淡い星雲等の構造をハッキリと描画します。本エンジンでは、バックエンドで以下の高度な「自動画像補正・描画パイプライン」がバックグラウンド処理としてリアルタイム適用されます。\n  ① デッドピクセル自動除去 (極端に明るい白点や色ノイズの補正)\n  ② 背景グラデーション・アンプグロー除去 (アンプ熱や光害によるかぶりをフラットに平滑化)\n  ③ エッジ保存型ノイズ除去 (画像をシャープに保ちつつ高感度ノイズをマイルドに平滑化)\n  ④ 自動ヒストグラム調整（MTF） (非線形オートストレッチを効かせ、淡い星雲ガスを見やすく画面表示)\n・「オートストレッチ」(Auto Stretch): 暗い空に沈んだ階調から天体データを自動でコントラスト最大最適調整して表示するデジタルストレッチ。元のファイル自体はそのまま変更されません。\n・「クリア」(Clear Display): 画面に保持されている前回の表示画像（スタック中の一時データ等）を破棄し、ビューを真っ白なニュートラルな状態に戻します。\n・「保存フォーマット(JPEG / PNG / TIFF / RAW / FITS)」: システム上に展開されているリアルタイム撮影（スタック完了）画像を、選択した画像データ形式でローカルデバイスPC等にダウンロードして静的に保存します。'
                 },
                 {
                     title: '⚙️【設定】タブ (Settings)',
@@ -219,7 +228,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             subsections: [
                 {
                     title: '1. Start Drivers First (※ Most Important)',
-                    content: 'This application cannot activate hardware drivers directly. Ensure your INDI Server or ASCOM Alpaca Server runs externally on your PC, Raspberry Pi, etc., before using this app.'
+                    content: 'This application typically requires your astronomical hardware drivers to be running externally. However, under supported environments, you can automatically run required drivers on the server side using the dynamic "INDI Driver Selection" panel during connection.'
                 },
                 {
                     title: '2. Connect Your Hardware',
@@ -253,6 +262,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 {
                     title: 'Browser Security & HTTPS Mixed Content blocks',
                     content: '・When running this app via HTTPS (e.g. this AI Studio environment), browsers block connection attempts to unencrypted local service routes (HTTP, http://localhost:6001 etc.).\n・【Solution】Click the lock icon (site settings) next to the browser URL, go to "Site Settings", find "Insecure content" and select "Allow". Alternatively, boot this application using a standard unencrypted HTTP URL.'
+                },
+                {
+                    title: 'Dynamic INDI Driver Selection & Launcher',
+                    content: '・When selecting the INDI protocol and clicking Connect, the server queries currently installed, available drivers (CCDs, Telescopes, Focusers, Domes, Filter Wheels).\n・Toggle your target drivers and click "Start & Connect" to automatically launch and run them on the server side in a single batch.'
                 }
             ]
         },
@@ -287,6 +300,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 {
                     title: 'Activation Flow',
                     content: '1. Establish an active INDI connection in the "Equipment" tab.\n2. Open TS-Connect and toggle "Alpaca Bridge" to ON.\n3. External Alpaca-compatible software inside your LAN will automatically detect the devices and relay commands straight to the physical INDI drivers.'
+                },
+                {
+                    title: 'TS-Connect Standalone Control Panel (/ts-connect)',
+                    content: '・An isolated micro-control-panel optimized solely for Alpaca bridging, INDI profile startups, GPS coordinates synchronization, and hardware connectivity without standard main app overlays.\n・URL: http://[Host_IP_Address]:6002/ts-connect\n\nTo access our dedicated TS-Connect window, follow the relative path link below:',
+                    link: { text: 'Open Standalone TS-Connect Panel', url: '/ts-connect', external: true }
                 }
             ]
         },
@@ -337,7 +355,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 },
                 {
                     title: '📷【Imaging】Tab (撮影制御)',
-                    content: '・"Live View": High-speed video streaming. Used for focus tracking, star aiming, or alignment diagnostics.\n・"Preview": Snap a premium single-frame image at defined exposure parameters for analysis.\n・"Loop": Continuously capture frame data. Excellent for refining target framing or live-judging focus.\n・"Stop": Halts any active imaging streams cleanly.\n・"Start/Stop Live Stacking": Sums and average-aligns photos live. Cancels background camera sensor static noise, yielding vivid and clean DSO details.\n"Auto Stretch": Intelligently adjusts displays to reveal faint deep-sky nebulae. Original captured pixel counts are not compromised.\n・"Clear": Resets active stacking buffers and clears viewports.\n・"Save image formats (JPEG / PNG / TIFF / RAW)": Direct export of active frame buffers to local drive files.'
+                    content: '・"Live View": High-speed video streaming. Used for focus tracking, star aiming, or alignment diagnostics.\n・"Preview": Snap a premium single-frame image at defined exposure parameters for analysis.\n・"Loop": Continuously capture frame data. Excellent for refining target framing or live-judging focus.\n・"Stop": Halts any active imaging streams cleanly.\n・"Start/Stop Live Stacking": Sums and average-aligns photos live. Automatically cancels background sensor noise, yielding rich deep-space nebulosities. Four key high-performance real-time processing operations are silently coordinated in the background:\n  1) Dead Pixel Removal (cleaning rogue hot & cold spots).\n  2) Background Gradient & Amp-glow Removal (smoothly flattening light pollution gradients & sensor thermal glow).\n  3) Noise Reduction (applying an edge-preserving bilateral filter to suppress static noise pixels).\n  4) Auto Histogram Stretch (utilizing MTF transfer curves to scale faint interstellar objects automatically).\n"Auto Stretch": Intelligently adjusts displays to reveal faint deep-sky nebulae. Original captured pixel counts are not compromised.\n・"Clear": Resets active stacking buffers and clears viewports.\n・"Save image formats (JPEG / PNG / TIFF / RAW)": Direct export of active frame buffers to local drive files.'
                 },
                 {
                     title: '⚙️【Settings】Tab (設定)',

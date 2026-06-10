@@ -107,8 +107,8 @@ interface TSConnectProps {
     sampSettings: SampSettings;
     onSampSettingsChange: (s: Partial<SampSettings>) => void;
     onConnectSamp: () => void;
-    onConnectVirtualSamp: () => void;
     onDisconnectSamp: () => void;
+    isStandalone?: boolean;
     
     // Imaging & System Sync Props (Interface only, not for UI)
     isCapturing: boolean;
@@ -137,6 +137,63 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isConnected = props.connectionStatus === 'Connected';
+
+    const [isDriverSelectorOpen, setIsDriverSelectorOpen] = useState(false);
+    const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
+    const [selectedDrivers, setSelectedDrivers] = useState<string[]>([]);
+    const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
+    const [isStartingDrivers, setIsStartingDrivers] = useState(false);
+
+    const handleConnectClick = async () => {
+        if (props.connectionSettings.driver === 'INDI') {
+            setIsLoadingDrivers(true);
+            try {
+                const res = await fetch('/api/indi/drivers');
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    setAvailableDrivers(data.drivers || []);
+                    setSelectedDrivers([]);
+                    setIsDriverSelectorOpen(true);
+                } else {
+                    props.onConnect();
+                }
+            } catch (e) {
+                console.error('[TSConnect] Failed to fetch INDI drivers', e);
+                props.onConnect();
+            } finally {
+                setIsLoadingDrivers(false);
+            }
+        } else {
+            props.onConnect();
+        }
+    };
+
+    const handleToggleDriverSelection = (bin: string) => {
+        setSelectedDrivers(prev => 
+            prev.includes(bin) ? prev.filter(b => b !== bin) : [...prev, bin]
+        );
+    };
+
+    const handleStartAndConnect = async () => {
+        setIsStartingDrivers(true);
+        try {
+            const res = await fetch('/api/indi/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drivers: selectedDrivers })
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                console.log('[TSConnect] Successfully started selected drivers.');
+            }
+        } catch (e) {
+            console.error('[TSConnect] Error launching drivers:', e);
+        } finally {
+            setIsStartingDrivers(false);
+            setIsDriverSelectorOpen(false);
+            props.onConnect();
+        }
+    };
 
     useEffect(() => {
         const updateDevices = (devs: INDIDevice[]) => {
@@ -191,7 +248,7 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
     );
 
     return (
-        <div className="fixed inset-0 top-16 bg-[#020617] z-[45] flex flex-col overflow-hidden animate-fadeIn select-none">
+        <div className="w-full h-full bg-[#020617] flex flex-col overflow-hidden animate-fadeIn select-none">
             
             <div className="flex bg-slate-900 shrink-0 border-b border-slate-800 shadow-lg items-center">
                 <div className="flex-1 flex overflow-x-auto scrollbar-none">
@@ -202,7 +259,7 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                 </div>
                 
                 <div className="flex items-center gap-2 px-3 border-l border-slate-800 h-full">
-                    {props.onToggleHelp && (
+                    {!props.isStandalone && props.onToggleHelp && (
                         <button 
                             onClick={props.onToggleHelp}
                             title={t('tooltips.help') || 'Open Online Help Guide'}
@@ -223,16 +280,20 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                     >
                         {isAlpacaActive ? 'ALPACA: ON' : 'ALPACA'}
                     </button>
-                    <button 
-                        onClick={() => props.onToggleHelp && props.onToggleHelp()} 
-                        className="p-2 text-slate-500 hover:text-white transition-colors" 
-                        title={t('tooltips.help') || 'Open Help Guide'}
-                    >
-                        <span className="text-lg font-bold">?</span>
-                    </button>
-                    <button onClick={props.onClose} className="p-2 text-slate-500 hover:text-white transition-colors" title={t('common.close')}>
-                        <CloseIcon className="w-5 h-5" />
-                    </button>
+                    {!props.isStandalone && (
+                        <button 
+                            onClick={() => props.onToggleHelp && props.onToggleHelp()} 
+                            className="p-2 text-slate-500 hover:text-white transition-colors" 
+                            title={t('tooltips.help') || 'Open Help Guide'}
+                        >
+                            <span className="text-lg font-bold">?</span>
+                        </button>
+                    )}
+                    {!props.isStandalone && (
+                        <button onClick={props.onClose} className="p-2 text-slate-500 hover:text-white transition-colors" title={t('common.close')}>
+                            <CloseIcon className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -271,8 +332,8 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                                                     <LargeInput label={t('controlPanel.host')} value={props.connectionSettings.host} onChange={(v: string) => props.onSettingsChange({...props.connectionSettings, host: v})} title={t('tooltips.host')} />
                                                     <LargeInput label={t('controlPanel.port')} value={props.connectionSettings.port} type="number" onChange={(v: string) => props.onSettingsChange({...props.connectionSettings, port: Number(v)})} title={t('tooltips.port')} />
                                                 </div>
-                                                <Button onClick={props.onConnect} className="w-full py-4 text-xl font-black rounded-xl shadow-lg">
-                                                    <ConnectIcon className="w-6 h-6" /> {t('controlPanel.connect')}
+                                                <Button onClick={handleConnectClick} disabled={isLoadingDrivers} className="w-full py-4 text-xl font-black rounded-xl shadow-lg">
+                                                    <ConnectIcon className="w-6 h-6" /> {isLoadingDrivers ? 'WAIT...' : t('controlPanel.connect')}
                                                 </Button>
                                             </div>
                                         ) : (
@@ -401,14 +462,9 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                                             <LargeInput label="Host" value={props.sampSettings.host} onChange={(v: string) => props.onSampSettingsChange({ host: v })} />
                                             <LargeInput label="Port" type="number" value={props.sampSettings.port} onChange={(v: string) => props.onSampSettingsChange({ port: Number(v) })} />
                                         </div>
-                                        <div className="flex gap-3">
-                                            <Button onClick={props.onConnectSamp} disabled={props.sampStatus === 'Connecting'} title={t('tooltips.samp')} className="flex-1 py-3 text-sm font-black bg-blue-700">
-                                                {props.sampStatus === 'Connected' ? 'SAMP: CONNECTED' : 'CONNECT SAMP HUB'}
-                                            </Button>
-                                            <Button onClick={props.onConnectVirtualSamp} disabled={props.sampStatus === 'Connected' || props.sampStatus === 'Connecting'} title="Start an internal SAMP hub on this server for inter-app communication." className="flex-1 py-3 text-sm font-black bg-slate-700 uppercase">
-                                                {t('controlPanel.connectVirtualSamp')}
-                                            </Button>
-                                        </div>
+                                        <Button onClick={props.onConnectSamp} disabled={props.sampStatus === 'Connecting'} title={t('tooltips.samp')} className="w-full py-3 text-sm font-black bg-blue-700">
+                                            {props.sampStatus === 'Connected' ? 'SAMP: CONNECTED' : 'CONNECT SAMP HUB'}
+                                        </Button>
                                     </div>
                                 </div>
                             </div>
@@ -433,6 +489,99 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                     </div>
                 </div>
             </div>
+
+            {isDriverSelectorOpen && (
+                <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-[999] animate-fadeIn">
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-[0_0_50px_rgba(239,68,68,0.15)] overflow-hidden">
+                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/80">
+                            <div>
+                                <h3 className="text-lg font-black text-white tracking-tight uppercase">INDI Driver Selection</h3>
+                                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mt-0.5">Please select drivers to start in batch</p>
+                            </div>
+                            <button 
+                                onClick={() => setIsDriverSelectorOpen(false)}
+                                className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
+                            >
+                                <CloseIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-red-900">
+                            {['CCDs', 'Telescopes', 'Focusers', 'Domes', 'Filter Wheels'].map(group => {
+                                const groupDrivers = availableDrivers.filter(d => {
+                                    if (group === 'Filter Wheels') {
+                                        return d.group === 'Filter Wheels' || (!['CCDs', 'Telescopes', 'Focusers', 'Domes'].includes(d.group));
+                                    }
+                                    return d.group === group;
+                                });
+
+                                if (groupDrivers.length === 0) return null;
+
+                                return (
+                                    <div key={group} className="space-y-2">
+                                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">{group}</h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {groupDrivers.map(drv => {
+                                                const isSelected = selectedDrivers.includes(drv.bin);
+                                                return (
+                                                    <button
+                                                        key={drv.bin}
+                                                        onClick={() => handleToggleDriverSelection(drv.bin)}
+                                                        className={`p-3.5 rounded-xl border text-left flex items-center justify-between transition-all select-none ${
+                                                            isSelected 
+                                                            ? 'bg-red-950/30 border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.05)]' 
+                                                            : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800 hover:border-slate-600'
+                                                        }`}
+                                                    >
+                                                        <div className="overflow-hidden pr-2">
+                                                            <div className="text-xs font-black truncate">{drv.name}</div>
+                                                            <div className={`text-[8px] font-mono font-bold mt-0.5 uppercase tracking-wide ${isSelected ? 'text-red-400' : 'text-slate-500'}`}>{drv.bin}</div>
+                                                        </div>
+                                                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 transition-all shrink-0 ${isSelected ? 'bg-red-600 border-red-500 text-white' : 'border-slate-600 bg-black/20'}`}>
+                                                            {isSelected && (
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="p-6 border-t border-slate-800 bg-slate-900/80 flex flex-col sm:flex-row gap-3">
+                            <button
+                                onClick={() => {
+                                    setIsDriverSelectorOpen(false);
+                                    props.onConnect();
+                                }}
+                                className="flex-1 py-3.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 font-extrabold text-xs uppercase tracking-widest transition-all"
+                            >
+                                Skip & Connect
+                            </button>
+                            <button
+                                onClick={handleStartAndConnect}
+                                disabled={isStartingDrivers}
+                                className="flex-[2] py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-red-900/30 transition-all disabled:opacity-50"
+                            >
+                                {isStartingDrivers ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        Starting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                        Start & Connect
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

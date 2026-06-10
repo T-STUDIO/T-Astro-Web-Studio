@@ -9,9 +9,15 @@ interface HelpModalProps {
     onClose: () => void;
 }
 
+interface HelpSubsection {
+    title: string;
+    content: string;
+    link?: { text: string; url: string; external?: boolean };
+}
+
 interface HelpSection {
     title: string;
-    subsections: { title: string; content: string }[];
+    subsections: HelpSubsection[];
 }
 
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
@@ -163,6 +169,38 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             ]
         },
         {
+            title: '🔑 Gemini APIキーの設定と管理',
+            subsections: [
+                {
+                    title: 'Gemini APIキーの必要性',
+                    content: '本アプリの「AI天体解説」などのAI情報検索・解説機能を使用するには、お客様ご自身で取得したGoogle Gemini APIキーの登録が必要です。登録されたキーはブラウザのLocalStorage内にのみ安全に保管され、外部サーバーへ送信されることはありません。'
+                },
+                {
+                    title: 'APIキーの取得手順',
+                    content: '1. Google AI Studio（https://aistudio.google.com/app/apikey）にアクセスします。\n2. 「Create API Key」ボタンを押し、規約に同意してAPIキーを生成・コピーします。'
+                },
+                {
+                    title: '登録・変更手順（登録画面リンク）',
+                    content: 'APIキーを本アプリに登録、または既存のキーを変更したい場合は、下記の登録画面リンクからダイアログを開いて入力・保存を完了してください。ブラウザURLの末尾に「?set_api_key=true」を直接入力して再読込することでも呼び出せます。',
+                    link: { text: 'Gemini APIキーの設定・変更画面を開く', url: '?set_api_key=true' }
+                }
+            ]
+        },
+        {
+            title: '🖥️ ビューア機能（/viewer）',
+            subsections: [
+                {
+                    title: 'ビューア機能とは',
+                    content: '本アプリからサイドバーや操作タブなどのコントロール用UIを除去し、カメラから取得された撮影画像（スタッキング表示等を含む）のみをブラウザ全画面にフィットさせて表示する専用機能です。サブモニターやタブレットなどで「星像の描画のみを全画面で常時監視したい」場合に最適です。'
+                },
+                {
+                    title: 'アクセスポートと接続リンク',
+                    content: '本アプリの動作ポートである「6002」を介して、URL「/viewer」を指定して接続します。ローカルや同一LAN内の他デバイスからアクセスする場合は、下記URL構成となります。\n\n・URL: http://[本機IPアドレス]:6002/viewer\n\nパソコン単体で表示を確認、またはテストする場合は、以下の直接リンクを開いてください。',
+                    link: { text: 'ビューア画面（/viewer）へ接続する', url: '/viewer', external: true }
+                }
+            ]
+        },
+        {
             title: '❓ お困りの場合 (トラブルシューティング)',
             subsections: [
                 {
@@ -171,7 +209,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 },
                 {
                     title: 'Q. プレートソルビングが失敗する、解析に時間がかかる',
-                    content: '・ピント（フォーカス）が緩んでいたり、雲の発生、ゲイン設定が低すぎて「星が少ない（検出に必要な星が画像にまともに写っていない）」状態だと失敗します。\n・ローカルソルバーの場合は、TSPS（ポート6001）が手元のPCで正常に起動し、本アプリと繋がっているか確認してください。\n・リモートソルバー（ポート6004プロキシ）の場合は、正しいAstrometry.netの「API Key」が入力されているか再確認し、インターネット接続状態が正常であることをご確認ください。'
+                    content: '・ピント（フォーカス）が緩んでいたり、雲の発生、ゲイン設定が低すぎて「星が少ない（検出に必要な星が画像にまともに写っていない）」状態だと失敗します。\n・ローカルソルバーの場合は、TSPS（ポート6001）が手元のPCで正常に起動し、本アプリと繋がっているか確認してください。\n・リモートソルバー（ポート6004プロキシ）の場合は、正しいAstrometry.net의「API Key」が入力されているか再確認し、インターネット接続状態が正常であることをご確認ください。'
                 }
             ]
         }
@@ -227,7 +265,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 },
                 {
                     title: 'Local Solver (TSPS + Astrometry)',
-                    content: '・Operational Port: 【6001】\n・Provides offline solving using local installations of Astrometry.net via "TSPS (T-Studio Plate Solver)" backend on your machine.\n・Requires no internet connection and resolves fields in just 1-2 seconds. Keep TSPS running in the background and configure the 6001 route in Settings.'
+                    content: '・Operational Port: 【6001】\n// eslint-disable-next-line \n・Provides offline solving using local installations of Astrometry.net via "TSPS (T-Studio Plate Solver)" backend on your machine.\n・Requires no internet connection and resolves fields in just 1-2 seconds. Keep TSPS running in the background and configure the 6001 route in Settings.'
                 },
                 {
                     title: 'Remote Solver (nova.astrometry Proxy Gateway)',
@@ -303,7 +341,39 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 },
                 {
                     title: '⚙️【Settings】Tab (設定)',
-                    content: '・"Get from Web": Runs Geolocation requests to obtain current latitude/longitude.\n・"Get from Device": Loads Mount internal alignment registers.\n・"Send to Mount": Sets coordinates and computer clock times to your physical mount registers.\n・"Save to Local Device": Exports global profile variables to setup JSON files.\n・"Load from Local Device": Re-imports profile parameters from local JSON backups.\n・"Google Drive Sync": Backs up or loads custom calibration parameters to Google Cloud Storage.'
+                    content: '・"Get from Web": Runs Geolocation requests to obtain current latitude/longitude.\n・"Get from Device": Loads Mount internal alignment registers.\n・"Send to Mount": Sets coordinates and computer clock times to your physical mount registers.\n・"Save to Local Device": Exports global profile variables to setup JSON files.\n// eslint-disable-next-line \n・"Load from Local Device": Re-imports profile parameters from local JSON backups.\n・"Google Drive Sync": Backs up or loads custom calibration parameters to Google Cloud Storage.'
+                }
+            ]
+        },
+        {
+            title: '🔑 Gemini API Key & Management',
+            subsections: [
+                {
+                    title: 'Why Gemini API Key is Required?',
+                    content: 'To power our dynamic astronomical AI description cards, a personal Google Gemini API key must be registered. This token is securely kept in your local browser storage (LocalStorage) and is never transmitted to other cloud servers.'
+                },
+                {
+                    title: 'How to Retrieve an API Key',
+                    content: '1. Navigate to Google AI Studio at https://aistudio.google.com/app/apikey\n2. Click "Create API Key", accept terms, and copy your API string.'
+                },
+                {
+                    title: 'Setup & Change Procedure',
+                    content: 'Open the API key setup dialogue using the link below to enter or modify your token. You can also trigger this by appending "?set_api_key=true" to your browser URL and refreshing.',
+                    link: { text: 'Open Gemini API Key Registration Dialog', url: '?set_api_key=true' }
+                }
+            ]
+        },
+        {
+            title: '🖥️ Standard Viewer Mode (/viewer)',
+            subsections: [
+                {
+                    title: 'What is Viewer Mode?',
+                    content: 'An independent layout displaying camera feeds / active stacks in full screen, completely omitting sidebar drawers and setup control widgets. It is designed for remote tablets or auxiliary displays strictly dedicated to viewing celestial captures.'
+                },
+                {
+                    title: 'Operational Port & Route Link',
+                    content: 'Accessible via port "6002" pointing to the "/viewer" subdirectory path. From devices in your local LAN, target:\n\n・Address: http://[Host_IP_Address]:6002/viewer\n\nTo view or debug on your active station, follow the local relative path link below.',
+                    link: { text: 'Connect to Active Viewer (/viewer)', url: '/viewer', external: true }
                 }
             ]
         },
@@ -352,9 +422,27 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                                     {section.subsections.map((subsection, subIndex) => (
                                         <div key={subIndex} className="space-y-1">
                                             <h4 className="text-sm font-semibold text-red-400">{subsection.title}</h4>
-                                            <p className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed pl-3 border-l-2 border-slate-700">
-                                                {subsection.content}
-                                            </p>
+                                            <div className="pl-3 border-l-2 border-slate-700 space-y-2">
+                                                <p className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed">
+                                                    {subsection.content}
+                                                </p>
+                                                {subsection.link && (
+                                                    <div className="pt-1">
+                                                        <a
+                                                            href={subsection.link.url}
+                                                            target={subsection.link.external ? "_blank" : undefined}
+                                                            rel={subsection.link.external ? "noopener noreferrer" : undefined}
+                                                            className="text-xs text-red-400 hover:text-red-300 underline inline-flex items-center gap-1 font-medium bg-red-900/10 hover:bg-red-900/20 px-2 py-1 rounded transition-colors"
+                                                            onClick={subsection.link.url.startsWith('?') ? (e) => {
+                                                                e.preventDefault();
+                                                                window.location.search = subsection.link!.url;
+                                                            } : undefined}
+                                                        >
+                                                            {subsection.link.text} →
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

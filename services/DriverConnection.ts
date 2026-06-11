@@ -292,7 +292,20 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     }
                     
                     sendRaw('<getProperties version="1.7" />');
-                    resolve(true);
+                    
+                    // 1200ms待って実機ドライバのデバイスが上がってくるか確認する
+                    setTimeout(() => {
+                        if (socket !== ws) return;
+                        const deviceCount = discoveredIndiDevices.size;
+                        log(`[Driver] Handshake complete, active devices count: ${deviceCount}`);
+                        if (deviceCount > 0) {
+                            log('[Driver] Discovered running devices. Connection confirmed.');
+                            resolve(true);
+                        } else {
+                            log('[Driver] No running devices found. WebSocket kept alive for discovery/control.');
+                            resolve(false);
+                        }
+                    }, 1200);
                 };
 
                 ws.onmessage = (event) => {

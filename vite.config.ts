@@ -4,10 +4,10 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
+    const isGitHubPages = process.env.GITHUB_ACTIONS === 'true' || process.env.NODE_ENV === 'production';
 
     return {
-      base: './',
+      base: isGitHubPages ? '/T-Astro-Web-Studio/' : './',
       server: {
         port: process.env.PORT ? parseInt(process.env.PORT) : 6002,
         host: '0.0.0.0',

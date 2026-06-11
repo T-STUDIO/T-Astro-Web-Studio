@@ -124,6 +124,8 @@ interface TSConnectProps {
     setActiveView: (view: View) => void;
     telescopePosition?: TelescopePosition | null;
     planetariumSettings?: PlanetariumSettings;
+    shouldOpenDriverSelectorOnLoad?: boolean;
+    onDriverSelectorOpened?: () => void;
 }
 
 export const TSConnect: React.FC<TSConnectProps> = (props) => {
@@ -148,17 +150,28 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
         if (props.connectionSettings.driver === 'INDI') {
             setIsLoadingDrivers(true);
             try {
-                const res = await fetch('/api/indi/drivers');
-                const data = await res.json();
-                if (data.status === 'ok') {
-                    setAvailableDrivers(data.drivers || []);
-                    setSelectedDrivers([]);
-                    setIsDriverSelectorOpen(true);
-                } else {
+                // まずは既存のドライバが外部で稼働しているか試すために直接接続をテストする
+                // （この段階ではゾンビ駆除のための pkill などの外部プロセス影響コマンドは一切実行しません）
+                console.log("[TSConnect] Pre-checking if INDI server is already running & accessible at", props.connectionSettings.host);
+                const success = await AstroService.connect(props.connectionSettings);
+                
+                if (success) {
+                    console.log("[TSConnect] Existing running INDI server verified successfully. Skipping driver selector popup.");
                     props.onConnect();
+                } else {
+                    console.log("[TSConnect] No running server found, fetching XML lists and opening Driver Selector popup...");
+                    const res = await fetch('/api/indi/drivers');
+                    const data = await res.json();
+                    if (data.status === 'ok') {
+                        setAvailableDrivers(data.drivers || []);
+                        setSelectedDrivers([]);
+                        setIsDriverSelectorOpen(true);
+                    } else {
+                        props.onConnect();
+                    }
                 }
             } catch (e) {
-                console.error('[TSConnect] Failed to fetch INDI drivers', e);
+                console.error('[TSConnect] Error checking existing driver server status, fallback to props.onConnect', e);
                 props.onConnect();
             } finally {
                 setIsLoadingDrivers(false);
@@ -194,6 +207,29 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
             props.onConnect();
         }
     };
+
+    useEffect(() => {
+        if (props.shouldOpenDriverSelectorOnLoad) {
+            const loadAndOpen = async () => {
+                setIsLoadingDrivers(true);
+                try {
+                    const res = await fetch('/api/indi/drivers');
+                    const data = await res.json();
+                    if (data.status === 'ok') {
+                        setAvailableDrivers(data.drivers || []);
+                        setSelectedDrivers([]);
+                        setIsDriverSelectorOpen(true);
+                    }
+                } catch (e) {
+                    console.error('[TSConnect] Error auto-loading driver selector popup', e);
+                } finally {
+                    setIsLoadingDrivers(false);
+                    props.onDriverSelectorOpened?.();
+                }
+            };
+            loadAndOpen();
+        }
+    }, [props.shouldOpenDriverSelectorOnLoad]);
 
     useEffect(() => {
         const updateDevices = (devs: INDIDevice[]) => {

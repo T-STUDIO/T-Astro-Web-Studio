@@ -29,13 +29,13 @@ import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
 import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
+
+setAstroService(AstroService);
 import { MountController } from './components/MountController';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
 
 import { hmsToDegrees, dmsToDegrees } from './utils/coords';
-
-setAstroService(AstroService);
 
 const App: React.FC = () => {
   const { t, language } = useTranslation();

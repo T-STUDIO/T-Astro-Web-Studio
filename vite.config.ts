@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    const isGitHubPages = process.env.GITHUB_ACTIONS === 'true' || process.env.NODE_ENV === 'production';
+    const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
 
     return {
       base: isGitHubPages ? '/T-Astro-Web-Studio/' : './',

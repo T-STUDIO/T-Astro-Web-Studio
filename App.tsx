@@ -4,7 +4,7 @@ import {
   ConnectionStatus, ConnectionSettings, TabType, LogEntry, TelescopePosition,
   PlateSolverType, LocalSolverSettings, DeviceType, SampStatus, SampSettings,
   SavedLocation, SavedConnection, SavedApiKey, SavedLocalSolver, SavedSampSettings,
-  LocationStatus
+  LocationStatus, INDIDevice
 } from './types';
 import { Header } from './components/Header';
 import { ControlPanel } from './components/ControlPanel';
@@ -29,13 +29,13 @@ import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
 import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
-
-setAstroService(AstroService);
 import { MountController } from './components/MountController';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
 
 import { hmsToDegrees, dmsToDegrees } from './utils/coords';
+
+setAstroService(AstroService);
 
 const App: React.FC = () => {
   const { t, language } = useTranslation();
@@ -179,10 +179,20 @@ const App: React.FC = () => {
     const handleDeviceUpdate = (devs: INDIDevice[]) => {
       setIndiDevices([...devs]);
     };
-    AstroService.setDeviceCallback(handleDeviceUpdate);
-    setIndiDevices(AstroService.getIndiDevices() || []);
+    if (AstroService && typeof AstroService.setDeviceCallback === 'function') {
+      AstroService.setDeviceCallback(handleDeviceUpdate);
+    }
+    if (AstroService && typeof AstroService.getIndiDevices === 'function') {
+      try {
+        setIndiDevices(AstroService.getIndiDevices() || []);
+      } catch (e) {
+        console.error("[App] Failed to get initial devices:", e);
+      }
+    }
     return () => {
-      AstroService.setDeviceCallback(null);
+      if (AstroService && typeof AstroService.setDeviceCallback === 'function') {
+        AstroService.setDeviceCallback(null);
+      }
     };
   }, []);
 

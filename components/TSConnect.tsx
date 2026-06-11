@@ -151,15 +151,32 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
             setIsLoadingDrivers(true);
             try {
                 // まずは既存のドライバが外部で稼働しているか試すために直接接続をテストする
-                // （この段階ではゾンビ駆除のための pkill などの外部プロセス影響コマンドは一切実行しません）
                 console.log("[TSConnect] Pre-checking if INDI server is already running & accessible at", props.connectionSettings.host);
                 const success = await AstroService.connect(props.connectionSettings);
                 
                 if (success) {
-                    console.log("[TSConnect] Existing running INDI server verified successfully. Skipping driver selector popup.");
-                    props.onConnect();
+                    // WebSocket接続に成功した。デバイス更新XMLを受け取るわずかな猶予（1200ms）を挟んでから、アクティブ内のデバイス数を確認する。
+                    await new Promise(resolve => setTimeout(resolve, 1200));
+                    const activeDevices = AstroService.getIndiDevices() || [];
+                    console.log("[TSConnect] Connected to INDI WebSocket. Active devices count:", activeDevices.length);
+                    
+                    if (activeDevices.length > 0) {
+                        console.log("[TSConnect] Discovered active devices. Existing running INDI server verified successfully. Skipping driver selector popup.");
+                        props.onConnect();
+                    } else {
+                        console.log("[TSConnect] WebSocket opened but no active devices (drivers) found. Opening Driver Selector popup...");
+                        const res = await fetch('/api/indi/drivers');
+                        const data = await res.json();
+                        if (data.status === 'ok') {
+                            setAvailableDrivers(data.drivers || []);
+                            setSelectedDrivers([]);
+                            setIsDriverSelectorOpen(true);
+                        } else {
+                            props.onConnect();
+                        }
+                    }
                 } else {
-                    console.log("[TSConnect] No running server found, fetching XML lists and opening Driver Selector popup...");
+                    // WebSocket自体が不通の場合、ローカル起動用のドライバ選択を表示するか、標準接続処理にフォールバック
                     const res = await fetch('/api/indi/drivers');
                     const data = await res.json();
                     if (data.status === 'ok') {

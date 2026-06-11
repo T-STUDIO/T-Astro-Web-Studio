@@ -111,7 +111,7 @@ export class IndiDriverManager {
             this.stopIndiServer();
 
             // 外部コマンドで強制的なキルも叩いておく
-            exec('pkill -9 -f indiserver || true', () => {
+            exec('pkill -9 indiserver || true', () => {
                 // pkill が終わったら起動
                 setTimeout(() => {
                     if (selectedDrivers.length === 0) {
@@ -172,12 +172,19 @@ export class IndiDriverManager {
      * WebSocket-TCPブリッジの起動・再設定
      */
     public configureBridgePort(port: number) {
-        if (this.currentBridgePort === port && this.bridgeWsServer) {
-            console.log(`[IndiDriverManager] Bridge already running on port ${port}, skipping allocation.`);
+        let solvedPort = port;
+        // 開発環境のWeb Consoleポート(3000)やExpressサーバーポート(6002)との競合・起動不全を防ぐための安全な補正
+        if (solvedPort === 3000 || solvedPort === 6002) {
+            console.warn(`[IndiDriverManager] Port ${solvedPort} is restricted or busy by web servers. Overriding to safe default port 8625.`);
+            solvedPort = 8625;
+        }
+
+        if (this.currentBridgePort === solvedPort && this.bridgeWsServer) {
+            console.log(`[IndiDriverManager] Bridge already running on port ${solvedPort}, skipping allocation.`);
             return;
         }
 
-        console.log(`[IndiDriverManager] Reconfiguring WebSocket-TCP Bridge to port: ${port}`);
+        console.log(`[IndiDriverManager] Reconfiguring WebSocket-TCP Bridge to port: ${solvedPort}`);
         
         // 既存の WebSocket サーバーを安全に閉じる
         if (this.bridgeWsServer) {
@@ -191,7 +198,7 @@ export class IndiDriverManager {
             this.bridgeWsServer = null;
         }
 
-        this.currentBridgePort = port;
+        this.currentBridgePort = solvedPort;
 
         try {
             // 新たな WebSocket サーバーをバインド
@@ -234,11 +241,6 @@ export class IndiDriverManager {
 
                 tcpSocket.on('close', () => {
                     console.log(`[IndiBridge] INDI TCP Server connection closed.`);
-                    wsClient.close();
-                });
-
-                tcpSocket.on('error', (err) => {
-                    console.error('[IndiBridge] INDI TCP Socket Error:', err.message);
                     wsClient.close();
                 });
             });
@@ -296,7 +298,7 @@ export function registerIndiDriverManager(app: Application) {
             }
 
             manager.configureBridgePort(port);
-            res.json({ status: 'ok', message: `Bridge configured to port ${port}` });
+            res.json({ status: 'ok', message: `Bridge configured on port ${port}` });
         } catch (error: any) {
             res.status(500).json({ status: 'error', message: error.message });
         }

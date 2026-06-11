@@ -138,8 +138,11 @@ const App: React.FC = () => {
 
   const [isTSConnectOpen, setIsTSConnectOpen] = useState(false); // State for TS-Connect
   const [isHelpOpen, setIsHelpOpen] = useState(false); // State for Help Modal
+  const [shouldOpenDriverSelectorOnLoad, setShouldOpenDriverSelectorOnLoad] = useState(false);
+  const [indiDevices, setIndiDevices] = useState<INDIDevice[]>([]);
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
+  const prevMountConnected = useRef<boolean>(false);
 
   const addLog = useCallback((key: string, substitutions: any = {}, type: LogEntry['type'] = 'info') => {
     const entry: LogEntry = {
@@ -173,6 +176,17 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const handleDeviceUpdate = (devs: INDIDevice[]) => {
+      setIndiDevices([...devs]);
+    };
+    AstroService.setDeviceCallback(handleDeviceUpdate);
+    setIndiDevices(AstroService.getIndiDevices() || []);
+    return () => {
+      AstroService.setDeviceCallback(null);
+    };
+  }, []);
+
+  useEffect(() => {
     if (sampStatus === 'Connected') {
       if (telescopePosition) {
         SampService.sendSkyCoord(telescopePosition.ra, telescopePosition.dec);
@@ -186,15 +200,28 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!isAutoSyncLocationEnabled) return;
-    const isConnectedNow = connectionStatus === 'Connected';
-    const wasDisconnected = prevConnectionStatus.current !== 'Connected';
-    if (isConnectedNow && (wasDisconnected || location)) {
-      setTimeout(() => {
+
+    const mountDevice = (indiDevices || []).find(dev => 
+      dev.type === 'Telescope' || 
+      dev.type === 'Mount' || 
+      dev.name.toLowerCase().includes('mount') || 
+      dev.name.toLowerCase().includes('telescope')
+    );
+    const isMountConnected = mountDevice ? mountDevice.connected : false;
+
+    if (isMountConnected && !prevMountConnected.current) {
+      console.log('[App] Mount device connected! Syncing location and time in 3 seconds.');
+      const timer = setTimeout(() => {
         onSendLocationToMount();
-       }, 3000);
+      }, 3000);
+      prevMountConnected.current = true;
+      return () => clearTimeout(timer);
     }
-    prevConnectionStatus.current = connectionStatus;
-  }, [location, connectionStatus, isAutoSyncLocationEnabled, onSendLocationToMount]);
+
+    if (!isMountConnected) {
+      prevMountConnected.current = false;
+    }
+  }, [isAutoSyncLocationEnabled, indiDevices, onSendLocationToMount]);
 
   useEffect(() => {
     if (connectionStatus !== 'Connected') { setMountSyncStatus('idle'); }
@@ -471,6 +498,8 @@ const App: React.FC = () => {
                 connectionStatus={connectionStatus}
                 connectionSettings={connectionSettings}
                 onSettingsChange={setConnectionSettings}
+                shouldOpenDriverSelectorOnLoad={shouldOpenDriverSelectorOnLoad}
+                onDriverSelectorOpened={() => setShouldOpenDriverSelectorOnLoad(false)}
                 onConnect={async () => {
                     setConnectionStatus('Connecting');
                     const ok = await AstroService.connect(connectionSettings);
@@ -540,8 +569,18 @@ const App: React.FC = () => {
                         onConnect={async () => {
                             setConnectionStatus('Connecting');
                             const ok = await AstroService.connect(connectionSettings);
-                            setConnectionStatus(ok ? 'Connected' : 'Error');
-                            if (ok) { addLog('logs.connectSuccess', {}, 'success'); }
+                            if (ok) {
+                                setConnectionStatus('Connected');
+                                addLog('logs.connectSuccess', {}, 'success');
+                            } else {
+                                if (connectionSettings.driver === 'INDI') {
+                                    setConnectionStatus('Disconnected');
+                                    setIsTSConnectOpen(true);
+                                    setShouldOpenDriverSelectorOnLoad(true);
+                                } else {
+                                    setConnectionStatus('Error');
+                                }
+                            }
                         }}
                         onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                         planetariumSettings={planetariumSettings}

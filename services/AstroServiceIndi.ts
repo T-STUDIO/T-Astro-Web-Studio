@@ -87,7 +87,7 @@ export const connect = async (settings: any): Promise<boolean> => {
 };
 
 /**
- * 切断ロジックを拡張：両方の接続をクローズします。
+ * 切断ロジックを拡張：両方の接続をクローズし、サーバープロセスのキル指示を送信します（WebSocketチャンネル自体は維持）。
  */
 export const disconnect = async () => {
     BlobTransportService.getInstance().disconnect();

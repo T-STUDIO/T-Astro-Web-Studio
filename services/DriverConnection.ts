@@ -284,7 +284,6 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     if (socket !== ws) return;
                     log('INDI WebSocket Connected');
                     
-                    // 修正：メインチャネルでのBLOBを制御
                     if (mainChannelBlobsDisabled) {
                         sendRaw('<enableBLOB>Never</enableBLOB>');
                     } else {
@@ -292,20 +291,7 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     }
                     
                     sendRaw('<getProperties version="1.7" />');
-                    
-                    // 1200ms待って実機ドライバのデバイスが上がってくるか確認する
-                    setTimeout(() => {
-                        if (socket !== ws) return;
-                        const deviceCount = discoveredIndiDevices.size;
-                        log(`[Driver] Handshake complete, active devices count: ${deviceCount}`);
-                        if (deviceCount > 0) {
-                            log('[Driver] Discovered running devices. Connection confirmed.');
-                            resolve(true);
-                        } else {
-                            log('[Driver] No running devices found. WebSocket kept alive for discovery/control.');
-                            resolve(false);
-                        }
-                    }, 1200);
+                    resolve(true);
                 };
 
                 ws.onmessage = (event) => {
@@ -343,14 +329,36 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
 };
 
 export const disconnect = async () => {
-    if (socket) {
-        socket.onopen = null;
-        socket.onmessage = null;
-        socket.onerror = null;
-        socket.onclose = null;
-        socket.close();
-        socket = null;
+    if (currentSettings.driver === 'Simulator') {
+        AstroServiceSimulator.disconnect();
+        cleanup();
+        return;
     }
+
+    log("[Driver] Disconnect requested. Sending DISCONNECT to devices and stopping indiserver on backend, keeping WebSocket open.");
+    
+    // 1. 各INDIデバイスにDISCONNECTを送信
+    for (const devName of discoveredIndiDevices.keys()) {
+        disconnectIndiDevice(devName);
+    }
+    for (const dev of discoveredIndiDevices.values()) {
+        dev.connected = false;
+    }
+    if (onIndiDeviceUpdate) onIndiDeviceUpdate(Array.from(discoveredIndiDevices.values()));
+
+    // 2. サーバープロセス終了（通常のドライバ切断コマンド＝INDIドライバの終了）
+    try {
+        console.log("[Driver] Stopping backend indiserver child processes...");
+        await fetch('/api/indi/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drivers: [] })
+        });
+        console.log("[Driver] Backend driver processes cleared successfully.");
+    } catch (e) {
+        console.error("[Driver] Failed to stop backend indiserver:", e);
+    }
+    
     cleanup();
 };
 

@@ -62,24 +62,61 @@ export class IndiDriverManager {
                         const filePath = path.join(indiXmlDir, file);
                         const content = fs.readFileSync(filePath, 'utf-8');
                         
-                        // XML内の <driver name="..." bin="..."> もしくは <deviceGroup group="..."> などを簡易パース
-                        // 例： <driver name="ZWO CCD" bin="indi_zwo_ccd">
-                        const driverRegex = /<driver\s+[^>]*name=["']([^"']+)["']\s+[^>]*bin=["']([^"']+)["'][^>]*>/g;
-                        let match;
-                        while ((match = driverRegex.exec(content)) !== null) {
-                            const name = match[1];
-                            const bin = match[2];
+                        // ロバストな抽出処理：属性の並び順が変則的、または改行や子タグ形式になっている場合にも対応します。
+                        const blockRegex = /<(driver|device)\b([^>]*?)>([\s\S]*?)<\/\1>/gi;
+                        let blockMatch;
+                        while ((blockMatch = blockRegex.exec(content)) !== null) {
+                            const attrs = blockMatch[2];
+                            const inner = blockMatch[3];
                             
-                            // グループをXMLコンテンツから簡易推測
-                            let group = 'CCDs'; // デフォルト
-                            if (content.includes('group="Telescopes"') || content.includes('group="Mounts"')) group = 'Telescopes';
-                            else if (content.includes('group="Focusers"')) group = 'Focusers';
-                            else if (content.includes('group="Domes"')) group = 'Domes';
-                            else if (content.includes('group="Filter Wheels"')) group = 'Filter Wheels';
-
-                            if (!seenBins.has(bin)) {
-                                seenBins.add(bin);
-                                driversList.push({ name, bin, group });
+                            // name の抽出：属性、または子要素から
+                            let name = '';
+                            const nameAttrMatch = /name=["']([^"']+)["']/i.exec(attrs);
+                            if (nameAttrMatch) {
+                                name = nameAttrMatch[1];
+                            } else {
+                                const nameTagMatch = /<name>([\s\S]*?)<\/name>/i.exec(inner);
+                                if (nameTagMatch) name = nameTagMatch[1].trim();
+                            }
+                            
+                            // bin の抽出：属性、または子要素から
+                            let bin = '';
+                            const binAttrMatch = /bin=["']([^"']+)["']/i.exec(attrs);
+                            if (binAttrMatch) {
+                                bin = binAttrMatch[1];
+                            } else {
+                                const binTagMatch = /<bin>([\s\S]*?)<\/bin>/i.exec(inner);
+                                if (binTagMatch) bin = binTagMatch[1].trim();
+                            }
+                            
+                            if (name && bin) {
+                                // グループの自動判定
+                                let group = 'CCDs'; // デフォルト
+                                const groupAttrMatch = /group=["']([^"']+)["']/i.exec(attrs);
+                                if (groupAttrMatch) {
+                                    group = groupAttrMatch[1];
+                                } else {
+                                    const groupTagMatch = /<group>([\s\S]*?)<\/group>/i.exec(inner);
+                                    if (groupTagMatch) {
+                                        group = groupTagMatch[1].trim();
+                                    } else {
+                                        const mergedContent = (attrs + " " + inner).toLowerCase();
+                                        if (mergedContent.includes('telescope') || mergedContent.includes('mount') || mergedContent.includes('lx200') || mergedContent.includes('eqmod')) {
+                                            group = 'Telescopes';
+                                        } else if (mergedContent.includes('focuser') || mergedContent.includes('focus')) {
+                                            group = 'Focusers';
+                                        } else if (mergedContent.includes('dome') || mergedContent.includes('roll_dome')) {
+                                            group = 'Domes';
+                                        } else if (mergedContent.includes('wheel') || mergedContent.includes('filter')) {
+                                            group = 'Filter Wheels';
+                                        }
+                                    }
+                                }
+                                
+                                if (!seenBins.has(bin)) {
+                                    seenBins.add(bin);
+                                    driversList.push({ name, bin, group });
+                                }
                             }
                         }
                     }
@@ -124,23 +161,43 @@ export class IndiDriverManager {
                     
                     try {
                         console.log(`[IndiDriverManager] Spawning: indiserver ${args.join(' ')}`);
-                        this.activeIndiProcess = spawn('indiserver', args, {
+                        const proc = spawn('indiserver', args, {
                             detached: true,
                             stdio: 'ignore'
                         });
 
-                        this.activeIndiProcess.unref(); // 親プロセスから独立させて非同期に稼働し続ける
+                        this.activeIndiProcess = proc;
+                        proc.unref(); // 親プロセスから独立させて非同期に稼働し続ける
 
-                        this.activeIndiProcess.on('error', (err) => {
+                        let hasErrored = false;
+                        const errorHandler = (err: any) => {
                             console.error('[IndiDriverManager] Failed to spawn indiserver:', err);
-                        });
+                            hasErrored = true;
+                            if (this.activeIndiProcess === proc) {
+                                this.activeIndiProcess = null;
+                            }
+                            resolve({ status: 'error', message: `Failed to spawn indiserver: ${err.message}` });
+                        };
 
-                        this.activeIndiProcess.on('exit', (code, signal) => {
+                        proc.on('error', errorHandler);
+
+                        proc.on('exit', (code, signal) => {
                             console.log(`[IndiDriverManager] indiserver exited with code ${code}, signal ${signal}`);
-                            this.activeIndiProcess = null;
+                            if (this.activeIndiProcess === proc) {
+                                this.activeIndiProcess = null;
+                            }
                         });
 
-                        resolve({ status: 'ok', message: `Successfully started indiserver with ${selectedDrivers.length} drivers: ${selectedDrivers.join(', ')}` });
+                        // 300ms 待ってエラーが起きなければ、無事 spawn 成功したと見なして resolve する
+                        setTimeout(() => {
+                            if (proc && proc.off) {
+                                proc.off('error', errorHandler); // 初期起動監視終了のためリスナー解除
+                            }
+                            if (!hasErrored) {
+                                resolve({ status: 'ok', message: `Successfully started indiserver with ${selectedDrivers.length} drivers: ${selectedDrivers.join(', ')}` });
+                            }
+                        }, 300);
+
                     } catch (err: any) {
                         console.error('[IndiDriverManager] Error spawning indiserver:', err);
                         resolve({ status: 'error', message: `Failed to spawn indiserver: ${err.message}` });
@@ -156,15 +213,20 @@ export class IndiDriverManager {
     public stopIndiServer() {
         if (this.activeIndiProcess) {
             console.log('[IndiDriverManager] Stopping existing active indiserver child process...');
-            try {
-                // 安全にキルを送信
-                process.kill(-this.activeIndiProcess.pid!); // マイナスにすることでプロセスグループ全体をキル
-            } catch (e) {
-                try {
-                    this.activeIndiProcess.kill();
-                } catch (err) {}
-            }
+            const proc = this.activeIndiProcess;
             this.activeIndiProcess = null;
+            
+            try {
+                // まずは通常の子プロセスキルを試みる
+                proc.kill('SIGKILL');
+            } catch (err) {}
+
+            if (proc.pid) {
+                try {
+                    // プロセスグループ全体の安全なキルも保護下で試みる
+                    process.kill(-proc.pid, 'SIGKILL');
+                } catch (e) {}
+            }
         }
     }
 
@@ -198,20 +260,36 @@ export class IndiDriverManager {
             this.bridgeWsServer = null;
         }
 
+        if (this.bridgeWsServer && this.currentBridgePort === solvedPort) {
+            console.log(`[IndiDriverManager] WebSocket Bridge already listening on port ${solvedPort}. Skipping re-bind.`);
+            return;
+        }
+
         this.currentBridgePort = solvedPort;
 
         try {
             // 新たな WebSocket サーバーをバインド
-            this.bridgeWsServer = new WebSocketServer({ port: this.currentBridgePort, host: '0.0.0.0' });
+            const wsServer = new WebSocketServer({ port: this.currentBridgePort, host: '0.0.0.0' });
+            this.bridgeWsServer = wsServer;
             
             console.log(`[IndiDriverManager] WebSocket-TCP Bridge listening on ws://0.0.0.0:${this.currentBridgePort}`);
 
-            this.bridgeWsServer.on('connection', (wsClient: WebSocket) => {
+            wsServer.on('error', (err: any) => {
+                console.error(`[IndiDriverManager] WebSocket Bridge Server Error on port ${this.currentBridgePort}:`, err);
+            });
+
+            wsServer.on('connection', (wsClient: WebSocket) => {
                 console.log(`[IndiBridge] Browser WebSocket client linked. Opening TCP socket connection to localhost:7624...`);
 
                 // TCPソケットで実際の INDIサーバ(TCP 7624)へ接続を中継する
                 const tcpSocket = net.createConnection({ host: '127.0.0.1', port: 7624 }, () => {
                     console.log(`[IndiBridge] Connected successfully to local INDI TCP Server (127.0.0.1:7624).`);
+                });
+
+                // プロセス破壊を防ぐ重大なエラーハンドリング
+                tcpSocket.on('error', (err: any) => {
+                    console.error(`[IndiBridge] TCP Socket Error on localhost:7624:`, err.message);
+                    wsClient.close();
                 });
 
                 // WebSocket -> TCP
@@ -243,10 +321,6 @@ export class IndiDriverManager {
                     console.log(`[IndiBridge] INDI TCP Server connection closed.`);
                     wsClient.close();
                 });
-            });
-
-            this.bridgeWsServer.on('error', (err: any) => {
-                console.error(`[IndiDriverManager] WebSocket Bridge Server Error on port ${this.currentBridgePort}:`, err);
             });
 
         } catch (err) {

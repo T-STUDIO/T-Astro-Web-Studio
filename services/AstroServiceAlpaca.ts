@@ -3,6 +3,7 @@ import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import { alpacaClient } from './AlpacaClientService';
 import { rawFitsToDisplay } from './DriverConnection';
 import AlpacaImageService from './AlpacaImageService';
+import * as sampService from './sampService';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -48,6 +49,20 @@ export const setCameraCapabilitiesCallback = (cb: typeof cameraCapabilitiesCallb
     if (cameraCapabilities && cb) cb(cameraCapabilities);
 };
 
+export const syncSkyCoord = (ra: number, dec: number) => {
+    if (sampService.isConnected()) {
+        sampService.sendSkyCoord(ra, dec);
+    }
+};
+
+let onSampSkyCoordReceived: ((ra: number, dec: number) => void) | null = null;
+export const setSampSkyCoordReceivedCallback = (cb: typeof onSampSkyCoordReceived) => {
+    onSampSkyCoordReceived = cb;
+    if (cb) {
+        sampService.setSkyCoordCallback(cb);
+    }
+};
+
 let logCallback: ((msg: string) => void) | null = null;
 
 export const setLogCallback = (cb: any) => {
@@ -81,8 +96,26 @@ const addDebugLog = (msg: string) => {
     if (logCallback) logCallback(entry);
 };
 
+let preferredTelescopeId: string | null = null;
+
+export const setPreferredTelescopeId = (id: string | null) => {
+    preferredTelescopeId = id;
+    addDebugLog(`Preferred telescope set to: ${id || 'None (Auto)'}`);
+};
+
 const getDeviceNumber = (type: string): number => {
-    const device = alpacaClient.getDevices().find(d => d.deviceType.toLowerCase() === type.toLowerCase());
+    const devices = alpacaClient.getDevices();
+    
+    // If it's a telescope and we have a preferred one, try to find it
+    if (type.toLowerCase() === 'telescope' && preferredTelescopeId) {
+        const preferred = devices.find(d => 
+            d.deviceType.toLowerCase() === 'telescope' && 
+            (d.uniqueId === preferredTelescopeId || d.deviceName === preferredTelescopeId)
+        );
+        if (preferred) return preferred.deviceNumber;
+    }
+
+    const device = devices.find(d => d.deviceType.toLowerCase() === type.toLowerCase());
     return device !== undefined ? device.deviceNumber : -1;
 };
 

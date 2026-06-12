@@ -23,9 +23,11 @@ const SAMP_WS_PORT = 31000;
 const connectWs = (clientId: string) => {
     if (ws) ws.close();
     
-    // Use the same host as the page
+    // Use the same host and port as the page
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
-    const wsUrl = `ws://${host}:${SAMP_WS_PORT}`;
+    const port = window.location.port;
+    const wsUrl = `${protocol}//${host}${port ? ':' + port : ''}`;
     
     console.log(`[SAMP WS] Connecting to ${wsUrl}...`);
     ws = new WebSocket(wsUrl);
@@ -522,9 +524,14 @@ export const connect = async (settings: SampSettings) => {
     }
     
     const isLocal = hubUrl.includes('127.0.0.1') || hubUrl.includes('localhost');
-
+    
     if (isLocal) {
-        console.log(`[SAMP] Connecting to LOCAL HUB via Browser at: ${hubUrl}`);
+        console.warn(`[SAMP] Warning: Connecting to ${hubUrl} (localhost) from a browser usually fails due to CORS unless it's the Web Profile (port 21012).`);
+        console.warn(`[SAMP] For Aladin/Skychart on another machine, please use its LAN IP (e.g., 192.168.1.50).`);
+    }
+
+    if (isLocal && hubUrl.includes(':21012')) {
+        console.log(`[SAMP] Connecting to LOCAL WEB HUB via Browser at: ${hubUrl}`);
         if (statusCallback) statusCallback('Connecting', { hubUrl });
         
         try {
@@ -644,19 +651,26 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
         "samp.params": { ra: ra.toString(), dec: dec.toString() }
     };
 
+    console.log(`[SAMP] Sending coord: RA=${ra}, Dec=${dec}`);
+
     // 1. Try activeSession (Internal Hub)
     if (activeSession) {
-        console.log(`[SAMP] Sending coord via activeSession: RA=${ra}, Dec=${dec}`);
-        activeSession.client.execute("samp.hub.notifyAll", [activeSession.pk, msg],
-            () => console.log("[SAMP] Success (Internal)"),
-            (err: any) => console.error("[SAMP] Failed (Internal)", err)
-        );
-        return;
+        console.log(`[SAMP] Sending via Internal Hub (${activeSession.url})`);
+        try {
+            // Use the patched execute to ensure it goes through our relay if needed
+            activeSession.client.execute("samp.hub.notifyAll", [activeSession.pk, msg],
+                () => console.log("[SAMP] Success (Internal Hub)"),
+                (err: any) => console.error("[SAMP] Failed (Internal Hub)", err)
+            );
+        } catch (e) {
+            console.error("[SAMP] Internal notifyAll error:", e);
+        }
+        // Don't return, also try proxySession if available
     }
 
     // 2. Try proxySession (External Hub via Proxy)
     if (proxySession) {
-        console.log(`[SAMP] Sending coord via proxySession: RA=${ra}, Dec=${dec}`);
+        console.log(`[SAMP] Sending via External Hub Proxy`);
         try {
             const response = await fetch(`${window.location.origin}/api/samp/proxy/notifyAll`, {
                 method: 'POST',
@@ -664,28 +678,29 @@ export const sendSkyCoord = async (ra: number, dec: number) => {
                 body: JSON.stringify({ selfId: proxySession.selfId, message: msg })
             });
             if (!response.ok) throw new Error(`Proxy notification failed: ${response.status}`);
-            console.log("[SAMP] Success (Proxy)");
+            console.log("[SAMP] Success (External Hub Proxy)");
         } catch (e) {
-            console.error("[SAMP] Failed (Proxy)", e);
+            console.error("[SAMP] Failed (External Hub Proxy)", e);
         }
-        return;
+        // Don't return, also try connector if available
     }
 
     // 3. Try connector (Standard/Web Profile)
     if (connector && connector.connection) {
-        console.log(`[SAMP] Sending coord via connector: RA=${ra}, Dec=${dec}`);
+        console.log(`[SAMP] Sending via Legacy Connector`);
         try {
             connector.connection.notifyAll([msg], 
-                () => console.log("[SAMP] Success (Connector)"),
-                (err: any) => console.error("[SAMP] Failed (Connector)", err)
+                () => console.log("[SAMP] Success (Legacy Connector)"),
+                (err: any) => console.error("[SAMP] Failed (Legacy Connector)", err)
             );
         } catch (e) {
             console.error("[SAMP] Connector notifyAll error:", e);
         }
-        return;
     }
 
-    console.warn("[SAMP] Not connected, cannot send coordinates");
+    if (!activeSession && !proxySession && (!connector || !connector.connection)) {
+        console.warn("[SAMP] Not connected, cannot send coordinates");
+    }
 };
 
 export const isConnected = (): boolean => {

@@ -9,8 +9,16 @@ declare global {
 }
 
 // Environment variable or Local Storage fallback
-let currentClientId = process.env.CLIENT_ID || localStorage.getItem('t_astro_google_client_id') || '';
-const API_KEY = process.env.API_KEY || ''; 
+const getEnvVar = (name: string) => {
+    try {
+        return (import.meta.env && import.meta.env[`VITE_${name}`]) || (typeof process !== 'undefined' ? process.env[name] : '');
+    } catch (e) {
+        return '';
+    }
+};
+
+let currentClientId = getEnvVar('CLIENT_ID') || localStorage.getItem('t_astro_google_client_id') || '';
+const API_KEY = getEnvVar('API_KEY') || ''; 
 
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';

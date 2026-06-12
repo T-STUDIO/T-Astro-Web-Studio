@@ -235,11 +235,12 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
 };
 
 export const connect = async (settings: ConnectionSettings): Promise<boolean> => {
-    currentSettings = settings;
+    const targetPort = Number(settings.port || 8625);
+    currentSettings = { ...settings, port: targetPort };
     disconnect(); 
 
     if (settings.driver === 'Simulator') {
-        const ok = await AstroServiceSimulator.connect(settings);
+        const ok = await AstroServiceSimulator.connect(currentSettings);
         if (ok) {
             AstroServiceSimulator.getIndiDevices().forEach(dev => {
                 discoveredIndiDevices.set(dev.name, dev);
@@ -271,7 +272,7 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
             path = rawHost.substring(slashIdx);
             rawHost = rawHost.substring(0, slashIdx);
         }
-        const url = `${protocol}://${rawHost}:${settings.port}${path}`;
+        const url = `${protocol}://${rawHost}:${targetPort}${path}`;
         log(`Connecting to INDI at ${url}...`);
 
         return new Promise((resolve) => {

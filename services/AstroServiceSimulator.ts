@@ -1,8 +1,15 @@
 import { CelestialObject, MountSpeed, LocationData, TelescopePosition, SimulatorSettings, INDIVector, INDIDevice } from '../types';
 import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import AstroSimulatorService from './AstroSimulatorService';
+import * as sampService from './sampService';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const syncSkyCoord = (ra: number, dec: number) => {
+    if (sampService.isConnected()) {
+        sampService.sendSkyCoord(ra, dec);
+    }
+};
 
 let imageReceivedCallback: ((url: string, format: string, metadata?: any) => void) | null = null;
 let telescopePositionCallback: ((pos: TelescopePosition) => void) | null = null;
@@ -18,6 +25,14 @@ export const setImageReceivedCallback = (cb: typeof imageReceivedCallback) => {
 
 export const setTelescopePositionCallback = (cb: typeof telescopePositionCallback) => {
     telescopePositionCallback = cb;
+};
+
+let onSampSkyCoordReceived: ((ra: number, dec: number) => void) | null = null;
+export const setSampSkyCoordReceivedCallback = (cb: typeof onSampSkyCoordReceived) => {
+    onSampSkyCoordReceived = cb;
+    if (cb) {
+        sampService.setSkyCoordCallback(cb);
+    }
 };
 
 // Mock other callbacks for compatibility

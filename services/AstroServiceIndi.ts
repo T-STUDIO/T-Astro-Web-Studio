@@ -58,6 +58,9 @@ export {
  * 接続ロジックを拡張：メインチャネルとBLOBチャネルを分離して接続します。
  */
 export const connect = async (settings: any): Promise<boolean> => {
+    const targetPort = Number(settings.port || 8625);
+    const adjustedSettings = { ...settings, port: targetPort };
+
     // INDIの場合のみ分離転送を予約
     if (settings.driver === 'INDI') {
         DriverConnection.setMainChannelBlobDisabled(true);
@@ -66,7 +69,7 @@ export const connect = async (settings: any): Promise<boolean> => {
             await fetch('/api/indi/configure-port', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ port: Number(settings.port || 8625) })
+                body: JSON.stringify({ port: targetPort })
             });
         } catch (e) {
             console.error('[IndiBridge] Failed to configure server-side bridge port', e);
@@ -74,11 +77,11 @@ export const connect = async (settings: any): Promise<boolean> => {
     }
     
     // メイン制御チャネルの接続
-    const success = await DriverConnection.connect(settings);
+    const success = await DriverConnection.connect(adjustedSettings);
     
     // INDIの場合、画像転送用の別チャネルを並列で立ち上げ
     if (success && settings.driver === 'INDI') {
-        BlobTransportService.getInstance().connect(settings).catch(err => {
+        BlobTransportService.getInstance().connect(adjustedSettings).catch(err => {
             console.error("[BLOB] Failed to connect secondary channel", err);
         });
     }

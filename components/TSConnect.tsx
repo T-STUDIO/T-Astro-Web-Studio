@@ -145,33 +145,13 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
     const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
 
     const handleConnectClick = async () => {
-        if (props.connectionSettings.driver === 'INDI') {
-            setIsLoadingDrivers(true);
-            try {
-                // 既に背景WebSocketが稼働している前提で、アクティブなデバイスプロパティがあるか直接チェック
-                const activeDevices = AstroService.getIndiDevices() || [];
-                console.log("[TSConnect] Pre-checking active INDI devices count:", activeDevices.length);
-                
-                if (activeDevices.length > 0) {
-                    console.log("[TSConnect] Discovered active devices. Existing running INDI server verified successfully. Connecting directly...");
-                    const success = await AstroService.connect(props.connectionSettings);
-                    if (success) {
-                        props.onConnect();
-                    }
-                } else {
-                    console.log("[TSConnect] No active devices (drivers) found. Opening preloaded Driver Selector popup...");
-                    setIsDriverSelectorOpen(true);
-                }
-            } catch (e) {
-                console.error('[TSConnect] Error checking existing driver server status, fallback to connect', e);
-                const success = await AstroService.connect(props.connectionSettings);
-                if (success) props.onConnect();
-            } finally {
-                setIsLoadingDrivers(false);
-            }
-        } else {
-            const success = await AstroService.connect(props.connectionSettings);
-            if (success) props.onConnect();
+        setIsLoadingDrivers(true);
+        try {
+            await props.onConnect();
+        } catch (e) {
+            console.error('[TSConnect] Connection handler error:', e);
+        } finally {
+            setIsLoadingDrivers(false);
         }
     };
 

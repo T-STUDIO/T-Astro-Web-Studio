@@ -15,6 +15,7 @@ import { GeminiApiKeyModal } from './components/GeminiApiKeyModal'; // New Impor
 import { DeviceSettingsModal } from './components/DeviceSettingsModal';
 import { DiagnosticsModal } from './components/DiagnosticsModal';
 import { TSConnect } from './components/TSConnect'; // Import TSConnect
+import { INDIDriverSelector } from './components/INDIDriverSelector';
 import { HelpModal } from './components/HelpModal'; // Import HelpModal
 import { useTranslation } from './contexts/LanguageContext';
 import { StarIcon } from './components/icons/StarIcon';
@@ -137,6 +138,7 @@ const App: React.FC = () => {
   const [isDriveConnected, setIsDriveConnected] = useState(false);
 
   const [isTSConnectOpen, setIsTSConnectOpen] = useState(false); // State for TS-Connect
+  const [isAppDriverSelectorOpen, setIsAppDriverSelectorOpen] = useState(false); // Playback directly on App view
   const [isHelpOpen, setIsHelpOpen] = useState(false); // State for Help Modal
   const [shouldOpenDriverSelectorOnLoad, setShouldOpenDriverSelectorOnLoad] = useState(false);
   const [indiDevices, setIndiDevices] = useState<INDIDevice[]>([]);
@@ -523,23 +525,16 @@ const App: React.FC = () => {
                 shouldOpenDriverSelectorOnLoad={shouldOpenDriverSelectorOnLoad}
                 onDriverSelectorOpened={() => setShouldOpenDriverSelectorOnLoad(false)}
                 onConnect={async () => {
-                    if (connectionSettings.driver === 'INDI') {
-                        const activeDevices = AstroService.getIndiDevices() || [];
-                        if (activeDevices.length > 0) {
-                            setConnectionStatus('Connecting');
-                            const ok = await AstroService.connect(connectionSettings);
-                            setConnectionStatus(ok ? 'Connected' : 'Error');
-                            if (ok) addLog('logs.connectSuccess', {}, 'success');
-                        } else {
-                            setConnectionStatus('Disconnected');
-                            setIsTSConnectOpen(true);
+                    setConnectionStatus('Connecting');
+                    const ok = await AstroService.connect(connectionSettings);
+                    if (ok) {
+                        setConnectionStatus('Connected');
+                        addLog('logs.connectSuccess', {}, 'success');
+                    } else {
+                        setConnectionStatus('Disconnected');
+                        if (connectionSettings.driver === 'INDI') {
                             setShouldOpenDriverSelectorOnLoad(true);
                         }
-                    } else {
-                        setConnectionStatus('Connecting');
-                        const ok = await AstroService.connect(connectionSettings);
-                        setConnectionStatus(ok ? 'Connected' : 'Error');
-                        if (ok) addLog('logs.connectSuccess', {}, 'success');
                     }
                 }}
                 onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
@@ -604,28 +599,14 @@ const App: React.FC = () => {
                         onSettingsChange={handleSettingsChange}
                         onConnect={async () => {
                             setConnectionStatus('Connecting');
-                            if (connectionSettings.driver === 'INDI') {
-                                const activeDevices = AstroService.getIndiDevices() || [];
-                                if (activeDevices.length > 0) {
-                                    const ok = await AstroService.connect(connectionSettings);
-                                    if (ok) {
-                                        setConnectionStatus('Connected');
-                                        addLog('logs.connectSuccess', {}, 'success');
-                                    } else {
-                                        setConnectionStatus('Error');
-                                    }
-                                } else {
-                                    setConnectionStatus('Disconnected');
-                                    setIsTSConnectOpen(true);
-                                    setShouldOpenDriverSelectorOnLoad(true);
-                                }
+                            const ok = await AstroService.connect(connectionSettings);
+                            if (ok) {
+                                setConnectionStatus('Connected');
+                                addLog('logs.connectSuccess', {}, 'success');
                             } else {
-                                const ok = await AstroService.connect(connectionSettings);
-                                if (ok) {
-                                    setConnectionStatus('Connected');
-                                    addLog('logs.connectSuccess', {}, 'success');
-                                } else {
-                                    setConnectionStatus('Error');
+                                setConnectionStatus('Disconnected');
+                                if (connectionSettings.driver === 'INDI') {
+                                    setIsAppDriverSelectorOpen(true);
                                 }
                             }
                         }}
@@ -803,6 +784,24 @@ const App: React.FC = () => {
       />
       <DiagnosticsModal isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} currentSettings={connectionSettings} />
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <INDIDriverSelector 
+        isOpen={isAppDriverSelectorOpen}
+        onClose={() => setIsAppDriverSelectorOpen(false)}
+        onConnect={async () => {
+            setConnectionStatus('Connecting');
+            const ok = await AstroService.connect(connectionSettings);
+            setConnectionStatus(ok ? 'Connected' : 'Error');
+            if (ok) addLog('logs.connectSuccess', {}, 'success');
+        }}
+        onStartSuccess={async () => {
+            setConnectionStatus('Connecting');
+            setTimeout(async () => {
+                const ok = await AstroService.connect(connectionSettings);
+                setConnectionStatus(ok ? 'Connected' : 'Error');
+                if (ok) addLog('logs.connectSuccess', {}, 'success');
+            }, 1000);
+        }}
+      />
       <GeminiApiKeyModal 
         isOpen={isApiKeyModalOpen} 
         onClose={() => setIsApiKeyModalOpen(false)} 

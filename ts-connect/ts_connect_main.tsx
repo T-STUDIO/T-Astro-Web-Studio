@@ -22,6 +22,7 @@ const TSConnectStandalone: React.FC = () => {
     // Connection & Devices
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('Disconnected');
     const [connectionSettings, setConnectionSettings] = useState<ConnectionSettings>(initialSettings.connectionSettings);
+    const [shouldOpenDriverSelectorOnLoad, setShouldOpenDriverSelectorOnLoad] = useState(false);
     
     // Location, GPS & Time
     const [location, setLocation] = useState<LocationData | null>(initialSettings.location);
@@ -133,12 +134,16 @@ const TSConnectStandalone: React.FC = () => {
     // Connect & Disconnect Loops
     const handleConnect = async () => {
         setConnectionStatus('Connecting');
-        try {
-            const ok = await AstroService.connect(connectionSettings);
-            setConnectionStatus(ok ? 'Connected' : 'Error');
-        } catch (e) {
-            console.error('[TSConnectStandalone] Connection crash:', e);
-            setConnectionStatus('Error');
+        const ok = await AstroService.connect(connectionSettings);
+        if (ok) {
+            setConnectionStatus('Connected');
+        } else {
+            setConnectionStatus('Disconnected');
+            const host = (connectionSettings.host || '').trim();
+            const isLocalHost = host === '' || host === 'localhost' || host === '127.0.0.1';
+            if (connectionSettings.driver === 'INDI' && isLocalHost) {
+                setShouldOpenDriverSelectorOnLoad(true);
+            }
         }
     };
 
@@ -190,6 +195,8 @@ const TSConnectStandalone: React.FC = () => {
                     onSettingsChange={setConnectionSettings}
                     onConnect={handleConnect}
                     onDisconnect={handleDisconnect}
+                    shouldOpenDriverSelectorOnLoad={shouldOpenDriverSelectorOnLoad}
+                    onDriverSelectorOpened={() => setShouldOpenDriverSelectorOnLoad(false)}
                     location={location}
                     locationStatus={locationStatus}
                     onUpdateLatitude={(lat: number) => setLocation(prev => ({ ...prev || { latitude: 0, longitude: 0 }, latitude: lat }))}

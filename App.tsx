@@ -277,6 +277,18 @@ const App: React.FC = () => {
   }, [isCapturing]);
 
   useEffect(() => {
+    if (connectionSettings.driver === 'INDI') {
+      console.log("[App] Activating client-side persistent WebSocket channel for INDI...");
+      AstroService.startAutoConnect(connectionSettings);
+    } else {
+      AstroService.stopAutoConnect();
+    }
+    return () => {
+      AstroService.stopAutoConnect();
+    };
+  }, [connectionSettings]);
+
+  useEffect(() => {
     SettingsService.saveSettings({
       connectionSettings, planetariumSettings, exposure, gain, offset, binning, colorBalance,
       astrometryApiKey, plateSolverType, localSolverSettings, isAutoCenterEnabled, isAutoSyncLocationEnabled,
@@ -511,10 +523,24 @@ const App: React.FC = () => {
                 shouldOpenDriverSelectorOnLoad={shouldOpenDriverSelectorOnLoad}
                 onDriverSelectorOpened={() => setShouldOpenDriverSelectorOnLoad(false)}
                 onConnect={async () => {
-                    setConnectionStatus('Connecting');
-                    const ok = await AstroService.connect(connectionSettings);
-                    setConnectionStatus(ok ? 'Connected' : 'Error');
-                    if (ok) addLog('logs.connectSuccess', {}, 'success');
+                    if (connectionSettings.driver === 'INDI') {
+                        const activeDevices = AstroService.getIndiDevices() || [];
+                        if (activeDevices.length > 0) {
+                            setConnectionStatus('Connecting');
+                            const ok = await AstroService.connect(connectionSettings);
+                            setConnectionStatus(ok ? 'Connected' : 'Error');
+                            if (ok) addLog('logs.connectSuccess', {}, 'success');
+                        } else {
+                            setConnectionStatus('Disconnected');
+                            setIsTSConnectOpen(true);
+                            setShouldOpenDriverSelectorOnLoad(true);
+                        }
+                    } else {
+                        setConnectionStatus('Connecting');
+                        const ok = await AstroService.connect(connectionSettings);
+                        setConnectionStatus(ok ? 'Connected' : 'Error');
+                        if (ok) addLog('logs.connectSuccess', {}, 'success');
+                    }
                 }}
                 onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                 location={location}
@@ -578,15 +604,26 @@ const App: React.FC = () => {
                         onSettingsChange={handleSettingsChange}
                         onConnect={async () => {
                             setConnectionStatus('Connecting');
-                            const ok = await AstroService.connect(connectionSettings);
-                            if (ok) {
-                                setConnectionStatus('Connected');
-                                addLog('logs.connectSuccess', {}, 'success');
-                            } else {
-                                if (connectionSettings.driver === 'INDI') {
+                            if (connectionSettings.driver === 'INDI') {
+                                const activeDevices = AstroService.getIndiDevices() || [];
+                                if (activeDevices.length > 0) {
+                                    const ok = await AstroService.connect(connectionSettings);
+                                    if (ok) {
+                                        setConnectionStatus('Connected');
+                                        addLog('logs.connectSuccess', {}, 'success');
+                                    } else {
+                                        setConnectionStatus('Error');
+                                    }
+                                } else {
                                     setConnectionStatus('Disconnected');
                                     setIsTSConnectOpen(true);
                                     setShouldOpenDriverSelectorOnLoad(true);
+                                }
+                            } else {
+                                const ok = await AstroService.connect(connectionSettings);
+                                if (ok) {
+                                    setConnectionStatus('Connected');
+                                    addLog('logs.connectSuccess', {}, 'success');
                                 } else {
                                     setConnectionStatus('Error');
                                 }

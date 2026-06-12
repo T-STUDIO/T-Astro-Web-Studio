@@ -20,6 +20,7 @@ import { TelescopeIcon } from './icons/TelescopeIcon';
 import * as AstroService from '../services/AstroService';
 import { decimalToSexagesimal, sexagesimalToDecimal } from '../utils/coords';
 import AlpacaBridge from '../AlpacaBridge.ts';
+import { INDIDriverSelector } from './INDIDriverSelector';
 
 // モジュールレベルで状態を保持（画面切替時にリセットされないようにする）
 let globalAlpacaActive = false;
@@ -141,110 +142,43 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
     const isConnected = props.connectionStatus === 'Connected';
 
     const [isDriverSelectorOpen, setIsDriverSelectorOpen] = useState(false);
-    const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
-    const [selectedDrivers, setSelectedDrivers] = useState<string[]>([]);
     const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
-    const [isStartingDrivers, setIsStartingDrivers] = useState(false);
 
     const handleConnectClick = async () => {
         if (props.connectionSettings.driver === 'INDI') {
             setIsLoadingDrivers(true);
             try {
-                // まずは既存のドライバが外部で稼働しているか試すために直接接続をテストする
-                console.log("[TSConnect] Pre-checking if INDI server is already running & accessible at", props.connectionSettings.host);
-                const success = await AstroService.connect(props.connectionSettings);
+                // 既に背景WebSocketが稼働している前提で、アクティブなデバイスプロパティがあるか直接チェック
+                const activeDevices = AstroService.getIndiDevices() || [];
+                console.log("[TSConnect] Pre-checking active INDI devices count:", activeDevices.length);
                 
-                if (success) {
-                    // WebSocket接続に成功した。デバイス更新XMLを受け取るわずかな猶予（1200ms）を挟んでから、アクティブ内のデバイス数を確認する。
-                    await new Promise(resolve => setTimeout(resolve, 1200));
-                    const activeDevices = AstroService.getIndiDevices() || [];
-                    console.log("[TSConnect] Connected to INDI WebSocket. Active devices count:", activeDevices.length);
-                    
-                    if (activeDevices.length > 0) {
-                        console.log("[TSConnect] Discovered active devices. Existing running INDI server verified successfully. Skipping driver selector popup.");
+                if (activeDevices.length > 0) {
+                    console.log("[TSConnect] Discovered active devices. Existing running INDI server verified successfully. Connecting directly...");
+                    const success = await AstroService.connect(props.connectionSettings);
+                    if (success) {
                         props.onConnect();
-                    } else {
-                        console.log("[TSConnect] WebSocket opened but no active devices (drivers) found. Opening Driver Selector popup...");
-                        const res = await fetch('/api/indi/drivers');
-                        const data = await res.json();
-                        if (data.status === 'ok') {
-                            setAvailableDrivers(data.drivers || []);
-                            setSelectedDrivers([]);
-                            setIsDriverSelectorOpen(true);
-                        } else {
-                            props.onConnect();
-                        }
                     }
                 } else {
-                    // WebSocket自体が不通の場合、ローカル起動用のドライバ選択を表示するか、標準接続処理にフォールバック
-                    const res = await fetch('/api/indi/drivers');
-                    const data = await res.json();
-                    if (data.status === 'ok') {
-                        setAvailableDrivers(data.drivers || []);
-                        setSelectedDrivers([]);
-                        setIsDriverSelectorOpen(true);
-                    } else {
-                        props.onConnect();
-                    }
+                    console.log("[TSConnect] No active devices (drivers) found. Opening preloaded Driver Selector popup...");
+                    setIsDriverSelectorOpen(true);
                 }
             } catch (e) {
-                console.error('[TSConnect] Error checking existing driver server status, fallback to props.onConnect', e);
-                props.onConnect();
+                console.error('[TSConnect] Error checking existing driver server status, fallback to connect', e);
+                const success = await AstroService.connect(props.connectionSettings);
+                if (success) props.onConnect();
             } finally {
                 setIsLoadingDrivers(false);
             }
         } else {
-            props.onConnect();
-        }
-    };
-
-    const handleToggleDriverSelection = (bin: string) => {
-        setSelectedDrivers(prev => 
-            prev.includes(bin) ? prev.filter(b => b !== bin) : [...prev, bin]
-        );
-    };
-
-    const handleStartAndConnect = async () => {
-        setIsStartingDrivers(true);
-        try {
-            const res = await fetch('/api/indi/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ drivers: selectedDrivers })
-            });
-            const data = await res.json();
-            if (data.status === 'ok') {
-                console.log('[TSConnect] Successfully started selected drivers.');
-            }
-        } catch (e) {
-            console.error('[TSConnect] Error launching drivers:', e);
-        } finally {
-            setIsStartingDrivers(false);
-            setIsDriverSelectorOpen(false);
-            props.onConnect();
+            const success = await AstroService.connect(props.connectionSettings);
+            if (success) props.onConnect();
         }
     };
 
     useEffect(() => {
         if (props.shouldOpenDriverSelectorOnLoad) {
-            const loadAndOpen = async () => {
-                setIsLoadingDrivers(true);
-                try {
-                    const res = await fetch('/api/indi/drivers');
-                    const data = await res.json();
-                    if (data.status === 'ok') {
-                        setAvailableDrivers(data.drivers || []);
-                        setSelectedDrivers([]);
-                        setIsDriverSelectorOpen(true);
-                    }
-                } catch (e) {
-                    console.error('[TSConnect] Error auto-loading driver selector popup', e);
-                } finally {
-                    setIsLoadingDrivers(false);
-                    props.onDriverSelectorOpened?.();
-                }
-            };
-            loadAndOpen();
+            setIsDriverSelectorOpen(true);
+            props.onDriverSelectorOpened?.();
         }
     }, [props.shouldOpenDriverSelectorOnLoad]);
 
@@ -543,98 +477,18 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                 </div>
             </div>
 
-            {isDriverSelectorOpen && (
-                <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-[999] animate-fadeIn">
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-[0_0_50px_rgba(239,68,68,0.15)] overflow-hidden">
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/80">
-                            <div>
-                                <h3 className="text-lg font-black text-white tracking-tight uppercase">INDI Driver Selection</h3>
-                                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mt-0.5">Please select drivers to start in batch</p>
-                            </div>
-                            <button 
-                                onClick={() => setIsDriverSelectorOpen(false)}
-                                className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
-                            >
-                                <CloseIcon className="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-red-900">
-                            {['CCDs', 'Telescopes', 'Focusers', 'Domes', 'Filter Wheels'].map(group => {
-                                const groupDrivers = availableDrivers.filter(d => {
-                                    if (group === 'Filter Wheels') {
-                                        return d.group === 'Filter Wheels' || (!['CCDs', 'Telescopes', 'Focusers', 'Domes'].includes(d.group));
-                                    }
-                                    return d.group === group;
-                                });
-
-                                if (groupDrivers.length === 0) return null;
-
-                                return (
-                                    <div key={group} className="space-y-2">
-                                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">{group}</h4>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {groupDrivers.map(drv => {
-                                                const isSelected = selectedDrivers.includes(drv.bin);
-                                                return (
-                                                    <button
-                                                        key={drv.bin}
-                                                        onClick={() => handleToggleDriverSelection(drv.bin)}
-                                                        className={`p-3.5 rounded-xl border text-left flex items-center justify-between transition-all select-none ${
-                                                            isSelected 
-                                                            ? 'bg-red-950/30 border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.05)]' 
-                                                            : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800 hover:border-slate-600'
-                                                        }`}
-                                                    >
-                                                        <div className="overflow-hidden pr-2">
-                                                            <div className="text-xs font-black truncate">{drv.name}</div>
-                                                            <div className={`text-[8px] font-mono font-bold mt-0.5 uppercase tracking-wide ${isSelected ? 'text-red-400' : 'text-slate-500'}`}>{drv.bin}</div>
-                                                        </div>
-                                                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 transition-all shrink-0 ${isSelected ? 'bg-red-600 border-red-500 text-white' : 'border-slate-600 bg-black/20'}`}>
-                                                            {isSelected && (
-                                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                                            )}
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className="p-6 border-t border-slate-800 bg-slate-900/80 flex flex-col sm:flex-row gap-3">
-                            <button
-                                onClick={() => {
-                                    setIsDriverSelectorOpen(false);
-                                    props.onConnect();
-                                }}
-                                className="flex-1 py-3.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 font-extrabold text-xs uppercase tracking-widest transition-all"
-                            >
-                                Skip & Connect
-                            </button>
-                            <button
-                                onClick={handleStartAndConnect}
-                                disabled={isStartingDrivers}
-                                className="flex-[2] py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-red-900/30 transition-all disabled:opacity-50"
-                            >
-                                {isStartingDrivers ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        Starting...
-                                    </>
-                                ) : (
-                                    <>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                                        Start & Connect
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <INDIDriverSelector 
+                isOpen={isDriverSelectorOpen}
+                onClose={() => setIsDriverSelectorOpen(false)}
+                onConnect={async () => {
+                    const success = await AstroService.connect(props.connectionSettings);
+                    if (success) props.onConnect();
+                }}
+                onStartSuccess={async () => {
+                    const success = await AstroService.connect(props.connectionSettings);
+                    if (success) props.onConnect();
+                }}
+            />
         </div>
     );
 };

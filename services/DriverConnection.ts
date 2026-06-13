@@ -237,7 +237,15 @@ export const diagnoseConnection = async (host: string, port: number, driver: str
 export const connect = async (settings: ConnectionSettings): Promise<boolean> => {
     const targetPort = Number(settings.port || 8625);
     currentSettings = { ...settings, port: targetPort };
-    disconnect(); 
+    
+    // 接続開始時にインディサーバーを一々強制キルせず、既存のWebSocket切断とクライアント側メモリ空間のクリーンアップのみを行う
+    if (socket) {
+        try {
+            socket.close();
+        } catch (e) {}
+        socket = null;
+    }
+    cleanup();
 
     if (settings.driver === 'Simulator') {
         const ok = await AstroServiceSimulator.connect(currentSettings);

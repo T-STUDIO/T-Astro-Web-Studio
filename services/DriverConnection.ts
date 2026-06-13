@@ -266,6 +266,21 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
     }
 
     if (settings.driver === 'INDI') {
+        const targetPort = Number(settings.port || 8625);
+        const targetHost = (settings.host || '').trim() || '127.0.0.1';
+
+        // 常に接続前にサーバーの WebSocket-TCP ブリッジ設定を同期します
+        try {
+            await fetch('/api/indi/configure-port', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port: targetPort, host: targetHost })
+            });
+            log(`[DriverConnection] Synced server-side bridge to port ${targetPort}, host ${targetHost}`);
+        } catch (postErr) {
+            console.error('[DriverConnection] Failed to sync bridge configuration to server:', postErr);
+        }
+
         let rawHost = '';
         if (typeof window !== 'undefined' && window.location) {
             rawHost = window.location.hostname;
@@ -284,6 +299,9 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
         log(`Connecting to INDI at ${url}...`);
 
         return new Promise((resolve) => {
+            let isResolved = false;
+            let openTimeout: any = null;
+
             try {
                 const ws = new WebSocket(url);
                 ws.binaryType = "arraybuffer"; 
@@ -291,7 +309,7 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
 
                 ws.onopen = () => {
                     if (socket !== ws) return;
-                    log('INDI WebSocket Connected');
+                    log('INDI WebSocket Open. Validating backend server bridge state...');
                     
                     if (mainChannelBlobsDisabled) {
                         sendRaw('<enableBLOB>Never</enableBLOB>');
@@ -300,7 +318,17 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     }
                     
                     sendRaw('<getProperties version="1.7" />');
-                    resolve(true);
+                    
+                    // 350msの接続検証用ホールドバリア。
+                    // 物理インディサーバー (TCP 7624) が起動していない場合、
+                    // サーバーブリッジは接続を即座に（大体50ms以内に）切断します。
+                    openTimeout = setTimeout(() => {
+                        if (socket === ws && !isResolved) {
+                            isResolved = true;
+                            log('INDI WebSocket Connected successfully');
+                            resolve(true);
+                        }
+                    }, 350);
                 };
 
                 ws.onmessage = (event) => {
@@ -320,17 +348,30 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                 ws.onerror = (e) => {
                     if (socket !== ws) return;
                     log(`INDI Connection Error (ReadyState: ${ws.readyState})`);
-                    resolve(false);
+                    if (openTimeout) clearTimeout(openTimeout);
+                    if (!isResolved) {
+                        isResolved = true;
+                        resolve(false);
+                    }
                 };
 
                 ws.onclose = (e) => {
                     if (socket !== ws) return;
                     log(`INDI Connection Closed (Code: ${e.code}, Reason: ${e.reason || 'None'})`);
+                    if (openTimeout) clearTimeout(openTimeout);
+                    if (!isResolved) {
+                        isResolved = true;
+                        resolve(false);
+                    }
                     cleanup();
                 };
             } catch (e) {
                 log(`INDI Init Error: ${e}`);
-                resolve(false);
+                if (openTimeout) clearTimeout(openTimeout);
+                if (!isResolved) {
+                    isResolved = true;
+                    resolve(false);
+                }
             }
         });
     }

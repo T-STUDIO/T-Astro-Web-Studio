@@ -306,13 +306,12 @@ const App: React.FC = () => {
 
       const targetPort = Number(connectionSettings.port || 8625);
       const host = (connectionSettings.host || '').trim();
-      const isLocalHost = host === '' || host === 'localhost' || host === '127.0.0.1';
 
-      if (isLocalHost && (lastConfiguredPort.current !== targetPort || lastConfiguredHost.current !== host)) {
+      if (lastConfiguredPort.current !== targetPort || lastConfiguredHost.current !== host) {
         lastConfiguredPort.current = targetPort;
         lastConfiguredHost.current = host;
 
-        console.log(`[App] Syncing server bridge port to ${targetPort}`);
+        console.log(`[App] Syncing server bridge port to ${targetPort} targeting host ${host}`);
         fetch('/api/indi/configure-port', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

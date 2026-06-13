@@ -36,6 +36,7 @@ export class IndiDriverManager {
     private activeIndiProcess: ChildProcess | null = null;
     private bridgeWsServer: WebSocketServer | null = null;
     private currentBridgePort: number = 8625; // デフォルト 8625
+    private currentTargetHost: string = '127.0.0.1'; // デフォルト 127.0.0.1
 
     private constructor() {}
 
@@ -207,33 +208,27 @@ export class IndiDriverManager {
         });
     }
 
-    /**
-     * 稼働中の indiserver プロセスを安全に終了
-     */
-    public stopIndiServer() {
+    public stopIndiServer(): void {
         if (this.activeIndiProcess) {
-            console.log('[IndiDriverManager] Stopping existing active indiserver child process...');
-            const proc = this.activeIndiProcess;
-            this.activeIndiProcess = null;
-            
+            console.log('[IndiDriverManager] Stopping active indiserver process...');
             try {
-                // まずは通常の子プロセスキルを試みる
-                proc.kill('SIGKILL');
-            } catch (err) {}
-
-            if (proc.pid) {
-                try {
-                    // プロセスグループ全体の安全なキルも保護下で試みる
-                    process.kill(-proc.pid, 'SIGKILL');
-                } catch (e) {}
+                this.activeIndiProcess.kill('SIGTERM');
+            } catch (err) {
+                console.error('[IndiDriverManager] Error killing indiserver process:', err);
             }
+            this.activeIndiProcess = null;
         }
     }
 
     /**
-     * WebSocket-TCPブリッジの起動・再設定
+     * WebSocket-TCPブリッジ of 起動・再設定
      */
-    public configureBridgePort(port: number) {
+    public configureBridgePort(port: number, host?: string) {
+        if (host) {
+            const trimmedHost = host.trim();
+            this.currentTargetHost = trimmedHost === '' || trimmedHost === 'localhost' ? '127.0.0.1' : trimmedHost;
+        }
+
         let solvedPort = port;
         // 開発環境のWeb Consoleポート(3000)やExpressサーバーポート(6002)との競合・起動不全を防ぐための安全な補正
         if (solvedPort === 3000 || solvedPort === 6002) {
@@ -241,12 +236,21 @@ export class IndiDriverManager {
             solvedPort = 8625;
         }
 
+        // 保存された設定ファイルに永続化させる
+        const CONFIG_FILE = path.join(process.cwd(), 'indi_config.json');
+        try {
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify({ port: solvedPort, host: this.currentTargetHost }), 'utf-8');
+            console.log(`[IndiDriverManager] Saved configuration to ${CONFIG_FILE}: port ${solvedPort}, host ${this.currentTargetHost}`);
+        } catch (e) {
+            console.error('[IndiDriverManager] Failed to write config file:', e);
+        }
+
         if (this.currentBridgePort === solvedPort && this.bridgeWsServer) {
-            console.log(`[IndiDriverManager] Bridge already running on port ${solvedPort}, skipping allocation.`);
+            console.log(`[IndiDriverManager] Bridge already running on port ${solvedPort} targeting ${this.currentTargetHost}, skipping allocation.`);
             return;
         }
 
-        console.log(`[IndiDriverManager] Reconfiguring WebSocket-TCP Bridge to port: ${solvedPort}`);
+        console.log(`[IndiDriverManager] Reconfiguring WebSocket-TCP Bridge to port: ${solvedPort} targeting ${this.currentTargetHost}`);
         
         // 既存の WebSocket サーバーを安全に閉じる
         if (this.bridgeWsServer) {
@@ -260,11 +264,6 @@ export class IndiDriverManager {
             this.bridgeWsServer = null;
         }
 
-        if (this.bridgeWsServer && this.currentBridgePort === solvedPort) {
-            console.log(`[IndiDriverManager] WebSocket Bridge already listening on port ${solvedPort}. Skipping re-bind.`);
-            return;
-        }
-
         this.currentBridgePort = solvedPort;
 
         try {
@@ -272,23 +271,23 @@ export class IndiDriverManager {
             const wsServer = new WebSocketServer({ port: this.currentBridgePort, host: '0.0.0.0' });
             this.bridgeWsServer = wsServer;
             
-            console.log(`[IndiDriverManager] WebSocket-TCP Bridge listening on ws://0.0.0.0:${this.currentBridgePort}`);
+            console.log(`[IndiDriverManager] WebSocket-TCP Bridge listening on ws://0.0.0.0:${this.currentBridgePort} proxying to ${this.currentTargetHost}:7624`);
 
             wsServer.on('error', (err: any) => {
                 console.error(`[IndiDriverManager] WebSocket Bridge Server Error on port ${this.currentBridgePort}:`, err);
             });
 
             wsServer.on('connection', (wsClient: WebSocket) => {
-                console.log(`[IndiBridge] Browser WebSocket client linked. Opening TCP socket connection to localhost:7624...`);
+                console.log(`[IndiBridge] Browser WebSocket client linked. Opening TCP socket connection to ${this.currentTargetHost}:7624...`);
 
                 // TCPソケットで実際の INDIサーバ(TCP 7624)へ接続を中継する
-                const tcpSocket = net.createConnection({ host: '127.0.0.1', port: 7624 }, () => {
-                    console.log(`[IndiBridge] Connected successfully to local INDI TCP Server (127.0.0.1:7624).`);
+                const tcpSocket = net.createConnection({ host: this.currentTargetHost, port: 7624 }, () => {
+                    console.log(`[IndiBridge] Connected successfully to INDI TCP Server (${this.currentTargetHost}:7624).`);
                 });
 
                 // プロセス破壊を防ぐ重大なエラーハンドリング
                 tcpSocket.on('error', (err: any) => {
-                    console.error(`[IndiBridge] TCP Socket Error on localhost:7624:`, err.message);
+                    console.error(`[IndiBridge] TCP Socket Error on ${this.currentTargetHost}:7624:`, err.message);
                     wsClient.close();
                 });
 
@@ -335,8 +334,27 @@ export class IndiDriverManager {
 export function registerIndiDriverManager(app: Application) {
     const manager = IndiDriverManager.getInstance();
 
-    // デフォルトポート(8625)でブリッジをロード
-    manager.configureBridgePort(8625);
+    // 保管された設定ファイルを読み込む
+    const CONFIG_FILE = path.join(process.cwd(), 'indi_config.json');
+    let initPort = 8625;
+    let initHost = '127.0.0.1';
+    try {
+        if (fs.existsSync(CONFIG_FILE)) {
+            const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+            if (configData.port && typeof configData.port === 'number') {
+                initPort = configData.port;
+            }
+            if (configData.host && typeof configData.host === 'string') {
+                initHost = configData.host;
+            }
+            console.log(`[IndiDriverManager] Loaded saved startup configuration: port ${initPort}, host ${initHost}`);
+        }
+    } catch (e) {
+        console.error('[IndiDriverManager] Error reading startup configuration:', e);
+    }
+
+    // 保存ポートまたはデフォルトポートでブリッジを常時起動
+    manager.configureBridgePort(initPort, initHost);
 
     // 1. 利用可能なドライバ一覧の取得 API
     app.get('/api/indi/drivers', (req: Request, res: Response) => {
@@ -366,13 +384,13 @@ export function registerIndiDriverManager(app: Application) {
     // 3. 中継ポートの再バインド API
     app.post('/api/indi/configure-port', (req: Request, res: Response) => {
         try {
-            const { port } = req.body;
+            const { port, host } = req.body;
             if (!port || typeof port !== 'number') {
                 return res.status(400).json({ status: 'error', message: 'port parameter is required as a number.' });
             }
 
-            manager.configureBridgePort(port);
-            res.json({ status: 'ok', message: `Bridge configured on port ${port}` });
+            manager.configureBridgePort(port, host);
+            res.json({ status: 'ok', message: `Bridge configured on port ${port} target to ${host || 'default'}` });
         } catch (error: any) {
             res.status(500).json({ status: 'error', message: error.message });
         }

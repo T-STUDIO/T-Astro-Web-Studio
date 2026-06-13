@@ -155,6 +155,26 @@ const App: React.FC = () => {
     setLogs(prev => [entry, ...prev].slice(0, 100));
   }, [t]);
 
+  const handleConnect = useCallback(async (settings: ConnectionSettings) => {
+    setConnectionStatus('Connecting');
+    const ok = await AstroService.connect(settings);
+    if (ok) {
+      setConnectionStatus('Connected');
+      addLog('logs.connectSuccess', {}, 'success');
+      setIsAppDriverSelectorOpen(false);
+      setShouldOpenDriverSelectorOnLoad(false);
+    } else {
+      setConnectionStatus('Disconnected');
+      const host = (settings.host || '').trim();
+      const isLocalHost = host === '' || host === 'localhost' || host === '127.0.0.1';
+      if (settings.driver === 'INDI' && isLocalHost) {
+        setIsAppDriverSelectorOpen(true);
+        setShouldOpenDriverSelectorOnLoad(true);
+      }
+    }
+    return ok;
+  }, [addLog]);
+
   const onSendLocationToMount = useCallback(async () => {
     if (!location || connectionStatus !== 'Connected') return;
     setMountSyncStatus('sending');
@@ -278,10 +298,31 @@ const App: React.FC = () => {
     };
   }, [isCapturing]);
 
+  const lastConfiguredPort = useRef<number | null>(null);
+  const lastConfiguredHost = useRef<string | null>(null);
+
   useEffect(() => {
     if (connectionSettings.driver === 'INDI') {
       console.log("[App] Activating client-side persistent WebSocket channel for INDI...");
       AstroService.startAutoConnect(connectionSettings);
+
+      const targetPort = Number(connectionSettings.port || 8625);
+      const host = (connectionSettings.host || '').trim();
+      const isLocalHost = host === '' || host === 'localhost' || host === '127.0.0.1';
+
+      if (isLocalHost && (lastConfiguredPort.current !== targetPort || lastConfiguredHost.current !== host)) {
+        lastConfiguredPort.current = targetPort;
+        lastConfiguredHost.current = host;
+
+        console.log(`[App] Syncing server bridge port to ${targetPort}`);
+        fetch('/api/indi/configure-port', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ port: targetPort, host: host })
+        }).catch(e => {
+          console.error('[IndiBridge] Failed to configure server-side bridge port', e);
+        });
+      }
     } else {
       AstroService.stopAutoConnect();
     }
@@ -525,17 +566,7 @@ const App: React.FC = () => {
                 shouldOpenDriverSelectorOnLoad={shouldOpenDriverSelectorOnLoad}
                 onDriverSelectorOpened={() => setShouldOpenDriverSelectorOnLoad(false)}
                 onConnect={async () => {
-                    setConnectionStatus('Connecting');
-                    const ok = await AstroService.connect(connectionSettings);
-                    if (ok) {
-                        setConnectionStatus('Connected');
-                        addLog('logs.connectSuccess', {}, 'success');
-                    } else {
-                        setConnectionStatus('Disconnected');
-                        if (connectionSettings.driver === 'INDI') {
-                            setShouldOpenDriverSelectorOnLoad(true);
-                        }
-                    }
+                    await handleConnect(connectionSettings);
                 }}
                 onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                 location={location}
@@ -598,17 +629,7 @@ const App: React.FC = () => {
                         connectionSettings={connectionSettings}
                         onSettingsChange={handleSettingsChange}
                         onConnect={async () => {
-                            setConnectionStatus('Connecting');
-                            const ok = await AstroService.connect(connectionSettings);
-                            if (ok) {
-                                setConnectionStatus('Connected');
-                                addLog('logs.connectSuccess', {}, 'success');
-                            } else {
-                                setConnectionStatus('Disconnected');
-                                if (connectionSettings.driver === 'INDI') {
-                                    setIsAppDriverSelectorOpen(true);
-                                }
-                            }
+                            await handleConnect(connectionSettings);
                         }}
                         onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                         planetariumSettings={planetariumSettings}
@@ -788,17 +809,11 @@ const App: React.FC = () => {
         isOpen={isAppDriverSelectorOpen}
         onClose={() => setIsAppDriverSelectorOpen(false)}
         onConnect={async () => {
-            setConnectionStatus('Connecting');
-            const ok = await AstroService.connect(connectionSettings);
-            setConnectionStatus(ok ? 'Connected' : 'Error');
-            if (ok) addLog('logs.connectSuccess', {}, 'success');
+            await handleConnect(connectionSettings);
         }}
         onStartSuccess={async () => {
-            setConnectionStatus('Connecting');
             setTimeout(async () => {
-                const ok = await AstroService.connect(connectionSettings);
-                setConnectionStatus(ok ? 'Connected' : 'Error');
-                if (ok) addLog('logs.connectSuccess', {}, 'success');
+                await handleConnect(connectionSettings);
             }, 1000);
         }}
       />

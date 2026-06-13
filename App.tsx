@@ -165,9 +165,7 @@ const App: React.FC = () => {
       setShouldOpenDriverSelectorOnLoad(false);
     } else {
       setConnectionStatus('Disconnected');
-      const host = (settings.host || '').trim();
-      const isLocalHost = host === '' || host === 'localhost' || host === '127.0.0.1';
-      if (settings.driver === 'INDI' && isLocalHost) {
+      if (settings.driver === 'INDI') {
         setIsAppDriverSelectorOpen(true);
         setShouldOpenDriverSelectorOnLoad(true);
       }

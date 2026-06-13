@@ -66,6 +66,30 @@ const TSConnectStandalone: React.FC = () => {
         });
     }, [connectionSettings, location, astrometryApiKey, plateSolverType, localSolverSettings, sampSettings]);
 
+    const lastConfiguredPort = useRef<number | null>(null);
+    const lastConfiguredHost = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (connectionSettings.driver === 'INDI') {
+            const targetPort = Number(connectionSettings.port || 8625);
+            const host = (connectionSettings.host || '').trim();
+
+            if (lastConfiguredPort.current !== targetPort || lastConfiguredHost.current !== host) {
+                lastConfiguredPort.current = targetPort;
+                lastConfiguredHost.current = host;
+
+                console.log(`[TSConnectStandalone] Syncing server bridge port to ${targetPort} targeting host ${host}`);
+                fetch('/api/indi/configure-port', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ port: targetPort, host: host })
+                }).catch(e => {
+                    console.error('[IndiBridge] Failed to configure server-side bridge port', e);
+                });
+            }
+        }
+    }, [connectionSettings]);
+
     // Live clock ticks
     useEffect(() => {
         if (!isTimeRunning) return;
@@ -139,9 +163,7 @@ const TSConnectStandalone: React.FC = () => {
             setConnectionStatus('Connected');
         } else {
             setConnectionStatus('Disconnected');
-            const host = (connectionSettings.host || '').trim();
-            const isLocalHost = host === '' || host === 'localhost' || host === '127.0.0.1';
-            if (connectionSettings.driver === 'INDI' && isLocalHost) {
+            if (connectionSettings.driver === 'INDI') {
                 setShouldOpenDriverSelectorOnLoad(true);
             }
         }

@@ -64,16 +64,6 @@ export const connect = async (settings: any): Promise<boolean> => {
     // INDIの場合のみ分離転送を予約
     if (settings.driver === 'INDI') {
         DriverConnection.setMainChannelBlobDisabled(true);
-        // Sync custom bridge port to backend server-side bridge
-        try {
-            await fetch('/api/indi/configure-port', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ port: targetPort })
-            });
-        } catch (e) {
-            console.error('[IndiBridge] Failed to configure server-side bridge port', e);
-        }
     }
     
     // メイン制御チャネルの接続

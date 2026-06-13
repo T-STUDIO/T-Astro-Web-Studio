@@ -266,20 +266,20 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
     }
 
     if (settings.driver === 'INDI') {
-        let rawHost = settings.host || '';
+        let rawHost = '';
+        if (typeof window !== 'undefined' && window.location) {
+            rawHost = window.location.hostname;
+        }
+        if (!rawHost) {
+            rawHost = '127.0.0.1';
+        }
+        
         let protocol = 'ws';
-        const protoMatch = rawHost.match(/^([a-z0-9]+):\/\//i);
-        if (protoMatch) {
-            protocol = protoMatch[1].toLowerCase();
-            rawHost = rawHost.replace(/^([a-z0-9]+):\/\//i, '');
+        if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:') {
+            protocol = 'wss';
         }
-        rawHost = rawHost.replace(/\/+$/, '');
+        
         let path = '';
-        const slashIdx = rawHost.indexOf('/');
-        if (slashIdx !== -1) {
-            path = rawHost.substring(slashIdx);
-            rawHost = rawHost.substring(0, slashIdx);
-        }
         const url = `${protocol}://${rawHost}:${targetPort}${path}`;
         log(`Connecting to INDI at ${url}...`);
 

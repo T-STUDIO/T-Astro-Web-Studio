@@ -461,12 +461,12 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                 isOpen={isDriverSelectorOpen}
                 onClose={() => setIsDriverSelectorOpen(false)}
                 onConnect={async () => {
-                    const success = await AstroService.connect(props.connectionSettings);
-                    if (success) props.onConnect();
+                    props.onConnect();
                 }}
                 onStartSuccess={async () => {
-                    const success = await AstroService.connect(props.connectionSettings);
-                    if (success) props.onConnect();
+                    setTimeout(() => {
+                        props.onConnect();
+                    }, 1000);
                 }}
             />
         </div>

@@ -461,9 +461,11 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                 isOpen={isDriverSelectorOpen}
                 onClose={() => setIsDriverSelectorOpen(false)}
                 onConnect={async () => {
+                    setIsDriverSelectorOpen(false);
                     props.onConnect();
                 }}
                 onStartSuccess={async () => {
+                    setIsDriverSelectorOpen(false);
                     setTimeout(() => {
                         props.onConnect();
                     }, 1000);

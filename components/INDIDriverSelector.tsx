@@ -217,12 +217,29 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
                 </div>
 
                 <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-red-900 bg-slate-900/40">
-                    {['CCDs', 'Telescopes', 'Focusers', 'Domes', 'Filter Wheels'].map(group => {
+                    {['CCDs', 'Telescopes', 'Focusers', 'Domes', 'Filter Wheels', 'Others'].map(group => {
                         const groupDrivers = availableDrivers.filter(d => {
-                            if (group === 'Filter Wheels') {
-                                return d.group === 'Filter Wheels' || (!['CCDs', 'Telescopes', 'Focusers', 'Domes'].includes(d.group));
+                            const dGroup = (d.group || '').toLowerCase();
+                            if (group === 'CCDs') {
+                                return dGroup === 'ccds' || dGroup === 'ccd';
                             }
-                            return d.group === group;
+                            if (group === 'Telescopes') {
+                                return dGroup === 'telescopes' || dGroup === 'telescope' || dGroup === 'mounts' || dGroup === 'mount';
+                            }
+                            if (group === 'Focusers') {
+                                return dGroup === 'focusers' || dGroup === 'focuser';
+                            }
+                            if (group === 'Domes') {
+                                return dGroup === 'domes' || dGroup === 'dome';
+                            }
+                            if (group === 'Filter Wheels') {
+                                return dGroup === 'filter wheels' || dGroup === 'filter wheel' || dGroup === 'filter_wheels' || dGroup === 'asi_wheel';
+                            }
+                            if (group === 'Others') {
+                                const isMajor = ['ccds','ccd','telescopes','telescope','mounts','mount','focusers','focuser','domes','dome','filter wheels','filter wheel','filter_wheels','asi_wheel'].includes(dGroup);
+                                return !isMajor;
+                            }
+                            return false;
                         });
 
                         if (groupDrivers.length === 0) return null;

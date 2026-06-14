@@ -48,9 +48,25 @@ export class IndiDriverManager {
     }
 
     /**
-     * XMLファイルおよびフォールバック一覧からINDIドライバ情報を走査・取得する
+     * 保存されている分類やドライバ名一覧を available_drivers_cache.json から読み込む
      */
     public getAvailableDrivers(): DriverInfo[] {
+        const cachePath = path.join(process.cwd(), 'available_drivers_cache.json');
+        try {
+            if (fs.existsSync(cachePath)) {
+                const content = fs.readFileSync(cachePath, 'utf-8');
+                return JSON.parse(content);
+            }
+        } catch (e) {
+            console.error('[IndiDriverManager] Failed to read available_drivers_cache.json:', e);
+        }
+        return [];
+    }
+
+    /**
+     * XMLを読み込み、分類に分けてドライバ名を抽出してファイル (available_drivers_cache.json) に保存する
+     */
+    public scanAndSaveDrivers(): void {
         const driversList: DriverInfo[] = [];
         const seenBins = new Set<string>();
         const indiXmlDir = '/usr/share/indi';
@@ -63,14 +79,12 @@ export class IndiDriverManager {
                         const filePath = path.join(indiXmlDir, file);
                         const content = fs.readFileSync(filePath, 'utf-8');
                         
-                        // ロバストな抽出処理：属性の並び順が変則的、または改行や子タグ形式になっている場合にも対応します。
                         const blockRegex = /<(driver|device)\b([^>]*?)>([\s\S]*?)<\/\1>/gi;
                         let blockMatch;
                         while ((blockMatch = blockRegex.exec(content)) !== null) {
                             const attrs = blockMatch[2];
                             const inner = blockMatch[3];
                             
-                            // name の抽出：属性、または子要素から
                             let name = '';
                             const nameAttrMatch = /name=["']([^"']+)["']/i.exec(attrs);
                             if (nameAttrMatch) {
@@ -80,7 +94,6 @@ export class IndiDriverManager {
                                 if (nameTagMatch) name = nameTagMatch[1].trim();
                             }
                             
-                            // bin の抽出：属性、または子要素から
                             let bin = '';
                             const binAttrMatch = /bin=["']([^"']+)["']/i.exec(attrs);
                             if (binAttrMatch) {
@@ -91,8 +104,7 @@ export class IndiDriverManager {
                             }
                             
                             if (name && bin) {
-                                // グループの自動判定
-                                let group = 'CCDs'; // デフォルト
+                                let group = 'CCDs';
                                 let rawGroup = '';
                                 const groupAttrMatch = /group=["']([^"']+)["']/i.exec(attrs);
                                 if (groupAttrMatch) {
@@ -149,15 +161,13 @@ export class IndiDriverManager {
             console.error('[IndiDriverManager] Error scanning /usr/share/indi:', e);
         }
 
-        // 足りない分・または空の場合にフォールバックデータをマージ
-        for (const fDrv of FALLBACK_DRIVERS) {
-            if (!seenBins.has(fDrv.bin)) {
-                seenBins.add(fDrv.bin);
-                driversList.push(fDrv);
-            }
+        const cachePath = path.join(process.cwd(), 'available_drivers_cache.json');
+        try {
+            fs.writeFileSync(cachePath, JSON.stringify(driversList, null, 2), 'utf-8');
+            console.log(`[IndiDriverManager] Scanned and saved ${driversList.length} drivers to ${cachePath}`);
+        } catch (e) {
+            console.error('[IndiDriverManager] Failed to write available_drivers_cache.json:', e);
         }
-
-        return driversList;
     }
 
     /**
@@ -287,6 +297,7 @@ export class IndiDriverManager {
         }
 
         this.currentBridgePort = solvedPort;
+        this.scanAndSaveDrivers(); // XMLをスキャンしてドライバキャッシュを保存
 
         try {
             // 新たな WebSocket サーバーをバインド

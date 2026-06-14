@@ -155,6 +155,30 @@ const App: React.FC = () => {
     setLogs(prev => [entry, ...prev].slice(0, 100));
   }, [t]);
 
+  const lastConfiguredPort = useRef<number | null>(null);
+  const lastConfiguredHost = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (connectionSettings.driver === 'INDI') {
+      const targetPort = Number(connectionSettings.port || 8625);
+      const host = (connectionSettings.host || '').trim();
+
+      if (lastConfiguredPort.current !== targetPort || lastConfiguredHost.current !== host) {
+        lastConfiguredPort.current = targetPort;
+        lastConfiguredHost.current = host;
+
+        console.log(`[App] Syncing server bridge port to ${targetPort} targeting host ${host}`);
+        fetch('/api/indi/configure-port', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ port: targetPort, host: host })
+        }).catch(e => {
+          console.error('[IndiBridge] Failed to configure server-side bridge port', e);
+        });
+      }
+    }
+  }, [connectionSettings]);
+
   const handleConnect = useCallback(async (settings: ConnectionSettings) => {
     setConnectionStatus('Connecting');
     const ok = await AstroService.connect(settings);
@@ -775,6 +799,7 @@ const App: React.FC = () => {
       <INDIDriverSelector 
         isOpen={isAppDriverSelectorOpen}
         onClose={() => setIsAppDriverSelectorOpen(false)}
+        connectionSettings={connectionSettings}
         onConnect={async () => {
             setIsAppDriverSelectorOpen(false);
             await handleConnect(connectionSettings);

@@ -93,24 +93,46 @@ export class IndiDriverManager {
                             if (name && bin) {
                                 // グループの自動判定
                                 let group = 'CCDs'; // デフォルト
+                                let rawGroup = '';
                                 const groupAttrMatch = /group=["']([^"']+)["']/i.exec(attrs);
                                 if (groupAttrMatch) {
-                                    group = groupAttrMatch[1];
+                                    rawGroup = groupAttrMatch[1];
                                 } else {
                                     const groupTagMatch = /<group>([\s\S]*?)<\/group>/i.exec(inner);
                                     if (groupTagMatch) {
-                                        group = groupTagMatch[1].trim();
+                                        rawGroup = groupTagMatch[1].trim();
+                                    }
+                                }
+
+                                if (rawGroup) {
+                                    const rgLower = rawGroup.toLowerCase();
+                                    if (rgLower.includes('telescope') || rgLower.includes('mount') || rgLower.includes('lx200') || rgLower.includes('eqmod') || rgLower.includes('gps')) {
+                                        group = 'Telescopes';
+                                    } else if (rgLower.includes('focuser') || rgLower.includes('focus')) {
+                                        group = 'Focusers';
+                                    } else if (rgLower.includes('dome') || rgLower.includes('roll_dome')) {
+                                        group = 'Domes';
+                                    } else if (rgLower.includes('wheel') || rgLower.includes('filter')) {
+                                        group = 'Filter Wheels';
+                                    } else if (rgLower.includes('ccd') || rgLower.includes('camera') || rgLower.includes('video') || rgLower.includes('gphoto')) {
+                                        group = 'CCDs';
                                     } else {
-                                        const mergedContent = (attrs + " " + inner).toLowerCase();
-                                        if (mergedContent.includes('telescope') || mergedContent.includes('mount') || mergedContent.includes('lx200') || mergedContent.includes('eqmod')) {
-                                            group = 'Telescopes';
-                                        } else if (mergedContent.includes('focuser') || mergedContent.includes('focus')) {
-                                            group = 'Focusers';
-                                        } else if (mergedContent.includes('dome') || mergedContent.includes('roll_dome')) {
-                                            group = 'Domes';
-                                        } else if (mergedContent.includes('wheel') || mergedContent.includes('filter')) {
-                                            group = 'Filter Wheels';
-                                        }
+                                        group = 'Others';
+                                    }
+                                } else {
+                                    const mergedContent = (attrs + " " + inner).toLowerCase();
+                                    if (mergedContent.includes('telescope') || mergedContent.includes('mount') || mergedContent.includes('lx200') || mergedContent.includes('eqmod') || mergedContent.includes('gps')) {
+                                        group = 'Telescopes';
+                                    } else if (mergedContent.includes('focuser') || mergedContent.includes('focus')) {
+                                        group = 'Focusers';
+                                    } else if (mergedContent.includes('dome') || mergedContent.includes('roll_dome')) {
+                                        group = 'Domes';
+                                    } else if (mergedContent.includes('wheel') || mergedContent.includes('filter')) {
+                                        group = 'Filter Wheels';
+                                    } else if (mergedContent.includes('ccd') || mergedContent.includes('camera') || mergedContent.includes('video') || mergedContent.includes('gphoto')) {
+                                        group = 'CCDs';
+                                    } else {
+                                        group = 'Others';
                                     }
                                 }
                                 

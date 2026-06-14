@@ -296,37 +296,7 @@ const App: React.FC = () => {
     };
   }, [isCapturing]);
 
-  const lastConfiguredPort = useRef<number | null>(null);
-  const lastConfiguredHost = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (connectionSettings.driver === 'INDI') {
-      console.log("[App] Activating client-side persistent WebSocket channel for INDI...");
-      AstroService.startAutoConnect(connectionSettings);
-
-      const targetPort = Number(connectionSettings.port || 8625);
-      const host = (connectionSettings.host || '').trim();
-
-      if (lastConfiguredPort.current !== targetPort || lastConfiguredHost.current !== host) {
-        lastConfiguredPort.current = targetPort;
-        lastConfiguredHost.current = host;
-
-        console.log(`[App] Syncing server bridge port to ${targetPort} targeting host ${host}`);
-        fetch('/api/indi/configure-port', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ port: targetPort, host: host })
-        }).catch(e => {
-          console.error('[IndiBridge] Failed to configure server-side bridge port', e);
-        });
-      }
-    } else {
-      AstroService.stopAutoConnect();
-    }
-    return () => {
-      AstroService.stopAutoConnect();
-    };
-  }, [connectionSettings]);
 
   useEffect(() => {
     SettingsService.saveSettings({
@@ -806,9 +776,11 @@ const App: React.FC = () => {
         isOpen={isAppDriverSelectorOpen}
         onClose={() => setIsAppDriverSelectorOpen(false)}
         onConnect={async () => {
+            setIsAppDriverSelectorOpen(false);
             await handleConnect(connectionSettings);
         }}
         onStartSuccess={async () => {
+            setIsAppDriverSelectorOpen(false);
             setTimeout(async () => {
                 await handleConnect(connectionSettings);
             }, 1000);

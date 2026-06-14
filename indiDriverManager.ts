@@ -79,78 +79,115 @@ export class IndiDriverManager {
                         const filePath = path.join(indiXmlDir, file);
                         const content = fs.readFileSync(filePath, 'utf-8');
                         
-                        const blockRegex = /<(driver|device)\b([^>]*?)>([\s\S]*?)<\/\1>/gi;
-                        let blockMatch;
-                        while ((blockMatch = blockRegex.exec(content)) !== null) {
-                            const attrs = blockMatch[2];
-                            const inner = blockMatch[3];
+                        // 1. devGroup ごとにブロック分割を試みる
+                        const devGroupRegex = /<devGroup\s+group=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/devGroup>/gi;
+                        let groupMatch;
+                        let hasGroups = false;
+                        
+                        while ((groupMatch = devGroupRegex.exec(content)) !== null) {
+                            hasGroups = true;
+                            const rawGroup = groupMatch[1];
+                            const groupInner = groupMatch[2];
                             
-                            let name = '';
-                            const nameAttrMatch = /name=["']([^"']+)["']/i.exec(attrs);
-                            if (nameAttrMatch) {
-                                name = nameAttrMatch[1];
-                            } else {
-                                const nameTagMatch = /<name>([\s\S]*?)<\/name>/i.exec(inner);
-                                if (nameTagMatch) name = nameTagMatch[1].trim();
-                            }
-                            
-                            let bin = '';
-                            const binAttrMatch = /bin=["']([^"']+)["']/i.exec(attrs);
-                            if (binAttrMatch) {
-                                bin = binAttrMatch[1];
-                            } else {
-                                const binTagMatch = /<bin>([\s\S]*?)<\/bin>/i.exec(inner);
-                                if (binTagMatch) bin = binTagMatch[1].trim();
-                            }
-                            
-                            if (name && bin) {
-                                let group = 'CCDs';
-                                let rawGroup = '';
-                                const groupAttrMatch = /group=["']([^"']+)["']/i.exec(attrs);
-                                if (groupAttrMatch) {
-                                    rawGroup = groupAttrMatch[1];
-                                } else {
-                                    const groupTagMatch = /<group>([\s\S]*?)<\/group>/i.exec(inner);
-                                    if (groupTagMatch) {
-                                        rawGroup = groupTagMatch[1].trim();
-                                    }
-                                }
-
-                                if (rawGroup) {
-                                    const rgLower = rawGroup.toLowerCase();
-                                    if (rgLower.includes('telescope') || rgLower.includes('mount') || rgLower.includes('lx200') || rgLower.includes('eqmod') || rgLower.includes('gps')) {
-                                        group = 'Telescopes';
-                                    } else if (rgLower.includes('focuser') || rgLower.includes('focus')) {
-                                        group = 'Focusers';
-                                    } else if (rgLower.includes('dome') || rgLower.includes('roll_dome')) {
-                                        group = 'Domes';
-                                    } else if (rgLower.includes('wheel') || rgLower.includes('filter')) {
-                                        group = 'Filter Wheels';
-                                    } else if (rgLower.includes('ccd') || rgLower.includes('camera') || rgLower.includes('video') || rgLower.includes('gphoto')) {
-                                        group = 'CCDs';
-                                    } else {
-                                        group = 'Others';
-                                    }
-                                } else {
-                                    const mergedContent = (attrs + " " + inner).toLowerCase();
-                                    if (mergedContent.includes('telescope') || mergedContent.includes('mount') || mergedContent.includes('lx200') || mergedContent.includes('eqmod') || mergedContent.includes('gps')) {
-                                        group = 'Telescopes';
-                                    } else if (mergedContent.includes('focuser') || mergedContent.includes('focus')) {
-                                        group = 'Focusers';
-                                    } else if (mergedContent.includes('dome') || mergedContent.includes('roll_dome')) {
-                                        group = 'Domes';
-                                    } else if (mergedContent.includes('wheel') || mergedContent.includes('filter')) {
-                                        group = 'Filter Wheels';
-                                    } else if (mergedContent.includes('ccd') || mergedContent.includes('camera') || mergedContent.includes('video') || mergedContent.includes('gphoto')) {
-                                        group = 'CCDs';
-                                    } else {
-                                        group = 'Others';
-                                    }
-                                }
+                            // devGroup内の device を抽出
+                            const deviceRegex = /<device\b([^>]*?)>([\s\S]*?)<\/device>/gi;
+                            let deviceMatch;
+                            while ((deviceMatch = deviceRegex.exec(groupInner)) !== null) {
+                                const deviceAttrs = deviceMatch[1];
+                                const deviceInner = deviceMatch[2];
                                 
-                                if (!seenBins.has(bin)) {
-                                    seenBins.add(bin);
-                                    driversList.push({ name, bin, group });
+                                const deviceLabelMatch = /label=["']([^"']+)["']/i.exec(deviceAttrs);
+                                const deviceLabel = deviceLabelMatch ? deviceLabelMatch[1] : '';
+
+                                // device内の driver を抽出
+                                const driverRegex = /<driver\b([^>]*?)>([\s\S]*?)<\/driver>/gi;
+                                let driverMatch;
+                                while ((driverMatch = driverRegex.exec(deviceInner)) !== null) {
+                                    const driverAttrs = driverMatch[1];
+                                    const binVal = driverMatch[2].trim();
+                                    
+                                    const driverNameMatch = /name=["']([^"']+)["']/i.exec(driverAttrs);
+                                    const driverName = driverNameMatch ? driverNameMatch[1].trim() : (deviceLabel || binVal);
+                                    
+                                    if (binVal) {
+                                        const group = this.mapGroup(rawGroup, deviceAttrs + " " + deviceInner);
+                                        if (!seenBins.has(binVal)) {
+                                            seenBins.add(binVal);
+                                            driversList.push({ name: driverName, bin: binVal, group });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 2. devGroup がない、あるいはうまくパースできなかった場合のフラットな走査
+                        if (!hasGroups) {
+                            // device単体の走査
+                            const deviceRegex = /<device\b([^>]*?)>([\s\S]*?)<\/device>/gi;
+                            let deviceMatch;
+                            let hasDevices = false;
+                            
+                            while ((deviceMatch = deviceRegex.exec(content)) !== null) {
+                                hasDevices = true;
+                                const deviceAttrs = deviceMatch[1];
+                                const deviceInner = deviceMatch[2];
+                                
+                                const deviceLabelMatch = /label=["']([^"']+)["']/i.exec(deviceAttrs);
+                                const deviceLabel = deviceLabelMatch ? deviceLabelMatch[1] : '';
+
+                                const driverRegex = /<driver\b([^>]*?)>([\s\S]*?)<\/driver>/gi;
+                                let driverMatch;
+                                while ((driverMatch = driverRegex.exec(deviceInner)) !== null) {
+                                    const driverAttrs = driverMatch[1];
+                                    const binVal = driverMatch[2].trim();
+                                    
+                                    const driverNameMatch = /name=["']([^"']+)["']/i.exec(driverAttrs);
+                                    const driverName = driverNameMatch ? driverNameMatch[1].trim() : (deviceLabel || binVal);
+                                    
+                                    if (binVal) {
+                                        const group = this.mapGroup('', deviceAttrs + " " + deviceInner + " " + driverAttrs);
+                                        if (!seenBins.has(binVal)) {
+                                            seenBins.add(binVal);
+                                            driversList.push({ name: driverName, bin: binVal, group });
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // さらに、deviceタグすらなく、driverタグだけの超フラットな個別ファイルである場合
+                            if (!hasDevices) {
+                                const driverRegex = /<driver\b([^>]*?)>([\s\S]*?)<\/driver>/gi;
+                                let driverMatch;
+                                while ((driverMatch = driverRegex.exec(content)) !== null) {
+                                    const driverAttrs = driverMatch[1];
+                                    const innerText = driverMatch[2].trim();
+                                    
+                                    let binVal = '';
+                                    let driverName = '';
+                                    
+                                    const nameMatch = /name=["']([^"']+)["']/i.exec(driverAttrs);
+                                    if (nameMatch) {
+                                        driverName = nameMatch[1].trim();
+                                    }
+                                    
+                                    // タグの中身がバイナリ名か（改行や <bin> タグがないかチェック）
+                                    if (innerText.includes('<bin>')) {
+                                        const binTagMatch = /<bin>([\s\S]*?)<\/bin>/i.exec(innerText);
+                                        if (binTagMatch) binVal = binTagMatch[1].trim();
+                                    } else if (!innerText.includes('<')) {
+                                        binVal = innerText;
+                                    }
+                                    
+                                    if (binVal) {
+                                        if (!driverName) {
+                                            driverName = binVal;
+                                        }
+                                        const group = this.mapGroup('', driverAttrs + " " + innerText);
+                                        if (!seenBins.has(binVal)) {
+                                            seenBins.add(binVal);
+                                            driversList.push({ name: driverName, bin: binVal, group });
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -168,6 +205,58 @@ export class IndiDriverManager {
         } catch (e) {
             console.error('[IndiDriverManager] Failed to write available_drivers_cache.json:', e);
         }
+    }
+
+    private mapGroup(rawGroup: string, searchContext: string): string {
+        const targetGroup = rawGroup || '';
+        if (targetGroup) {
+            const tgLower = targetGroup.toLowerCase();
+            if (tgLower.includes('telescope') || tgLower.includes('mount') || tgLower.includes('lx200') || tgLower.includes('eqmod') || tgLower.includes('gps')) {
+                return 'Telescopes';
+            } else if (tgLower.includes('focuser') || tgLower.includes('focus')) {
+                return 'Focusers';
+            } else if (tgLower.includes('dome') || tgLower.includes('roll_dome')) {
+                return 'Domes';
+            } else if (tgLower.includes('wheel') || tgLower.includes('filter')) {
+                return 'Filter Wheels';
+            } else if (tgLower.includes('ccd') || tgLower.includes('camera') || tgLower.includes('video') || tgLower.includes('gphoto') || tgLower.includes('guide')) {
+                return 'CCDs';
+            } else if (tgLower.includes('spectrograph')) {
+                return 'Spectrographs';
+            } else if (tgLower.includes('rotator')) {
+                return 'Rotators';
+            } else if (tgLower.includes('weather')) {
+                return 'Weather';
+            } else if (tgLower.includes('power')) {
+                return 'Power';
+            } else if (tgLower.includes('auxiliary') || tgLower.includes('aux')) {
+                return 'Auxiliary';
+            }
+        }
+
+        const mergedLower = searchContext.toLowerCase();
+        if (mergedLower.includes('telescope') || mergedLower.includes('mount') || mergedLower.includes('lx200') || mergedLower.includes('eqmod') || mergedLower.includes('gps')) {
+            return 'Telescopes';
+        } else if (mergedLower.includes('focuser') || mergedLower.includes('focus')) {
+            return 'Focusers';
+        } else if (mergedLower.includes('dome') || mergedLower.includes('roll_dome')) {
+            return 'Domes';
+        } else if (mergedLower.includes('wheel') || mergedLower.includes('filter')) {
+            return 'Filter Wheels';
+        } else if (mergedLower.includes('ccd') || mergedLower.includes('camera') || mergedLower.includes('video') || mergedLower.includes('gphoto') || mergedLower.includes('guide')) {
+            return 'CCDs';
+        } else if (mergedLower.includes('spectrograph')) {
+            return 'Spectrographs';
+        } else if (mergedLower.includes('rotator')) {
+            return 'Rotators';
+        } else if (mergedLower.includes('weather')) {
+            return 'Weather';
+        } else if (mergedLower.includes('power')) {
+            return 'Power';
+        } else if (mergedLower.includes('auxiliary') || mergedLower.includes('aux')) {
+            return 'Auxiliary';
+        }
+        return 'Others';
     }
 
     /**

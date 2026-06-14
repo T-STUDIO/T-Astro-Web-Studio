@@ -6,6 +6,7 @@ interface INDIDriverSelectorProps {
     onClose: () => void;
     onConnect: () => void; // Skip & Connect
     onStartSuccess: () => void; // Successfully started drivers on backend
+    connectionSettings?: any;
 }
 
 interface INDIProfile {
@@ -17,7 +18,8 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
     isOpen,
     onClose,
     onConnect,
-    onStartSuccess
+    onStartSuccess,
+    connectionSettings
 }) => {
     const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
     const [selectedDrivers, setSelectedDrivers] = useState<string[]>([]);
@@ -32,7 +34,19 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
         if (!isOpen) return;
         const loadDrivers = async () => {
             try {
-                console.log("[INDIDriverSelector] Loading available drivers list...");
+                // 1. サーバーへポート設定を先に同期し、サーバー側で available_drivers_cache.json を保存させる
+                const pt = Number(connectionSettings?.port || 8625);
+                const hs = (connectionSettings?.host || '127.0.0.1').trim();
+                
+                console.log("[INDIDriverSelector] Syncing port first:", pt, hs);
+                await fetch('/api/indi/configure-port', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ port: pt, host: hs })
+                });
+
+                // 2. サーバーが保存した後で、保存された分類・ドライバ名を読み取る
+                console.log("[INDIDriverSelector] Loading saved drivers list...");
                 const res = await fetch('/api/indi/drivers');
                 const data = await res.json();
                 if (data.status === 'ok') {
@@ -69,7 +83,7 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
         }
 
         loadDrivers();
-    }, [isOpen]);
+    }, [isOpen, connectionSettings]);
 
     if (!isOpen) return null;
 

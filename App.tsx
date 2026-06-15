@@ -138,6 +138,10 @@ const App: React.FC = () => {
   const [isDriveConnected, setIsDriveConnected] = useState(false);
 
   const [isTSConnectOpen, setIsTSConnectOpen] = useState(false); // State for TS-Connect
+  const isTSConnectOpenRef = useRef(isTSConnectOpen);
+  useEffect(() => {
+    isTSConnectOpenRef.current = isTSConnectOpen;
+  }, [isTSConnectOpen]);
   const [isAppDriverSelectorOpen, setIsAppDriverSelectorOpen] = useState(false); // Playback directly on App view
   const [isHelpOpen, setIsHelpOpen] = useState(false); // State for Help Modal
   const [indiDevices, setIndiDevices] = useState<INDIDevice[]>([]);
@@ -213,43 +217,6 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handleDeviceUpdate = (devs: INDIDevice[]) => {
-      setIndiDevices([...devs]);
-      
-      // バックグラウンドの接続状態の変更を UI State (connectionStatus) 側へ伝播してあげる同期処理
-      const hasConnectedAny = devs.length > 0;
-      setConnectionStatus(prev => {
-        if (hasConnectedAny && (prev === 'Disconnected' || prev === 'Connecting')) {
-          return 'Connected';
-        }
-        if (!hasConnectedAny && prev === 'Connected') {
-          return 'Disconnected';
-        }
-        return prev;
-      });
-    };
-    if (AstroService && typeof AstroService.setDeviceCallback === 'function') {
-      AstroService.setDeviceCallback(handleDeviceUpdate);
-    }
-    if (AstroService && typeof AstroService.getIndiDevices === 'function') {
-      try {
-        const initialDevs = AstroService.getIndiDevices() || [];
-        setIndiDevices(initialDevs);
-        if (initialDevs.length > 0) {
-          setConnectionStatus(prev => (prev === 'Disconnected' || prev === 'Connecting' ? 'Connected' : prev));
-        }
-      } catch (e) {
-        console.error("[App] Failed to get initial devices:", e);
-      }
-    }
-    return () => {
-      if (AstroService && typeof AstroService.setDeviceCallback === 'function') {
-        AstroService.setDeviceCallback(null);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     // 起動時の既存の接続プロセスを自動開始（統一化された接続ライフサイクル）
     console.log("[App] Restored startup auto-connect loop");
     AstroService.startAutoConnect(connectionSettings);
@@ -272,28 +239,15 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!isAutoSyncLocationEnabled) return;
-
-    const mountDevice = (indiDevices || []).find(dev => 
-      dev.type === 'Telescope' || 
-      dev.type === 'Mount' || 
-      dev.name.toLowerCase().includes('mount') || 
-      dev.name.toLowerCase().includes('telescope')
-    );
-    const isMountConnected = mountDevice ? mountDevice.connected : false;
-
-    if (isMountConnected && !prevMountConnected.current) {
-      console.log('[App] Mount device connected! Syncing location and time in 3 seconds.');
-      const timer = setTimeout(() => {
+    const isConnectedNow = connectionStatus === 'Connected';
+    const wasDisconnected = prevConnectionStatus.current !== 'Connected';
+    if (isConnectedNow && (wasDisconnected || location)) {
+      setTimeout(() => {
         onSendLocationToMount();
-      }, 3000);
-      prevMountConnected.current = true;
-      return () => clearTimeout(timer);
+       }, 3000);
     }
-
-    if (!isMountConnected) {
-      prevMountConnected.current = false;
-    }
-  }, [isAutoSyncLocationEnabled, indiDevices, onSendLocationToMount]);
+    prevConnectionStatus.current = connectionStatus;
+  }, [location, connectionStatus, isAutoSyncLocationEnabled, onSendLocationToMount]);
 
   useEffect(() => {
     if (connectionStatus !== 'Connected') { setMountSyncStatus('idle'); }

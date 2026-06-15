@@ -74,7 +74,6 @@ interface TSConnectProps {
     connectionStatus: ConnectionStatus;
     connectionSettings: ConnectionSettings;
     onSettingsChange: (s: ConnectionSettings) => void;
-    onConnect: () => void;
     onDisconnect: () => void;
     location: LocationData | null;
     locationStatus: LocationStatus;
@@ -125,8 +124,7 @@ interface TSConnectProps {
     setActiveView: (view: View) => void;
     telescopePosition?: TelescopePosition | null;
     planetariumSettings?: PlanetariumSettings;
-    shouldOpenDriverSelectorOnLoad?: boolean;
-    onDriverSelectorOpened?: () => void;
+    onConnect: () => Promise<boolean>;
 }
 
 export const TSConnect: React.FC<TSConnectProps> = (props) => {
@@ -144,23 +142,19 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
     const [isDriverSelectorOpen, setIsDriverSelectorOpen] = useState(false);
     const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
 
-    const handleConnectClick = async () => {
+    const handleConnect = async () => {
         setIsLoadingDrivers(true);
         try {
-            await props.onConnect();
+            const ok = await props.onConnect();
+            if (!ok && props.connectionSettings.driver === 'INDI') {
+                setIsDriverSelectorOpen(true);
+            }
         } catch (e) {
             console.error('[TSConnect] Connection handler error:', e);
         } finally {
             setIsLoadingDrivers(false);
         }
     };
-
-    useEffect(() => {
-        if (props.shouldOpenDriverSelectorOnLoad) {
-            setIsDriverSelectorOpen(true);
-            props.onDriverSelectorOpened?.();
-        }
-    }, [props.shouldOpenDriverSelectorOnLoad]);
 
     useEffect(() => {
         const updateDevices = (devs: INDIDevice[]) => {
@@ -299,7 +293,7 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                                                     <LargeInput label={t('controlPanel.host')} value={props.connectionSettings.host} onChange={(v: string) => props.onSettingsChange({...props.connectionSettings, host: v})} title={t('tooltips.host')} />
                                                     <LargeInput label={t('controlPanel.port')} value={props.connectionSettings.port} type="number" onChange={(v: string) => props.onSettingsChange({...props.connectionSettings, port: Number(v)})} title={t('tooltips.port')} />
                                                 </div>
-                                                <Button onClick={handleConnectClick} disabled={isLoadingDrivers} className="w-full py-4 text-xl font-black rounded-xl shadow-lg">
+                                                <Button onClick={handleConnect} disabled={isLoadingDrivers} className="w-full py-4 text-xl font-black rounded-xl shadow-lg">
                                                     <ConnectIcon className="w-6 h-6" /> {isLoadingDrivers ? 'WAIT...' : t('controlPanel.connect')}
                                                 </Button>
                                             </div>
@@ -461,11 +455,11 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                 isOpen={isDriverSelectorOpen}
                 onClose={() => setIsDriverSelectorOpen(false)}
                 connectionSettings={props.connectionSettings}
-                onConnect={async () => {
+                onConnect={() => {
                     setIsDriverSelectorOpen(false);
                     props.onConnect();
                 }}
-                onStartSuccess={async () => {
+                onStartSuccess={() => {
                     setIsDriverSelectorOpen(false);
                     props.onConnect();
                 }}

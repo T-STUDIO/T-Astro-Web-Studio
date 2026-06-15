@@ -22,7 +22,6 @@ const TSConnectStandalone: React.FC = () => {
     // Connection & Devices
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('Disconnected');
     const [connectionSettings, setConnectionSettings] = useState<ConnectionSettings>(initialSettings.connectionSettings);
-    const [shouldOpenDriverSelectorOnLoad, setShouldOpenDriverSelectorOnLoad] = useState(false);
     
     // Location, GPS & Time
     const [location, setLocation] = useState<LocationData | null>(initialSettings.location);
@@ -163,10 +162,8 @@ const TSConnectStandalone: React.FC = () => {
             setConnectionStatus('Connected');
         } else {
             setConnectionStatus('Disconnected');
-            if (connectionSettings.driver === 'INDI') {
-                setShouldOpenDriverSelectorOnLoad(true);
-            }
         }
+        return ok;
     };
 
     const handleDisconnect = () => {
@@ -217,8 +214,6 @@ const TSConnectStandalone: React.FC = () => {
                     onSettingsChange={setConnectionSettings}
                     onConnect={handleConnect}
                     onDisconnect={handleDisconnect}
-                    shouldOpenDriverSelectorOnLoad={shouldOpenDriverSelectorOnLoad}
-                    onDriverSelectorOpened={() => setShouldOpenDriverSelectorOnLoad(false)}
                     location={location}
                     locationStatus={locationStatus}
                     onUpdateLatitude={(lat: number) => setLocation(prev => ({ ...prev || { latitude: 0, longitude: 0 }, latitude: lat }))}

@@ -156,7 +156,9 @@ const App: React.FC = () => {
 
   const lastConfiguredPort = useRef<number | null>(null);
   const lastConfiguredHost = useRef<string | null>(null);
-
+  
+// ★ここをコメントアウトして無効化する（App.tsx 154-171行目付近）
+/*
   useEffect(() => {
     if (connectionSettings.driver === 'INDI') {
       const targetPort = Number(connectionSettings.port || 8625);
@@ -177,19 +179,78 @@ const App: React.FC = () => {
       }
     }
   }, [connectionSettings]);
+*/
+// ★追加: AstroService の WebSocket から流れてくる状態変化を App.tsx の画面に同期させる
+  useEffect(() => {
+    // AstroService にステータス変更時のコールバックを登録する（※登録用のAPIがある場合）
+    // もし AstroService がイベント駆動型、またはグローバルステートを持っている場合、以下のように同期します
+    const handleStatusChange = (status: ConnectionStatus) => {
+      setConnectionStatus(status);
+    };
 
-  const handleConnect = useCallback(async (settings: ConnectionSettings) => {
-    setConnectionStatus('Connecting');
-    const ok = await AstroService.connect(settings);
-    if (ok) {
-      setConnectionStatus('Connected');
-      addLog('logs.connectSuccess', {}, 'success');
-    } else {
-      setConnectionStatus('Disconnected');
+    // 例: AstroService が生のリッスンハンドラを提供している場合
+    // (TSConnect.tsx が内部で AstroService.subscribe のようなことをしている箇所を参考にしています)
+    if (typeof AstroService.addStatusListener === 'function') {
+      AstroService.addStatusListener(handleStatusChange);
     }
-    return ok;
-  }, [addLog]);
 
+    return () => {
+      if (typeof AstroService.removeStatusListener === 'function') {
+        AstroService.removeStatusListener(handleStatusChange);
+      }
+    };
+  }, []);
+  
+  const handleConnect = useCallback(async () => {
+    const settings = connectionSettings;
+    setConnectionStatus('Connecting');
+
+    try {
+      console.log("[DEBUG] Starting connection flow without blocking. Target:", settings.host, settings.port);
+
+      if (settings.driver === 'INDI') {
+        const targetPort = Number(settings.port || 8625);
+        const host = (settings.host || '').trim();
+
+        console.log(`[App] Signaling bridge port configuration to ${host}:${targetPort}...`);
+
+        // ★修正の要：await を外す、またはエラーを完全に隔離してバックエンドのフリーズに巻き込まれないようにする
+        fetch('/api/indi/configure-port', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ port: targetPort, host: host })
+        }).then(res => {
+          console.log("[App] Bridge port async signal acknowledged:", res.status);
+        }).catch(e => {
+          console.warn('[App] Bridge port async signal network error (ignored):', e);
+        });
+
+        // バックエンドがパケットを受け取るための最低限の猶予（ブロッキングはしない）
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      console.log("[App] Executing AstroService.connect immediately...");
+      
+      // バックエンドのレスポンス完了を待たずに、即座にアプリケーション用WebSocketを張りに行く
+      const ok = await AstroService.connect(settings);
+      
+      if (ok) {
+        setConnectionStatus('Connected');
+        addLog('logs.connectSuccess', {}, 'success');
+      } else {
+        throw new Error("AstroService.connect returned false.");
+      }
+    } catch (e) {
+      console.error('[App] Connection attempt bypassed or failed:', e);
+      setConnectionStatus('Disconnected');
+      
+      if (connectionSettings.driver === 'INDI') {
+        setIsAppDriverSelectorOpen(true);
+      }
+    }
+    return true;
+  }, [connectionSettings, addLog]);
+  
   const onSendLocationToMount = useCallback(async () => {
     if (!location || connectionStatus !== 'Connected') return;
     setMountSyncStatus('sending');
@@ -548,12 +609,10 @@ const App: React.FC = () => {
                 connectionSettings={connectionSettings}
                 onSettingsChange={setConnectionSettings}
                 onConnect={async () => {
-                    const ok = await handleConnect(connectionSettings);
-                    if (!ok && connectionSettings.driver === 'INDI') {
-                        setIsAppDriverSelectorOpen(true);
-                    }
-                    return ok;
-                }}
+    // 引数をあえて空にすることで、handleConnect側で常に「最新のリアルタイムステート」を掴み取らせる
+    const ok = await handleConnect(); 
+    return ok;
+}}
                 onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                 location={location}
                 locationStatus={locationStatus}
@@ -610,13 +669,18 @@ const App: React.FC = () => {
             {showControlPanel && (
                 <div className={`h-full ${isDesktop ? 'w-80 lg:w-96' : (isTablet && isLandscape) ? 'w-72' : 'w-full'} z-10 bg-slate-900 border-r border-red-900/30 shrink-0`}>
                     <ControlPanel 
-                        mobileTab={mobileActiveTab}
-                        connectionStatus={connectionStatus}
-                        connectionSettings={connectionSettings}
-                        onSettingsChange={handleSettingsChange}
-                        onConnect={async () => {
-                            await handleConnect(connectionSettings);
-                        }}
+    mobileTab={mobileActiveTab}
+    connectionStatus={connectionStatus}
+    connectionSettings={connectionSettings}
+    onSettingsChange={handleSettingsChange}
+    onConnect={async () => {
+        // ★TS-Connectと全く同じロジックにする
+        const ok = await handleConnect(connectionSettings);
+        if (!ok && connectionSettings.driver === 'INDI') {
+            setIsAppDriverSelectorOpen(true);
+        }
+        return ok;
+    }}
                         onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                         planetariumSettings={planetariumSettings}
                         onPlanetariumSettingsChange={(s: any) => setPlanetariumSettings(prev => ({ ...prev, ...s }))}
@@ -791,17 +855,18 @@ const App: React.FC = () => {
       />
       <DiagnosticsModal isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} currentSettings={connectionSettings} />
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-      <INDIDriverSelector 
+     <INDIDriverSelector 
         isOpen={isAppDriverSelectorOpen}
         onClose={() => setIsAppDriverSelectorOpen(false)}
         connectionSettings={connectionSettings}
-        onConnect={() => {
+        onConnect={async () => {
             setIsAppDriverSelectorOpen(false);
-            handleConnect(connectionSettings);
+            await handleConnect(); // ★引数を空にする
         }}
-        onStartSuccess={() => {
+        onStartSuccess={async () => {
             setIsAppDriverSelectorOpen(false);
-            handleConnect(connectionSettings);
+            await new Promise(resolve => setTimeout(resolve, 1200)); // 起動を待つ時間を少し長めに確保
+            await handleConnect(); // ★引数を空にする
         }}
       />
       <GeminiApiKeyModal 

@@ -806,9 +806,7 @@ const App: React.FC = () => {
         }}
         onStartSuccess={async () => {
             setIsAppDriverSelectorOpen(false);
-            setTimeout(async () => {
-                await handleConnect(connectionSettings);
-            }, 1000);
+            await handleConnect(connectionSettings);
         }}
       />
       <GeminiApiKeyModal 

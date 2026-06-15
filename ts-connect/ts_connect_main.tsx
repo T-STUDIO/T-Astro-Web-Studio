@@ -155,7 +155,7 @@ const TSConnectStandalone: React.FC = () => {
         }
     };
 
-    // Connect & Disconnect Loops
+    // Connect & Disconnect Loops (Direct sequence without delay)
     const handleConnect = async () => {
         setConnectionStatus('Connecting');
         const ok = await AstroService.connect(connectionSettings);

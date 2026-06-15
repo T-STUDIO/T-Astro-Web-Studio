@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { TSConnect } from '../components/TSConnect';
+import { DeviceSettingsModal } from '../components/DeviceSettingsModal';
+import { DiagnosticsModal } from '../components/DiagnosticsModal';
 import { LanguageProvider, useTranslation } from '../contexts/LanguageContext';
 import * as AstroService from '../services/AstroService';
 import * as SettingsService from '../services/SettingsService';
@@ -187,8 +189,71 @@ const TSConnectStandalone: React.FC = () => {
         }
     };
 
+    const [isDeviceSettingsOpen, setIsDeviceSettingsOpen] = useState(false);
+    const [selectedDeviceType, setSelectedDeviceType] = useState<DeviceType | null>(null);
+    const [selectedDeviceName, setSelectedDeviceName] = useState<string>('');
+    const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+    const [isDriveConnected, setIsDriveConnected] = useState(false);
+
+    const handleSaveToDisk = async () => {
+        const currentSettings = {
+            connectionSettings,
+            location,
+            astrometryApiKey,
+            plateSolverType,
+            localSolverSettings,
+            sampSettings
+        };
+        await SettingsService.exportSettingsToFile(currentSettings as any);
+    };
+
+    const handleLoadFromDisk = async (file: File) => {
+        try {
+            const s = await SettingsService.importSettingsFromFile(file);
+            if (s.connectionSettings) setConnectionSettings(s.connectionSettings);
+            if (s.location) setLocation(s.location);
+            if (s.astrometryApiKey) setAstrometryApiKey(s.astrometryApiKey);
+            if (s.plateSolverType) setPlateSolverType(s.plateSolverType);
+            if (s.localSolverSettings) setLocalSolverSettings(s.localSolverSettings);
+            if (s.sampSettings) setSampSettings(s.sampSettings);
+        } catch (e) {
+            console.error('[TSConnectStandalone] Set load config failed', e);
+        }
+    };
+
+    const handleConnectDrive = async () => {
+        await GoogleDriveService.signIn();
+        setIsDriveConnected(true);
+    };
+
+    const handleExportSettings = async () => {
+        const currentSettings = {
+            connectionSettings,
+            location,
+            astrometryApiKey,
+            plateSolverType,
+            localSolverSettings,
+            sampSettings
+        };
+        await GoogleDriveService.saveSettingsToDrive(currentSettings as any);
+    };
+
+    const handleImportSettings = async () => {
+        const s = await GoogleDriveService.loadSettingsFromDrive();
+        if (s) {
+            if (s.connectionSettings) setConnectionSettings(s.connectionSettings);
+            if (s.location) setLocation(s.location);
+            if (s.astrometryApiKey) setAstrometryApiKey(s.astrometryApiKey);
+            if (s.plateSolverType) setPlateSolverType(s.plateSolverType);
+            if (s.localSolverSettings) setLocalSolverSettings(s.localSolverSettings);
+            if (s.sampSettings) setSampSettings(s.sampSettings);
+        }
+    };
+
     const handleOpenDeviceSettings = (type: DeviceType, name: string) => {
-        console.log(`[TSConnectStandalone] Device Settings opened: ${type} - ${name}`);
+        setSelectedDeviceType(type);
+        setSelectedDeviceName(name);
+        setIsDeviceSettingsOpen(true);
     };
 
     return (
@@ -232,13 +297,13 @@ const TSConnectStandalone: React.FC = () => {
                     onSetAstrometryApiKey={setAstrometryApiKey}
                     localSolverSettings={localSolverSettings}
                     onSetLocalSolverSettings={setLocalSolverSettings}
-                    onSaveToDisk={() => {}}
-                    onLoadFromDisk={() => {}}
-                    isDriveConnected={false}
-                    onExportSettings={() => {}}
-                    onImportSettings={() => {}}
-                    onConnectDrive={() => {}}
-                    onShowDiagnostics={() => {}}
+                    onSaveToDisk={handleSaveToDisk}
+                    onLoadFromDisk={handleLoadFromDisk}
+                    isDriveConnected={isDriveConnected}
+                    onExportSettings={handleExportSettings}
+                    onImportSettings={handleImportSettings}
+                    onConnectDrive={handleConnectDrive}
+                    onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                     onOpenDeviceSettings={handleOpenDeviceSettings}
                     isAutoSyncLocationEnabled={false}
                     onToggleAutoSyncLocation={() => {}}
@@ -259,6 +324,32 @@ const TSConnectStandalone: React.FC = () => {
                     latestImageFormat={latestImageFormat}
                     colorBalance={colorBalance}
                     setActiveView={() => {}}
+                />
+                <DeviceSettingsModal 
+                    isOpen={isDeviceSettingsOpen} 
+                    deviceType={selectedDeviceType} 
+                    deviceName={selectedDeviceName}
+                    onClose={() => setIsDeviceSettingsOpen(false)} 
+                    selectedObject={selectedObject} 
+                    location={location} 
+                    localTime={localTime} 
+                    telescopePosition={null} 
+                    planetariumSettings={initialSettings.planetariumSettings} 
+                    latestImage={latestImage} 
+                    latestImageMetadata={latestImageMetadata}
+                    latestImageFormat={latestImageFormat}
+                    isLiveViewActive={isLiveViewActive} 
+                    isCapturing={isCapturing} 
+                    colorBalance={colorBalance} 
+                    onSwitchView={() => {}} 
+                    onCenter={() => {}} 
+                    onSlew={async () => {}} 
+                    isConnected={connectionStatus === 'Connected'}
+                />
+                <DiagnosticsModal 
+                    isOpen={isDiagnosticsOpen} 
+                    onClose={() => setIsDiagnosticsOpen(false)} 
+                    currentSettings={connectionSettings} 
                 />
             </div>
         </div>

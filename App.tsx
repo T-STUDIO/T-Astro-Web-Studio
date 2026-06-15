@@ -140,7 +140,6 @@ const App: React.FC = () => {
   const [isTSConnectOpen, setIsTSConnectOpen] = useState(false); // State for TS-Connect
   const [isAppDriverSelectorOpen, setIsAppDriverSelectorOpen] = useState(false); // Playback directly on App view
   const [isHelpOpen, setIsHelpOpen] = useState(false); // State for Help Modal
-  const [shouldOpenDriverSelectorOnLoad, setShouldOpenDriverSelectorOnLoad] = useState(false);
   const [indiDevices, setIndiDevices] = useState<INDIDevice[]>([]);
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
@@ -185,14 +184,8 @@ const App: React.FC = () => {
     if (ok) {
       setConnectionStatus('Connected');
       addLog('logs.connectSuccess', {}, 'success');
-      setIsAppDriverSelectorOpen(false);
-      setShouldOpenDriverSelectorOnLoad(false);
     } else {
       setConnectionStatus('Disconnected');
-      if (settings.driver === 'INDI') {
-        setIsAppDriverSelectorOpen(true);
-        setShouldOpenDriverSelectorOnLoad(true);
-      }
     }
     return ok;
   }, [addLog]);
@@ -554,10 +547,12 @@ const App: React.FC = () => {
                 connectionStatus={connectionStatus}
                 connectionSettings={connectionSettings}
                 onSettingsChange={setConnectionSettings}
-                shouldOpenDriverSelectorOnLoad={shouldOpenDriverSelectorOnLoad}
-                onDriverSelectorOpened={() => setShouldOpenDriverSelectorOnLoad(false)}
                 onConnect={async () => {
-                    await handleConnect(connectionSettings);
+                    const ok = await handleConnect(connectionSettings);
+                    if (!ok && connectionSettings.driver === 'INDI') {
+                        setIsAppDriverSelectorOpen(true);
+                    }
+                    return ok;
                 }}
                 onDisconnect={() => { AstroService.disconnect(); setConnectionStatus('Disconnected'); }}
                 location={location}
@@ -800,13 +795,13 @@ const App: React.FC = () => {
         isOpen={isAppDriverSelectorOpen}
         onClose={() => setIsAppDriverSelectorOpen(false)}
         connectionSettings={connectionSettings}
-        onConnect={async () => {
+        onConnect={() => {
             setIsAppDriverSelectorOpen(false);
-            await handleConnect(connectionSettings);
+            handleConnect(connectionSettings);
         }}
-        onStartSuccess={async () => {
+        onStartSuccess={() => {
             setIsAppDriverSelectorOpen(false);
-            await handleConnect(connectionSettings);
+            handleConnect(connectionSettings);
         }}
       />
       <GeminiApiKeyModal 

@@ -145,8 +145,6 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
     const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
 
     const handleConnectClick = async () => {
-        // 起動ボタンを押したらすぐに閉じる（自動リトライなしの即時接続）
-        props.onClose();
         setIsLoadingDrivers(true);
         try {
             await props.onConnect();
@@ -469,9 +467,7 @@ export const TSConnect: React.FC<TSConnectProps> = (props) => {
                 }}
                 onStartSuccess={async () => {
                     setIsDriverSelectorOpen(false);
-                    setTimeout(() => {
-                        props.onConnect();
-                    }, 1000);
+                    props.onConnect();
                 }}
             />
         </div>

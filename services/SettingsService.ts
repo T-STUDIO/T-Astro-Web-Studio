@@ -27,6 +27,8 @@ export interface AppSettings {
     savedSampSettings: SavedSampSettings[]; 
     simulatorSettings: SimulatorSettings;
     lastSaveTimestamp: string;
+    indiProfiles?: any;
+    geminiApiKey?: string;
 }
 
 // ★ 修正: getLanHostname 関数を追加（LAN環境対応）
@@ -99,6 +101,19 @@ export const loadSettings = (): AppSettings => {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
+
+            // Sync bundled values back to active localStorage keys if they exist in the saved file
+            if (parsed.indiProfiles !== undefined) {
+                try {
+                    localStorage.setItem('t-astro-indi-profiles', JSON.stringify(parsed.indiProfiles));
+                } catch (_) {}
+            }
+            if (parsed.geminiApiKey !== undefined) {
+                try {
+                    localStorage.setItem('gemini_api_key', parsed.geminiApiKey);
+                } catch (_) {}
+            }
+
             return { 
                 ...DEFAULT_SETTINGS, 
                 ...parsed, 
@@ -127,8 +142,26 @@ export const loadSettings = (): AppSettings => {
 
 export const saveSettings = (settings: AppSettings) => {
     try {
-        const toSave = { ...settings, lastSaveTimestamp: new Date().toISOString() };
+        let currentProfilesStr = null;
+        try { currentProfilesStr = localStorage.getItem('t-astro-indi-profiles'); } catch (_) {}
+        
+        let currentGeminiKey = null;
+        try { currentGeminiKey = localStorage.getItem('gemini_api_key'); } catch (_) {}
+
+        const toSave = { 
+            ...settings, 
+            indiProfiles: settings.indiProfiles !== undefined ? settings.indiProfiles : (currentProfilesStr ? JSON.parse(currentProfilesStr) : undefined),
+            geminiApiKey: settings.geminiApiKey !== undefined ? settings.geminiApiKey : (currentGeminiKey || undefined),
+            lastSaveTimestamp: new Date().toISOString() 
+        };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+
+        if (settings.indiProfiles !== undefined) {
+            try { localStorage.setItem('t-astro-indi-profiles', JSON.stringify(settings.indiProfiles)); } catch (_) {}
+        }
+        if (settings.geminiApiKey !== undefined) {
+            try { localStorage.setItem('gemini_api_key', settings.geminiApiKey); } catch (_) {}
+        }
     } catch (e) {
         console.error("Failed to save settings to local storage", e);
     }
@@ -183,6 +216,8 @@ export const importSettingsFromFile = async (file: File): Promise<AppSettings> =
                     savedApiKeys: Array.isArray(data.savedApiKeys) ? data.savedApiKeys : [],
                     savedLocalSolvers: Array.isArray(data.savedLocalSolvers) ? data.savedLocalSolvers : [],
                     savedSampSettings: Array.isArray(data.savedSampSettings) ? data.savedSampSettings : [],
+                    indiProfiles: data.indiProfiles,
+                    geminiApiKey: data.geminiApiKey,
                     // ★ 修正: sampSettings のマージ時にホストをLAN自動検出に対応
                     sampSettings: { 
                         ...DEFAULT_SETTINGS.sampSettings,

@@ -95,7 +95,7 @@ export class AutoCenterService {
                 const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
                 const result = (req.solverType === 'Local')
-                    ? await solveImageLocal(imageDataUrl, req.localSettings.host, req.localSettings.port)
+                    ? await solveImageLocal(imageDataUrl, req.localSettings.host, req.localSettings.port, undefined, targetRa, targetDec)
                     : await solveImageAstrometryNet(imageDataUrl, req.apiKey);
 
                 if (!result.success || !result.calibration) {

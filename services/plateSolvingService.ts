@@ -140,7 +140,10 @@ export const solveImageLocal = async (
     imageDataUrl: string,
     host: string,
     port: number,
-    onStatusUpdate?: (status: string) => void
+    onStatusUpdate?: (status: string) => void,
+    ra?: number,
+    dec?: number,
+    radius?: number
 ): Promise<SolveResult> => {
     try {
         if (onStatusUpdate) onStatusUpdate("Processing image...");
@@ -151,6 +154,15 @@ export const solveImageLocal = async (
         if (onStatusUpdate) onStatusUpdate(`Solving (Local: ${host}:${port})...`);
         const formData = new FormData();
         formData.append('file', blob, 'image.jpg');
+        if (ra !== undefined && ra !== null) {
+            formData.append('ra', ra.toString());
+        }
+        if (dec !== undefined && dec !== null) {
+            formData.append('dec', dec.toString());
+        }
+        if (radius !== undefined && radius !== null) {
+            formData.append('radius', radius.toString());
+        }
 
         const response = await fetch(`http://${host}:${port}/solve`, {
             method: 'POST',

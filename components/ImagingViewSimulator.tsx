@@ -473,8 +473,26 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
 
       setWcsStatus('Solving'); setSolvingProgress(t('imagingView.captureInfo.solving'));
       try {
+          let optRa: number | undefined;
+          let optDec: number | undefined;
+          let optRadius: number | undefined;
+
+          if (selectedObject) {
+              try {
+                  optRa = hmsToDegrees(selectedObject.ra);
+                  optDec = dmsToDegrees(selectedObject.dec);
+                  if (selectedObject.size && selectedObject.size > 0) {
+                      optRadius = selectedObject.size / 60;
+                  } else {
+                      optRadius = 15.0;
+                  }
+              } catch (err) {
+                  console.warn("Failed to parse selected object coordinates:", err);
+              }
+          }
+
           const result = (plateSolverType === 'Local') 
-              ? await solveImageLocal(imageUrl, localSolverSettings.host, localSolverSettings.port, setSolvingProgress)
+              ? await solveImageLocal(imageUrl, localSolverSettings.host, localSolverSettings.port, setSolvingProgress, optRa, optDec, optRadius)
               : await solveImageAstrometryNet(imageUrl, apiKey, setSolvingProgress);
           if (result.success && result.calibration) {
               setWcsStatus('Success'); setSolvedCalibration(result.calibration); setNativeAnnotations(result.annotations);

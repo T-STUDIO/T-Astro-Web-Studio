@@ -11,6 +11,7 @@ let imageReceivedCallback: ((url: string, format: string, metadata?: any) => voi
 let telescopePositionCallback: ((pos: TelescopePosition) => void) | null = null;
 let cameraCapabilitiesCallback: ((caps: any) => void) | null = null;
 let cameraCapabilities: any = null;
+let activeCameraParams = { width: 0, height: 0, bpp: 8, format: '', pixelSize: 0 };
 let positionInterval: any = null;
 
 const startPositionPolling = () => {
@@ -158,6 +159,25 @@ export const connectDevices = async () => {
                     cameraCapabilities = await getCameraCapabilities();
                     if (cameraCapabilities && cameraCapabilitiesCallback) {
                         cameraCapabilitiesCallback(cameraCapabilities);
+                    }
+                    try {
+                        addDebugLog(`Fetching camera pixel sizes and dimensions...`);
+                        const widthRes = await alpacaClient.getCommand('Camera', device.deviceNumber, 'CameraXSize');
+                        const heightRes = await alpacaClient.getCommand('Camera', device.deviceNumber, 'CameraYSize');
+                        const pixelXRes = await alpacaClient.getCommand('Camera', device.deviceNumber, 'PixelSizeX');
+                        
+                        if (widthRes && widthRes.ErrorNumber === 0) {
+                            activeCameraParams.width = widthRes.Value;
+                        }
+                        if (heightRes && heightRes.ErrorNumber === 0) {
+                            activeCameraParams.height = heightRes.Value;
+                        }
+                        if (pixelXRes && pixelXRes.ErrorNumber === 0) {
+                            activeCameraParams.pixelSize = pixelXRes.Value;
+                        }
+                        addDebugLog(`Camera Params: width=${activeCameraParams.width}, height=${activeCameraParams.height}, pixelSize=${activeCameraParams.pixelSize}`);
+                    } catch (e: any) {
+                        addDebugLog(`Failed to fetch basic camera parameters: ${e.message}`);
                     }
                 }
             } else {
@@ -958,3 +978,4 @@ export const connectIndiDevice = connectDevice;
 export const disconnectIndiDevice = disconnectDevice;
 export const refreshIndiDevices = refreshDevices;
 export const getIndiDevices = getDevices;
+export const getCameraParams = () => activeCameraParams;

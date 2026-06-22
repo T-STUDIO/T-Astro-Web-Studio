@@ -122,6 +122,16 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         return 0;
     });
 
+    const activeCam = AstroService.getActiveCamera();
+    const lastActiveCamRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (activeCam !== lastActiveCamRef.current) {
+            promptFocalLengthRef.current = false;
+            lastActiveCamRef.current = activeCam;
+        }
+    }, [activeCam]);
+
     const effLocation = location || { latitude: 35.6, longitude: 139.6 };
     const effTime = localTime || new Date();
 
@@ -549,7 +559,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const tp = projectStereographic(tAlt, tAz, width, height, zoom, center, viewAlt, viewAz);
             if (tp) {
                 const activeCam = AstroService.getActiveCamera();
-                const params = AstroService.getCameraParams();
+                const rawParams = AstroService.getCameraParams();
+                const params = rawParams ? { ...rawParams } : { width: 0, height: 0, pixelSize: 0, bpp: 8, format: '' };
                 
                 let focalLength = 0;
                 const driver = loadSettings().connectionSettings.driver;
@@ -612,28 +623,93 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         }
                     }
 
-                    // 5. ローカルに保存されている手動入力値を使用
-                    if ((focalLength === 0 || focalLength === null) && manualFocalLength > 0) {
-                        focalLength = manualFocalLength;
+                    // --- カメラに紐づいた手動パラメータの自動ロード ---
+                    let cameraManualParams: any = {};
+                    if (activeCam && typeof window !== 'undefined') {
+                        try {
+                            const savedParams = localStorage.getItem('planetarium_camera_params');
+                            if (savedParams) {
+                                const parsed = JSON.parse(savedParams);
+                                if (parsed[activeCam]) {
+                                    cameraManualParams = parsed[activeCam];
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Failed to load camera parameters", e);
+                        }
+                    }
+
+                    // 足りないパラメータを補完
+                    if (params.width <= 0 && cameraManualParams.width > 0) {
+                        params.width = cameraManualParams.width;
+                    }
+                    if (params.height <= 0 && cameraManualParams.height > 0) {
+                        params.height = cameraManualParams.height;
+                    }
+                    if (params.pixelSize <= 0 && cameraManualParams.pixelSize > 0) {
+                        params.pixelSize = cameraManualParams.pixelSize;
+                    }
+
+                    if (focalLength === 0 || focalLength === null) {
+                        if (cameraManualParams.focalLength > 0) {
+                            focalLength = cameraManualParams.focalLength;
+                        } else if (manualFocalLength > 0) {
+                            focalLength = manualFocalLength;
+                        }
                     }
                 }
 
-                if (isConnected && activeCam && driver !== 'Simulator' && (focalLength === 0 || focalLength === null) && !promptFocalLengthRef.current) {
+                // 不足している項目の検出
+                const missingParams: string[] = [];
+                if (params.width <= 0) missingParams.push("解像度（横幅/Width）");
+                if (params.height <= 0) missingParams.push("解像度（縦幅/Height）");
+                if (params.pixelSize <= 0) missingParams.push("ピクセルサイズ（Pixel Size）");
+                if (!focalLength || focalLength <= 0) missingParams.push("焦点距離（Focal Length）");
+
+                if (isConnected && activeCam && driver !== 'Simulator' && missingParams.length > 0 && !promptFocalLengthRef.current) {
                     promptFocalLengthRef.current = true;
                     setTimeout(() => {
-                        let val: string | null = null;
                         try {
-                            val = window.prompt("CCDカメラドライバ内に焦点距離(TELESCOPE_FOCAL_LENGTH)が設定されていません。画角（FOV）を正確に表示するために、望遠鏡の焦点距離 (mm) を入力してください（入力値はブラウザに保存され、ドライバへの直接書き込みは行われません）:", "180");
-                        } catch (e) {
-                            console.warn("window.prompt is blocked in iframe sandbox. Using default 180mm.", e);
-                            val = "180";
-                        }
-                        if (val) {
-                            const num = parseFloat(val);
-                            if (!isNaN(num) && num > 0) {
-                                localStorage.setItem('planetarium_manual_focal_length', num.toString());
-                                setManualFocalLength(num);
+                            const msg = `警告: カメラ・望遠鏡パラメータが不足しています。\n不足している項目: ${missingParams.join(', ')}\n\n正しい画角（FOV）を正確に表示するために、これらのパラメータを設定してください。\n(入力値は接続中のカメラ名「${activeCam}」に紐づけて保存されます)`;
+                            window.alert(msg);
+                            
+                            let currentWidth = params.width > 0 ? params.width : 0;
+                            let currentHeight = params.height > 0 ? params.height : 0;
+                            let currentPixelSize = params.pixelSize > 0 ? params.pixelSize : 0;
+                            let currentFocalLength = focalLength > 0 ? focalLength : 0;
+
+                            if (currentWidth <= 0) {
+                                const val = window.prompt("カメラの解像度（横幅のピクセル数）を入力してください:", "4656");
+                                if (val) currentWidth = parseInt(val) || 0;
                             }
+                            if (currentHeight <= 0) {
+                                const val = window.prompt("カメラの解像度（縦幅のピクセル数）を入力してください:", "3520");
+                                if (val) currentHeight = parseInt(val) || 0;
+                            }
+                            if (currentPixelSize <= 0) {
+                                const val = window.prompt("カメラのピクセルサイズ (μm) を入力してください (例: 3.8):", "3.8");
+                                if (val) currentPixelSize = parseFloat(val) || 0;
+                            }
+                            if (currentFocalLength <= 0) {
+                                const val = window.prompt("望遠鏡の焦点距離 (mm) を入力してください (例: 180):", "180");
+                                if (val) currentFocalLength = parseFloat(val) || 0;
+                            }
+
+                            if (currentWidth > 0 && currentHeight > 0 && currentPixelSize > 0 && currentFocalLength > 0) {
+                                const savedParams = localStorage.getItem('planetarium_camera_params');
+                                const parsed = savedParams ? JSON.parse(savedParams) : {};
+                                parsed[activeCam] = {
+                                    width: currentWidth,
+                                    height: currentHeight,
+                                    pixelSize: currentPixelSize,
+                                    focalLength: currentFocalLength
+                                };
+                                localStorage.setItem('planetarium_camera_params', JSON.stringify(parsed));
+                                localStorage.setItem('planetarium_manual_focal_length', currentFocalLength.toString());
+                                setManualFocalLength(currentFocalLength);
+                            }
+                        } catch (e) {
+                            console.warn("window.prompt is blocked in iframe sandbox.", e);
                         }
                     }, 1000);
                 }

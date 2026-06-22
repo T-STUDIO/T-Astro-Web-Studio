@@ -38,6 +38,21 @@ export interface SolveResult {
 
 const API_BASE = "https://nova.astrometry.net/api";
 
+const delay = (ms: number, signal?: AbortSignal) => {
+    return new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) return reject(new Error("Aborted"));
+        const onAbort = () => {
+            clearTimeout(timer);
+            reject(new Error("Aborted"));
+        };
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve();
+        }, ms);
+        signal?.addEventListener('abort', onAbort);
+    });
+};
+
 const isLocalHostname = (hostname: string): boolean => {
     return (
         hostname === 'localhost' ||
@@ -151,14 +166,17 @@ export const solveImageLocal = async (
     onStatusUpdate?: (status: string) => void,
     ra?: number,
     dec?: number,
-    radius?: number
+    radius?: number,
+    signal?: AbortSignal
 ): Promise<SolveResult> => {
     try {
+        if (signal?.aborted) throw new Error("Aborted");
         if (onStatusUpdate) onStatusUpdate("Processing image...");
         const resized = await resizeImage(imageDataUrl, 8192);
         const blob = dataURLToBlob(resized.dataUrl);
         if (!blob) throw new Error("Failed to process image data.");
 
+        if (signal?.aborted) throw new Error("Aborted");
         if (onStatusUpdate) onStatusUpdate(`Solving (Local: ${host}:${port})...`);
         const formData = new FormData();
         formData.append('file', blob, 'image.jpg');
@@ -174,7 +192,8 @@ export const solveImageLocal = async (
 
         const response = await fetch(`http://${host}:${port}/solve`, {
             method: 'POST',
-            body: formData
+            body: formData,
+            signal
         });
 
         if (!response.ok) {
@@ -193,7 +212,7 @@ export const solveImageLocal = async (
             if (annotations.length === 0 && jobId) {
                 try {
                     if (onStatusUpdate) onStatusUpdate("Fetching annotations from local solver...");
-                    const annoRes = await fetch(`http://${host}:${port}/annotations/${jobId}`);
+                    const annoRes = await fetch(`http://${host}:${port}/annotations/${jobId}`, { signal });
                     if (annoRes.ok) {
                         const annoJson = await annoRes.json();
                         if (annoJson.annotations) annotations = annoJson.annotations;
@@ -240,9 +259,11 @@ export const solveImageLocal = async (
 export const solveImageAstrometryNet = async (
     imageDataUrl: string,
     apiKey: string,
-    onStatusUpdate?: (status: string) => void
+    onStatusUpdate?: (status: string) => void,
+    signal?: AbortSignal
 ): Promise<SolveResult> => {
     try {
+        if (signal?.aborted) throw new Error("Aborted");
         const cleanKey = apiKey.trim();
         if (!cleanKey) throw new Error("API Key is required.");
 
@@ -253,18 +274,21 @@ export const solveImageAstrometryNet = async (
         const loginRes = await fetchWithCorsFallback(`${API_BASE}/login`, { 
             method: 'POST', 
             body: loginParams, 
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            signal
         });
         
         const loginJson = await safeJson(loginRes);
         if (loginJson.status !== 'success') throw new Error(`Login API Error: ${loginJson.message}`);
         const session = loginJson.session;
 
+        if (signal?.aborted) throw new Error("Aborted");
         if (onStatusUpdate) onStatusUpdate("Processing image...");
         const resized = await resizeImage(imageDataUrl, 8192); 
         const blob = dataURLToBlob(resized.dataUrl);
         if (!blob) throw new Error("Failed to process image data.");
         
+        if (signal?.aborted) throw new Error("Aborted");
         if (onStatusUpdate) onStatusUpdate("Uploading...");
         const uploadForm = new FormData();
         uploadForm.append('request-json', JSON.stringify({
@@ -279,7 +303,7 @@ export const solveImageAstrometryNet = async (
         }));
         uploadForm.append('file', blob, 'image.jpg');
 
-        const uploadRes = await fetchWithCorsFallback(`${API_BASE}/upload`, { method: 'POST', body: uploadForm });
+        const uploadRes = await fetchWithCorsFallback(`${API_BASE}/upload`, { method: 'POST', body: uploadForm, signal });
         const uploadJson = await safeJson(uploadRes);
         if (uploadJson.status !== 'success') throw new Error(`Upload API Error: ${uploadJson.message}`);
         const subId = uploadJson.subid;
@@ -288,8 +312,8 @@ export const solveImageAstrometryNet = async (
         let jobId = null;
         let attempts = 0;
         while (!jobId && attempts < 30) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            const subRes = await fetchWithCorsFallback(`${API_BASE}/submissions/${subId}?t=${Date.now()}`);
+            await delay(2000, signal);
+            const subRes = await fetchWithCorsFallback(`${API_BASE}/submissions/${subId}?t=${Date.now()}`, { signal });
             if (subRes.ok) {
                 const subData = await safeJson(subRes);
                 if (subData.jobs && subData.jobs.length > 0 && subData.jobs[0]) jobId = subData.jobs[0];
@@ -303,8 +327,8 @@ export const solveImageAstrometryNet = async (
         let jobStatus = '';
         attempts = 0;
         while (attempts < 90) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            const jobRes = await fetchWithCorsFallback(`${API_BASE}/jobs/${jobId}?t=${Date.now()}`);
+            await delay(2000, signal);
+            const jobRes = await fetchWithCorsFallback(`${API_BASE}/jobs/${jobId}?t=${Date.now()}`, { signal });
             if (jobRes.ok) {
                 const jobData = await safeJson(jobRes);
                 jobStatus = jobData.status;
@@ -316,12 +340,13 @@ export const solveImageAstrometryNet = async (
         
         if (jobStatus !== 'success') throw new Error("Plate solving timed out.");
 
+        if (signal?.aborted) throw new Error("Aborted");
         if (onStatusUpdate) onStatusUpdate("Fetching results...");
         let annotations: SolverAnnotation[] = [];
         let calibration: CalibrationData | undefined;
 
         try {
-            const annoRes = await fetchWithCorsFallback(`${API_BASE}/jobs/${jobId}/annotations`);
+            const annoRes = await fetchWithCorsFallback(`${API_BASE}/jobs/${jobId}/annotations`, { signal });
             if (annoRes.ok) {
                 const annoData = await safeJson(annoRes);
                 if (annoData.annotations) {
@@ -333,7 +358,7 @@ export const solveImageAstrometryNet = async (
         } catch (e) { }
 
         try {
-            const calRes = await fetchWithCorsFallback(`${API_BASE}/jobs/${jobId}/calibration`);
+            const calRes = await fetchWithCorsFallback(`${API_BASE}/jobs/${jobId}/calibration`, { signal });
             if (calRes.ok) {
                 const calData = await safeJson(calRes);
                 calibration = {

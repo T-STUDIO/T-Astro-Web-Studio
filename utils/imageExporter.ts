@@ -24,21 +24,42 @@ const createFitsHeader = (width: number, height: number, wcs?: CalibrationData |
 
     // --- WCS Metadata (Celestial Coordinates - Standard TAN projection) ---
     if (wcs) {
-        const scaleDeg = wcs.scale / 3600.0;
-        const rotRad = -wcs.rotation * Math.PI / 180.0;
-        const parity = wcs.parity || -1;
+        let crval1 = wcs.ra;
+        let crval2 = wcs.dec;
+        let crpix1 = width / 2 + 0.5;
+        let crpix2 = height / 2 + 0.5;
+        let cd1_1: number;
+        let cd1_2: number;
+        let cd2_1: number;
+        let cd2_2: number;
 
-        const cd1_1 = scaleDeg * Math.cos(rotRad) * parity;
-        const cd1_2 = -scaleDeg * Math.sin(rotRad) * parity;
-        const cd2_1 = scaleDeg * Math.sin(rotRad);
-        const cd2_2 = scaleDeg * Math.cos(rotRad);
+        if (wcs.crval1 !== undefined && wcs.crval2 !== undefined && wcs.crpix1 !== undefined && wcs.crpix2 !== undefined &&
+            wcs.cd1_1 !== undefined && wcs.cd1_2 !== undefined && wcs.cd2_1 !== undefined && wcs.cd2_2 !== undefined) {
+            crval1 = wcs.crval1;
+            crval2 = wcs.crval2;
+            crpix1 = wcs.crpix1;
+            crpix2 = wcs.crpix2;
+            cd1_1 = wcs.cd1_1;
+            cd1_2 = wcs.cd1_2;
+            cd2_1 = wcs.cd2_1;
+            cd2_2 = wcs.cd2_2;
+        } else {
+            const scaleDeg = wcs.scale / 3600.0;
+            const rotRad = -wcs.rotation * Math.PI / 180.0;
+            const parity = wcs.parity || -1;
+
+            cd1_1 = scaleDeg * Math.cos(rotRad) * parity;
+            cd1_2 = -scaleDeg * Math.sin(rotRad) * parity;
+            cd2_1 = scaleDeg * Math.sin(rotRad);
+            cd2_2 = scaleDeg * Math.cos(rotRad);
+        }
 
         cards.push(padString("CTYPE1  = 'RA---TAN'           / Gnomonic projection"));
         cards.push(padString("CTYPE2  = 'DEC--TAN'           / Gnomonic projection"));
-        cards.push(padString(`CRVAL1  = ${wcs.ra.toFixed(8).padStart(20, ' ')} / Ref RA (deg)`));
-        cards.push(padString(`CRVAL2  = ${wcs.dec.toFixed(8).padStart(20, ' ')} / Ref Dec (deg)`));
-        cards.push(padString(`CRPIX1  = ${(width / 2 + 0.5).toFixed(1).padStart(20, ' ')} / Ref pixel X`));
-        cards.push(padString(`CRPIX2  = ${(height / 2 + 0.5).toFixed(1).padStart(20, ' ')} / Ref pixel Y`));
+        cards.push(padString(`CRVAL1  = ${crval1.toFixed(8).padStart(20, ' ')} / Ref RA (deg)`));
+        cards.push(padString(`CRVAL2  = ${crval2.toFixed(8).padStart(20, ' ')} / Ref Dec (deg)`));
+        cards.push(padString(`CRPIX1  = ${crpix1.toFixed(8).padStart(20, ' ')} / Ref pixel X`));
+        cards.push(padString(`CRPIX2  = ${crpix2.toFixed(8).padStart(20, ' ')} / Ref pixel Y`));
         cards.push(padString(`CD1_1   = ${cd1_1.toExponential(8).padStart(20, ' ')} / WCS CD Matrix`));
         cards.push(padString(`CD1_2   = ${cd1_2.toExponential(8).padStart(20, ' ')} / WCS CD Matrix`));
         cards.push(padString(`CD2_1   = ${cd2_1.toExponential(8).padStart(20, ' ')} / WCS CD Matrix`));
@@ -212,7 +233,50 @@ export const exportJPEG = (
     location?: LocationData | null
 ): Blob => {
     const dataURL = canvas.toDataURL("image/jpeg", 0.95);
+    let blobBytes: Uint8Array | null = null;
     
+    let crval1 = wcs?.ra;
+    let crval2 = wcs?.dec;
+    let crpix1 = canvas.width / 2 + 0.5;
+    let crpix2 = canvas.height / 2 + 0.5;
+    let cd1_1: number | undefined;
+    let cd1_2: number | undefined;
+    let cd2_1: number | undefined;
+    let cd2_2: number | undefined;
+
+    if (wcs) {
+        if (wcs.crval1 !== undefined && wcs.crval2 !== undefined && wcs.crpix1 !== undefined && wcs.crpix2 !== undefined &&
+            wcs.cd1_1 !== undefined && wcs.cd1_2 !== undefined && wcs.cd2_1 !== undefined && wcs.cd2_2 !== undefined) {
+            crval1 = wcs.crval1;
+            crval2 = wcs.crval2;
+            crpix1 = wcs.crpix1;
+            crpix2 = wcs.crpix2;
+            cd1_1 = wcs.cd1_1;
+            cd1_2 = wcs.cd1_2;
+            cd2_1 = wcs.cd2_1;
+            cd2_2 = wcs.cd2_2;
+        } else {
+            const scaleDeg = wcs.scale / 3600.0;
+            const rotRad = -wcs.rotation * Math.PI / 180.0;
+            const parity = wcs.parity || -1;
+            cd1_1 = scaleDeg * Math.cos(rotRad) * parity;
+            cd1_2 = -scaleDeg * Math.sin(rotRad) * parity;
+            cd2_1 = scaleDeg * Math.sin(rotRad);
+            cd2_2 = scaleDeg * Math.cos(rotRad);
+        }
+    }
+
+    const wcsCommentText = wcs ? 
+        `WCS[RA=${wcs.ra.toFixed(6)},Dec=${wcs.dec.toFixed(6)},Scale=${wcs.scale.toFixed(4)},Rot=${wcs.rotation.toFixed(2)}]\r\n` +
+        `CRVAL1  = ${crval1!.toFixed(8)}\r\n` +
+        `CRVAL2  = ${crval2!.toFixed(8)}\r\n` +
+        `CRPIX1  = ${crpix1.toFixed(4)}\r\n` +
+        `CRPIX2  = ${crpix2.toFixed(4)}\r\n` +
+        `CD1_1   = ${cd1_1!.toExponential(8)}\r\n` +
+        `CD1_2   = ${cd1_2!.toExponential(8)}\r\n` +
+        `CD2_1   = ${cd2_1!.toExponential(8)}\r\n` +
+        `CD2_2   = ${cd2_2!.toExponential(8)}` : "";
+
     if (typeof piexif !== 'undefined') {
         try {
             let exifObj: any = { "0th": {}, "Exif": {}, "GPS": {} };
@@ -238,31 +302,60 @@ export const exportJPEG = (
             }
 
             // --- WCSはコメント情報として保存 ---
-            if (wcs) {
-                const wcsComment = `WCS[RA=${wcs.ra.toFixed(6)},Dec=${wcs.dec.toFixed(6)},Scale=${wcs.scale.toFixed(4)},Rot=${wcs.rotation.toFixed(2)}]`;
+            if (wcsCommentText) {
                 // Exif UserComment (ASCII prefix required by standard)
-                exifObj["Exif"][piexif.ExifIFD.UserComment] = "ASCII\0\0\0" + wcsComment;
+                exifObj["Exif"][piexif.ExifIFD.UserComment] = "ASCII\0\0\0" + wcsCommentText;
                 // 0th ImageDescription
-                exifObj["0th"][piexif.ImageIFD.ImageDescription] = wcsComment;
+                exifObj["0th"][piexif.ImageIFD.ImageDescription] = wcsCommentText;
             }
 
             const exifBytes = piexif.dump(exifObj);
             const inserted = piexif.insert(exifBytes, dataURL);
             
             const byteString = atob(inserted.split(',')[1]);
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-            return new Blob([ab], { type: 'image/jpeg' });
+            blobBytes = new Uint8Array(byteString.length);
+            for (let i = 0; i < byteString.length; i++) blobBytes[i] = byteString.charCodeAt(i);
         } catch (e) {
             console.error("EXIF injection failed:", e);
         }
     }
 
-    // Fallback if piexif is missing
-    const byteString = atob(dataURL.split(',')[1]);
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
-    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-    return new Blob([ab], { type: 'image/jpeg' });
+    if (!blobBytes) {
+        const byteString = atob(dataURL.split(',')[1]);
+        blobBytes = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) blobBytes[i] = byteString.charCodeAt(i);
+    }
+
+    // Always inject JPEG standard COM marker segment at binary level for absolute compliance
+    if (wcsCommentText) {
+        try {
+            blobBytes = injectJpegComment(blobBytes, wcsCommentText);
+        } catch (binaryErr) {
+            console.error("Binary JPEG comment injection failed:", binaryErr);
+        }
+    }
+
+    return new Blob([blobBytes], { type: 'image/jpeg' });
 };
+
+function injectJpegComment(jpegBytes: Uint8Array, commentStr: string): Uint8Array {
+    const encoder = new TextEncoder();
+    const commentBytes = encoder.encode(commentStr);
+    
+    // Check for SOI (FF D8)
+    if (jpegBytes[0] !== 0xFF || jpegBytes[1] !== 0xD8) {
+        return jpegBytes;
+    }
+    
+    const markerLength = commentBytes.length + 2;
+    const comHeader = new Uint8Array([0xFF, 0xFE, (markerLength >> 8) & 0xFF, markerLength & 0xFF]);
+    
+    const newBytes = new Uint8Array(2 + comHeader.length + commentBytes.length + (jpegBytes.length - 2));
+    newBytes[0] = 0xFF;
+    newBytes[1] = 0xD8;
+    newBytes.set(comHeader, 2);
+    newBytes.set(commentBytes, 2 + comHeader.length);
+    newBytes.set(jpegBytes.subarray(2), 2 + comHeader.length + commentBytes.length);
+    
+    return newBytes;
+}

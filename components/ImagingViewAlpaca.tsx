@@ -456,11 +456,6 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
               try {
                   optRa = hmsToDegrees(selectedObject.ra);
                   optDec = dmsToDegrees(selectedObject.dec);
-                  if (selectedObject.size && selectedObject.size > 0) {
-                      optRadius = selectedObject.size / 60;
-                  } else {
-                      optRadius = 15.0;
-                  }
               } catch (err) {
                   console.warn("Failed to parse selected object coordinates:", err);
               }

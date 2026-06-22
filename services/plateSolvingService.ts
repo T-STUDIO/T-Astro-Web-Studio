@@ -16,6 +16,14 @@ export interface CalibrationData {
     scale: number;
     parity: number;
     radius: number;
+    crval1?: number;
+    crval2?: number;
+    crpix1?: number;
+    crpix2?: number;
+    cd1_1?: number;
+    cd1_2?: number;
+    cd2_1?: number;
+    cd2_2?: number;
 }
 
 export interface SolveResult {

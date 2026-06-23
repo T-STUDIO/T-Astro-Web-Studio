@@ -12,7 +12,7 @@ const padString = (str: string, length: number = 80): string => {
 /**
  * FITSヘッダーの生成 (FITS規格および天文標準に準拠)
  */
-const createFitsHeader = (width: number, height: number, wcs?: CalibrationData | null, location?: LocationData | null): string => {
+const createFitsHeader = (width: number, height: number, wcs?: CalibrationData | null, location?: LocationData | null, flipY: boolean = false): string => {
     const cards: string[] = [];
     cards.push(padString("SIMPLE  =                    T / Standard FITS format"));
     cards.push(padString("BITPIX  =                    8 / Character or unsigned binary integer"));
@@ -38,11 +38,11 @@ const createFitsHeader = (width: number, height: number, wcs?: CalibrationData |
             crval1 = wcs.crval1;
             crval2 = wcs.crval2;
             crpix1 = wcs.crpix1;
-            crpix2 = wcs.crpix2;
+            crpix2 = flipY ? (height + 1.0 - wcs.crpix2) : wcs.crpix2;
             cd1_1 = wcs.cd1_1;
-            cd1_2 = wcs.cd1_2;
+            cd1_2 = flipY ? -wcs.cd1_2 : wcs.cd1_2;
             cd2_1 = wcs.cd2_1;
-            cd2_2 = wcs.cd2_2;
+            cd2_2 = flipY ? -wcs.cd2_2 : wcs.cd2_2;
         } else {
             const scaleDeg = wcs.scale / 3600.0;
             const rotRad = -wcs.rotation * Math.PI / 180.0;
@@ -52,6 +52,11 @@ const createFitsHeader = (width: number, height: number, wcs?: CalibrationData |
             cd1_2 = -scaleDeg * Math.sin(rotRad) * parity;
             cd2_1 = scaleDeg * Math.sin(rotRad);
             cd2_2 = scaleDeg * Math.cos(rotRad);
+
+            if (flipY) {
+                cd1_2 = -cd1_2;
+                cd2_2 = -cd2_2;
+            }
         }
 
         cards.push(padString("CTYPE1  = 'RA---TAN'           / Gnomonic projection"));
@@ -96,7 +101,7 @@ export const exportFITS = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     const imgData = ctx.getImageData(0,0, width, height);
     const data = imgData.data;
 
-    const headerStr = createFitsHeader(width, height, wcs, location);
+    const headerStr = createFitsHeader(width, height, wcs, location, true);
     const headerEncoder = new TextEncoder();
     const headerBytes = headerEncoder.encode(headerStr);
     
@@ -173,9 +178,14 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) ---
     let desc = "ASTROTIFF by T-Astro Web Studio.";
     if (wcs) {
-        desc += ` WCS[RA=${wcs.ra.toFixed(6)},Dec=${wcs.dec.toFixed(6)},Scale=${wcs.scale.toFixed(4)},Rot=${wcs.rotation.toFixed(2)}]`;
-    }
-    if (location) {
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, false);
+        const lines: string[] = [];
+        for (let i = 0; i < headerStr.length; i += 80) {
+            const card = headerStr.substring(i, i + 80).trim();
+            if (card) lines.push(card);
+        }
+        desc = lines.join("\r\n");
+    } else if (location) {
         desc += ` SITE[Lat=${location.latitude.toFixed(6)},Lon=${location.longitude.toFixed(6)},Alt=${location.elevation || 0}]`;
     }
     
@@ -232,50 +242,33 @@ export const exportJPEG = (
     wcs?: CalibrationData | null,
     location?: LocationData | null
 ): Blob => {
-    const dataURL = canvas.toDataURL("image/jpeg", 0.95);
-    let blobBytes: Uint8Array | null = null;
-    
-    let crval1 = wcs?.ra;
-    let crval2 = wcs?.dec;
-    let crpix1 = canvas.width / 2 + 0.5;
-    let crpix2 = canvas.height / 2 + 0.5;
-    let cd1_1: number | undefined;
-    let cd1_2: number | undefined;
-    let cd2_1: number | undefined;
-    let cd2_2: number | undefined;
-
-    if (wcs) {
-        if (wcs.crval1 !== undefined && wcs.crval2 !== undefined && wcs.crpix1 !== undefined && wcs.crpix2 !== undefined &&
-            wcs.cd1_1 !== undefined && wcs.cd1_2 !== undefined && wcs.cd2_1 !== undefined && wcs.cd2_2 !== undefined) {
-            crval1 = wcs.crval1;
-            crval2 = wcs.crval2;
-            crpix1 = wcs.crpix1;
-            crpix2 = wcs.crpix2;
-            cd1_1 = wcs.cd1_1;
-            cd1_2 = wcs.cd1_2;
-            cd2_1 = wcs.cd2_1;
-            cd2_2 = wcs.cd2_2;
-        } else {
-            const scaleDeg = wcs.scale / 3600.0;
-            const rotRad = -wcs.rotation * Math.PI / 180.0;
-            const parity = wcs.parity || -1;
-            cd1_1 = scaleDeg * Math.cos(rotRad) * parity;
-            cd1_2 = -scaleDeg * Math.sin(rotRad) * parity;
-            cd2_1 = scaleDeg * Math.sin(rotRad);
-            cd2_2 = scaleDeg * Math.cos(rotRad);
-        }
+    // Create temporary Canvas to render the inverted image (flip Y-axis) for proper representation in astronomical tools
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext("2d");
+    if (tempCtx) {
+        tempCtx.translate(0, canvas.height);
+        tempCtx.scale(1, -1);
+        tempCtx.drawImage(canvas, 0, 0);
     }
 
-    const wcsCommentText = wcs ? 
-        `WCS[RA=${wcs.ra.toFixed(6)},Dec=${wcs.dec.toFixed(6)},Scale=${wcs.scale.toFixed(4)},Rot=${wcs.rotation.toFixed(2)}]\r\n` +
-        `CRVAL1  = ${crval1!.toFixed(8)}\r\n` +
-        `CRVAL2  = ${crval2!.toFixed(8)}\r\n` +
-        `CRPIX1  = ${crpix1.toFixed(4)}\r\n` +
-        `CRPIX2  = ${crpix2.toFixed(4)}\r\n` +
-        `CD1_1   = ${cd1_1!.toExponential(8)}\r\n` +
-        `CD1_2   = ${cd1_2!.toExponential(8)}\r\n` +
-        `CD2_1   = ${cd2_1!.toExponential(8)}\r\n` +
-        `CD2_2   = ${cd2_2!.toExponential(8)}` : "";
+    const dataURL = tempCanvas.toDataURL("image/jpeg", 0.95);
+    let blobBytes: Uint8Array | null = null;
+    
+    let wcsCommentText = "";
+    if (wcs) {
+        // Pass flipY = true to match the physical Y-inverted JPEG representation
+        const headerStr = createFitsHeader(tempCanvas.width, tempCanvas.height, wcs, location, true);
+        const lines: string[] = [];
+        for (let i = 0; i < headerStr.length; i += 80) {
+            const card = headerStr.substring(i, i + 80).trim();
+            if (card) {
+                lines.push(card);
+            }
+        }
+        wcsCommentText = lines.join("\r\n");
+    }
 
     if (typeof piexif !== 'undefined') {
         try {

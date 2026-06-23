@@ -242,24 +242,13 @@ export const exportJPEG = (
     wcs?: CalibrationData | null,
     location?: LocationData | null
 ): Blob => {
-    // Create temporary Canvas to render the inverted image (flip Y-axis) for proper representation in astronomical tools
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext("2d");
-    if (tempCtx) {
-        tempCtx.translate(0, canvas.height);
-        tempCtx.scale(1, -1);
-        tempCtx.drawImage(canvas, 0, 0);
-    }
-
-    const dataURL = tempCanvas.toDataURL("image/jpeg", 0.95);
+    const dataURL = canvas.toDataURL("image/jpeg", 0.95);
     let blobBytes: Uint8Array | null = null;
     
     let wcsCommentText = "";
     if (wcs) {
-        // Pass flipY = true to match the physical Y-inverted JPEG representation
-        const headerStr = createFitsHeader(tempCanvas.width, tempCanvas.height, wcs, location, true);
+        // Pass flipY = true so the FITS WCS header maps standard image coordinate space to the celestial sphere
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
         const lines: string[] = [];
         for (let i = 0; i < headerStr.length; i += 80) {
             const card = headerStr.substring(i, i + 80).trim();

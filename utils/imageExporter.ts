@@ -147,7 +147,7 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     const imgData = ctx.getImageData(0,0, width, height);
     
     const headerSize = 8;
-    const numEntries = 12; 
+    const numEntries = 13; 
     const ifdSize = 2 + (numEntries * 12) + 4;
     const extraDataSize = 2048; 
     const imageSize = width * height * 3;
@@ -173,7 +173,8 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     };
     
     const bitsPerSampleOffset = writeArray([8,8,8], 2);
-    const resolutionOffset = writeArray([72, 1], 4);
+    const xResolutionOffset = writeArray([72, 1], 4);
+    const yResolutionOffset = writeArray([72, 1], 4);
 
     // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) ---
     let desc = "ASTROTIFF by T-Astro Web Studio.";
@@ -181,8 +182,8 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
         const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, false);
         const lines: string[] = [];
         for (let i = 0; i < headerStr.length; i += 80) {
-            const card = headerStr.substring(i, i + 80).trim();
-            if (card) lines.push(card);
+            const card = headerStr.substring(i, i + 80);
+            if (card.trim()) lines.push(card);
         }
         desc = lines.join("\r\n");
     } else if (location) {
@@ -193,6 +194,7 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     const descBytes = descEncoder.encode(desc);
     const descOffset = extraOffset;
     bytes.set(descBytes, extraOffset);
+    bytes[extraOffset + descBytes.length] = 0; // Explicitly write NUL terminator
     extraOffset += descBytes.length + 1;
 
     // Image Data (RGB)
@@ -212,13 +214,13 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     p = writeIFD(view, p, 0x0102, 3, 3, bitsPerSampleOffset);
     p = writeIFD(view, p, 0x0103, 3, 1, 1); // No compression
     p = writeIFD(view, p, 0x0106, 3, 1, 2); // RGB
-    p = writeIFD(view, p, 0x010E, 2, descBytes.length, descOffset); // ImageDescription (ASTROTIFF Data)
+    p = writeIFD(view, p, 0x010E, 2, descBytes.length + 1, descOffset); // ImageDescription (ASTROTIFF Data)
     p = writeIFD(view, p, 0x0111, 4, 1, stripOffset);
     p = writeIFD(view, p, 0x0115, 3, 1, 3);
     p = writeIFD(view, p, 0x0116, 4, 1, height);
     p = writeIFD(view, p, 0x0117, 4, 1, imageSize);
-    p = writeIFD(view, p, 0x011A, 5, 1, resolutionOffset);
-    p = writeIFD(view, p, 0x011B, 5, 1, resolutionOffset);
+    p = writeIFD(view, p, 0x011A, 5, 1, xResolutionOffset);
+    p = writeIFD(view, p, 0x011B, 5, 1, yResolutionOffset);
     p = writeIFD(view, p, 0x0128, 3, 1, 2); // Unit: Inch
     
     view.setUint32(p, 0, true);

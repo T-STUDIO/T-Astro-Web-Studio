@@ -803,9 +803,9 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
                                {plateSolverType === 'Remote' && (<input type="password" value={apiKey} onChange={(e) => onApiKeyChange?.(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 mb-2 select-text" placeholder={t('imagingView.apiKey')} />)}
                                {plateSolverType === 'Local' && (<div className="text-[10px] text-slate-500 mb-2 truncate">Using: {localSolverSettings.host}:{localSolverSettings.port}</div>)}
                                {wcsStatus === 'Solving' ? (
-                                   <Button onClick={handleAbortSolve} title={t('tooltips.abortSolve')} className="w-full text-xs py-1 h-8 bg-red-600 hover:bg-red-500 border border-red-500 text-white font-bold">{t('imagingView.abortSolve', '解析中止')}</Button>
+                                   <Button onClick={handleAbortSolve} title={language === 'ja' ? '解析を中止します' : 'Abort Solve'} className="w-full text-xs py-1 h-8 bg-red-600 hover:bg-red-500 border border-red-500 text-white font-bold">{language === 'ja' ? '停止' : 'Stop'}</Button>
                                ) : (
-                                   <Button onClick={handleSolveWCS} title={t('tooltips.solveField')} className="w-full text-xs py-1 h-8">{t('imagingView.solveField')}</Button>
+                                   <Button onClick={handleSolveWCS} title={language === 'ja' ? 'プレートソルブを実行' : 'Solve Field'} className="w-full text-xs py-1 h-8">{language === 'ja' ? '解析開始' : 'Start Solving'}</Button>
                                )}
                            </div>
                        </div>

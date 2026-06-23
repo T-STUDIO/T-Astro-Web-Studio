@@ -136,6 +136,7 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
   const [imageTick, setImageTick] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const solveAbortControllerRef = useRef<AbortController | null>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hitRegions = useRef<HitRegion[]>([]);
@@ -460,6 +461,15 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       }
   };
 
+  const handleAbortSolve = useCallback(() => {
+      if (solveAbortControllerRef.current) {
+          solveAbortControllerRef.current.abort();
+          solveAbortControllerRef.current = null;
+      }
+      setWcsStatus('Failed');
+      setSolvingProgress(t('imagingView.solveAborted', '解析を中止しました'));
+  }, [t]);
+
   const handleSolveWCS = async () => {
       if (plateSolverType === 'Remote' && !apiKey) { alert(t('autoCenter.error.apiKey')); return; }
       let imageUrl = null;
@@ -470,6 +480,13 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       if (imageUrl === canvasRef.current?.toDataURL('image/jpeg', 0.85)) { 
         setLoadedImage(imageUrl); 
         setLoadedImageName(defaultFrameName); }
+
+      if (solveAbortControllerRef.current) {
+          solveAbortControllerRef.current.abort();
+      }
+
+      const controller = new AbortController();
+      solveAbortControllerRef.current = controller;
 
       setWcsStatus('Solving'); setSolvingProgress(t('imagingView.captureInfo.solving'));
       try {
@@ -487,14 +504,30 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           }
 
           const result = (plateSolverType === 'Local') 
-              ? await solveImageLocal(imageUrl, localSolverSettings.host, localSolverSettings.port, setSolvingProgress, optRa, optDec, optRadius)
-              : await solveImageAstrometryNet(imageUrl, apiKey, setSolvingProgress);
+              ? await solveImageLocal(imageUrl, localSolverSettings.host, localSolverSettings.port, setSolvingProgress, optRa, optDec, optRadius, controller.signal)
+              : await solveImageAstrometryNet(imageUrl, apiKey, setSolvingProgress, controller.signal);
+          
+          if (controller.signal.aborted) {
+              return;
+          }
+
           if (result.success && result.calibration) {
               setWcsStatus('Success'); setSolvedCalibration(result.calibration); setNativeAnnotations(result.annotations);
               if (result.imageWidth) setSolverImageDimensions({ width: result.imageWidth, height: result.imageHeight! });
               setShowAnnotations(true); AstroService.syncToCoordinates(result.calibration.ra, result.calibration.dec);
-          } else { setWcsStatus('Failed'); setSolvingProgress(result.error || 'Unknown error'); }
-      } catch (e: any) { setWcsStatus('Failed'); setSolvingProgress(e.message); }
+          } else { 
+              setWcsStatus('Failed'); 
+              setSolvingProgress(result.error === "Aborted" || result.error === "DOMException: The user aborted a request." ? t('imagingView.solveAborted', '解析を中止しました') : (result.error || 'Unknown error')); 
+          }
+      } catch (e: any) { 
+          if (controller.signal.aborted) return;
+          setWcsStatus('Failed'); 
+          setSolvingProgress(e.message); 
+      } finally {
+          if (solveAbortControllerRef.current === controller) {
+              solveAbortControllerRef.current = null;
+          }
+      }
   };
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
@@ -753,7 +786,11 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
                            <div className="pt-2 border-t border-slate-700">
                                {plateSolverType === 'Remote' && (<input type="password" value={apiKey} onChange={(e) => onApiKeyChange?.(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 mb-2 select-text" placeholder={t('imagingView.apiKey')} />)}
                                {plateSolverType === 'Local' && (<div className="text-[10px] text-slate-500 mb-2 truncate">Using: {localSolverSettings.host}:{localSolverSettings.port}</div>)}
-                               <Button onClick={handleSolveWCS} disabled={wcsStatus === 'Solving'} className="w-full text-xs py-1 h-8">{t('imagingView.solveField')}</Button>
+                               {wcsStatus === 'Solving' ? (
+                                    <Button onClick={handleAbortSolve} title={language === 'ja' ? '解析を中止します' : 'Abort Solve'} className="w-full text-xs py-1 h-8 bg-red-600 hover:bg-red-500 border border-red-500 text-white font-bold">{language === 'ja' ? '停止' : 'Stop'}</Button>
+                                ) : (
+                                    <Button onClick={handleSolveWCS} title={language === 'ja' ? 'プレートソルブを実行' : 'Solve Field'} className="w-full text-xs py-1 h-8">{language === 'ja' ? '解析開始' : 'Start Solving'}</Button>
+                                )}
                            </div>
                        </div>
                    )}

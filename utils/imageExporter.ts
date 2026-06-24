@@ -147,24 +147,19 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     const imgData = ctx.getImageData(0,0, width, height);
 
     // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) の組み立て ---
-    let desc = "ASTROTIFF by T-Astro Web Studio.";
-    if (wcs) {
-        // AstroTIFF 1.0 規格における ImageDescription (Tag 270) への FITS ヘッダーの埋め込みは、
-        // 規格書 (with no line terminators) に準拠し、改行コードを含まない 80文字固定長カードの完全な連続文字列として構築します。
-        // これにより CCDCiel や ASTAP などの WCS 解析ツールで確実に読み込まれるようになります。
-        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
-        const lines: string[] = [];
-        for (let i = 0; i < headerStr.length; i += 80) {
-            const card = headerStr.substring(i, i + 80);
-            lines.push(card);
-            if (card.startsWith("END")) {
-                break;
-            }
+    // AstroTIFF 1.0 規格における ImageDescription (Tag 270) への FITS ヘッダーの埋め込みは、
+    // 規格書 (with no line terminators) に準拠し、改行コードを含まない 80文字固定長カードの完全な連続文字列として構築します。
+    // WCSが提供されない場合であっても、常に画像サイズ、時刻、観測地、その他基本メタデータを含む有効なFITSヘッダーを組み立てることで、ヘッダー情報が空になるのを防止します。
+    const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+    const lines: string[] = [];
+    for (let i = 0; i < headerStr.length; i += 80) {
+        const card = headerStr.substring(i, i + 80);
+        lines.push(card);
+        if (card.startsWith("END")) {
+            break;
         }
-        desc = lines.join("\r\n");
-    } else if (location) {
-        desc += ` SITE[Lat=${location.latitude.toFixed(6)},Lon=${location.longitude.toFixed(6)},Alt=${location.elevation || 0}]`;
     }
+    const desc = lines.join("");
 
     const descEncoder = new TextEncoder();
     const descBytes = descEncoder.encode(desc);
@@ -172,8 +167,8 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
 
     // --- 各バリューデータの正確なバイト数とオフセットの計算 (ワード境界へのアライメント) ---
     const headerSize = 8;
-    const numEntries = 15;
-    const ifdSize = 2 + (numEntries * 12) + 4; // 186 bytes
+    const numEntries = 13;
+    const ifdSize = 2 + (numEntries * 12) + 4; // 162 bytes
     
     let extraOffset = headerSize + ifdSize; // 170 (標準的な偶数境界)
 
@@ -251,8 +246,6 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     p = writeIFD(view, p, 0x011A, 5, 1, xResolutionOffset);
     p = writeIFD(view, p, 0x011B, 5, 1, yResolutionOffset);
     p = writeIFD(view, p, 0x0128, 3, 1, 2); // Unit: Inch
-    p = writeIFD(view, p, 0xC696, 2, descLen + 1, descOffset); // FITS tag (Tag 50838 / 0xC696)
-    p = writeIFD(view, p, 0xC697, 2, descLen + 1, descOffset); // FITSHeader tag (Tag 50839 / 0xC697)
     
     view.setUint32(p, 0, true);
     return new Blob([buffer], { type: 'image/tiff' });

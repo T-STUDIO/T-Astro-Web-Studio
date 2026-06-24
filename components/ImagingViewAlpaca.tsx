@@ -13,7 +13,7 @@ import { CloseIcon } from './icons/CloseIcon';
 import { HistogramIcon } from './icons/HistogramIcon';
 import { solveImageAstrometryNet, solveImageLocal, CalibrationData, SolverAnnotation } from '../services/plateSolvingService';
 import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, calculateTransitTime, decimalToSexagesimal, pixelToWcs, projectWcsToPixel } from '../utils/coords';
-import { exportFITS, exportTIFF, exportJPEG } from '../utils/imageExporter';
+import { exportFITS, exportTIFF, exportJPEG, exportPNG } from '../utils/imageExporter';
 import { MetadataViewer } from './MetadataViewer';
 import { CelestialObjectHUD } from './CelestialObjectHUD';
 import * as AstroService from '../services/AstroServiceAlpaca';
@@ -716,6 +716,7 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
                                 <button className="px-3 py-2 text-xs text-left hover:bg-slate-700 text-slate-200" onClick={async () => { if (canvasRef.current) { const blob = exportJPEG(canvasRef.current, exifBinary, solvedCalibration, location); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'capture.jpg'; a.click(); } setShowSaveMenu(false); }}>JPEG</button>
                                 <button className="px-3 py-2 text-xs text-left hover:bg-slate-700 text-slate-200" onClick={async () => { if (canvasRef.current) { const blob = await exportFITS(canvasRef.current, solvedCalibration, location); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'capture.fits'; a.click(); } setShowSaveMenu(false); }}>FITS</button>
                                 <button className="px-3 py-2 text-xs text-left hover:bg-slate-700 text-slate-200" onClick={async () => { if (canvasRef.current) { const blob = await exportTIFF(canvasRef.current, solvedCalibration, location); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'capture.tif'; a.click(); } setShowSaveMenu(false); }}>TIFF</button>
+                                <button className="px-3 py-2 text-xs text-left hover:bg-slate-700 text-slate-200" onClick={async () => { if (canvasRef.current) { const blob = await exportPNG(canvasRef.current, solvedCalibration, location); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'capture.png'; a.click(); } setShowSaveMenu(false); }}>PNG</button>
                             </div>
                         )}
                     </div>

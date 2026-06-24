@@ -145,60 +145,89 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     const ctx = canvas.getContext('2d');
     if(!ctx) throw new Error("Context acquisition failed");
     const imgData = ctx.getImageData(0,0, width, height);
-    
-    const headerSize = 8;
-    const numEntries = 13; 
-    const ifdSize = 2 + (numEntries * 12) + 4;
-    const extraDataSize = 2048; 
-    const imageSize = width * height * 3;
-    const totalSize = headerSize + ifdSize + extraDataSize + imageSize;
-    
-    const buffer = new ArrayBuffer(totalSize);
-    const view = new DataView(buffer);
-    const bytes = new Uint8Array(buffer);
 
-    view.setUint16(0, 0x4949, true); // Little Endian
-    view.setUint16(2, 42, true);
-    const ifdOffset = headerSize;
-    view.setUint32(4, ifdOffset, true);
-
-    let extraOffset = ifdOffset + ifdSize;
-    const writeArray = (arr: number[], typeSize: number) => {
-        const start = extraOffset;
-        arr.forEach(val => {
-            if(typeSize === 2) { view.setUint16(extraOffset, val, true); extraOffset += 2; }
-            if(typeSize === 4) { view.setUint32(extraOffset, val, true); extraOffset += 4; }
-        });
-        return start;
-    };
-    
-    const bitsPerSampleOffset = writeArray([8,8,8], 2);
-    const xResolutionOffset = writeArray([72, 1], 4);
-    const yResolutionOffset = writeArray([72, 1], 4);
-
-    // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) ---
+    // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) の組み立て ---
     let desc = "ASTROTIFF by T-Astro Web Studio.";
     if (wcs) {
-        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, false);
+        // CCDCiel や ASTAP の標準的な WCS 解析に合わせ、flipY = true で FITS ヘッダーを生成
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
         const lines: string[] = [];
         for (let i = 0; i < headerStr.length; i += 80) {
             const card = headerStr.substring(i, i + 80);
-            if (card.trim()) lines.push(card);
+            if (card.startsWith("END")) {
+                lines.push(card); // END カードは 80 文字そのままで追加
+                break;
+            }
+            if (card.trim()) {
+                lines.push(card); // 80文字の固定長カードをそのまま追加（CCDCiel が FITS 構造を正常にパースできるようにするため）
+            }
         }
         desc = lines.join("\r\n");
     } else if (location) {
         desc += ` SITE[Lat=${location.latitude.toFixed(6)},Lon=${location.longitude.toFixed(6)},Alt=${location.elevation || 0}]`;
     }
-    
+
     const descEncoder = new TextEncoder();
     const descBytes = descEncoder.encode(desc);
-    const descOffset = extraOffset;
-    bytes.set(descBytes, extraOffset);
-    bytes[extraOffset + descBytes.length] = 0; // Explicitly write NUL terminator
-    extraOffset += descBytes.length + 1;
+    const descLen = descBytes.length; // NULL含まない長さ
 
-    // Image Data (RGB)
+    // --- 各バリューデータの正確なバイト数とオフセットの計算 (ワード境界へのアライメント) ---
+    const headerSize = 8;
+    const numEntries = 13;
+    const ifdSize = 2 + (numEntries * 12) + 4; // 162 bytes
+    
+    let extraOffset = headerSize + ifdSize; // 170 (標準的な偶数境界)
+
+    // 各アレイデータ
+    const bitsPerSampleData = new Uint16Array([8, 8, 8]); // 6 bytes
+    const xResData = new Uint32Array([72, 1]); // 8 bytes
+    const yResData = new Uint32Array([72, 1]); // 8 bytes
+
+    // 各データの開始オフセットをアライメントしながら動的に決定
+    const bitsPerSampleOffset = extraOffset;
+    extraOffset += bitsPerSampleData.byteLength; // 170 + 6 = 176
+
+    if (extraOffset % 4 !== 0) extraOffset += (4 - (extraOffset % 4));
+    const xResolutionOffset = extraOffset;
+    extraOffset += xResData.byteLength; // 176 + 8 = 184
+
+    const yResolutionOffset = extraOffset;
+    extraOffset += yResData.byteLength; // 184 + 8 = 192
+
+    const descOffset = extraOffset;
+    extraOffset += (descLen + 1); // +1 は NULLターミネータ
+
+    // Image Dataの開始位置 (StripOffsets) もワード（2バイト/4バイト）境界に必ず揃える
+    if (extraOffset % 4 !== 0) extraOffset += (4 - (extraOffset % 4));
     const stripOffset = extraOffset;
+
+    const imageSize = width * height * 3;
+    const totalSize = stripOffset + imageSize;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+    const bytes = new Uint8Array(buffer);
+
+    // --- TIFF Headerの構築 (リトルエンディアン) ---
+    view.setUint16(0, 0x4949, true); // II (Little Endian)
+    view.setUint16(2, 42, true);
+    view.setUint32(4, headerSize, true); // 第一IFD開始位置
+
+    // --- IFD直後、アライメントに沿って余剰データを書き込む ---
+    // BitsPerSample
+    for (let i = 0; i < bitsPerSampleData.length; i++) {
+        view.setUint16(bitsPerSampleOffset + i * 2, bitsPerSampleData[i], true);
+    }
+    // XResolution, YResolution
+    for (let i = 0; i < xResData.length; i++) {
+        view.setUint32(xResolutionOffset + i * 4, xResData[i], true);
+        view.setUint32(yResolutionOffset + i * 4, yResData[i], true);
+    }
+    // ImageDescription (ASTROTIFF string)
+    bytes.set(descBytes, descOffset);
+    bytes[descOffset + descLen] = 0; // ヌル終端文字
+
+    // --- 画像ピクセルデータ (RGB) のコピー ---
     let ptr = stripOffset;
     const data = imgData.data;
     for(let i=0; i<data.length; i+=4) {
@@ -206,15 +235,16 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
         bytes[ptr++] = data[i+1]; // G
         bytes[ptr++] = data[i+2]; // B
     }
-    
-    let p = ifdOffset;
+
+    // --- IFD (Image File Directory) の構築 ---
+    let p = headerSize;
     view.setUint16(p, numEntries, true); p += 2;
     p = writeIFD(view, p, 0x0100, 4, 1, width);
     p = writeIFD(view, p, 0x0101, 4, 1, height);
     p = writeIFD(view, p, 0x0102, 3, 3, bitsPerSampleOffset);
     p = writeIFD(view, p, 0x0103, 3, 1, 1); // No compression
     p = writeIFD(view, p, 0x0106, 3, 1, 2); // RGB
-    p = writeIFD(view, p, 0x010E, 2, descBytes.length + 1, descOffset); // ImageDescription (ASTROTIFF Data)
+    p = writeIFD(view, p, 0x010E, 2, descLen + 1, descOffset); // ImageDescription (ASTROTIFF Data)
     p = writeIFD(view, p, 0x0111, 4, 1, stripOffset);
     p = writeIFD(view, p, 0x0115, 3, 1, 3);
     p = writeIFD(view, p, 0x0116, 4, 1, height);
@@ -224,7 +254,7 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     p = writeIFD(view, p, 0x0128, 3, 1, 2); // Unit: Inch
     
     view.setUint32(p, 0, true);
-    return new Blob([buffer.slice(0, stripOffset + imageSize)], { type: 'image/tiff' });
+    return new Blob([buffer], { type: 'image/tiff' });
 };
 
 const degToRational = (deg: number) => {
@@ -343,3 +373,139 @@ function injectJpegComment(jpegBytes: Uint8Array, commentStr: string): Uint8Arra
     
     return newBytes;
 }
+
+// --- PNG WCS COMMENT INJECTION SUPPORT (CRC-32 & Chunk Builders) ---
+
+let crcTable: Int32Array | null = null;
+function makeCrcTable() {
+    crcTable = new Int32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+            if (c & 1) {
+                c = 0xedb88320 ^ (c >>> 1);
+            } else {
+                c = c >>> 1;
+            }
+        }
+        crcTable[n] = c;
+    }
+}
+
+function crc32(bytes: Uint8Array): number {
+    if (!crcTable) {
+        makeCrcTable();
+    }
+    let crc = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) {
+        crc = (crcTable![(crc ^ bytes[i]) & 0xff]) ^ (crc >>> 8);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createTxtChunk(keyword: string, text: string): Uint8Array {
+    const encoder = new TextEncoder();
+    const keywordBytes = encoder.encode(keyword);
+    const textBytes = encoder.encode(text);
+    
+    // tEXt chunk layout: Keyword (1-79 bytes) + 0x00 + Text (n bytes)
+    const dataLength = keywordBytes.length + 1 + textBytes.length;
+    
+    const chunkBytes = new Uint8Array(4 + 4 + dataLength + 4);
+    const view = new DataView(chunkBytes.buffer);
+    
+    // 1. Length (4 bytes)
+    view.setUint32(0, dataLength, false); // Big Endian
+    
+    // 2. Chunk Type "tEXt"
+    chunkBytes[4] = 116; // 't'
+    chunkBytes[5] = 69;  // 'E'
+    chunkBytes[6] = 120; // 'x'
+    chunkBytes[7] = 116; // 't'
+    
+    // 3. Keyword
+    chunkBytes.set(keywordBytes, 8);
+    // 4. Null separator
+    chunkBytes[8 + keywordBytes.length] = 0;
+    // 5. Text
+    chunkBytes.set(textBytes, 8 + keywordBytes.length + 1);
+    
+    // 6. CRC (Chunk Type + Chunk Data)
+    const crcData = chunkBytes.subarray(4, 8 + dataLength);
+    const crcVal = crc32(crcData);
+    view.setUint32(8 + dataLength, crcVal, false); // Big Endian
+    
+    return chunkBytes;
+}
+
+function injectPngMetadata(pngBytes: Uint8Array, keyword: string, text: string): Uint8Array {
+    // Check PNG signature
+    if (pngBytes[0] !== 0x89 || pngBytes[1] !== 0x50 || pngBytes[2] !== 0x4E || pngBytes[3] !== 0x47 ||
+        pngBytes[4] !== 0x0D || pngBytes[5] !== 0x0A || pngBytes[6] !== 0x1A || pngBytes[7] !== 0x0A) {
+        return pngBytes; // Invalid PNG
+    }
+    
+    const textChunk = createTxtChunk(keyword, text);
+    
+    // Find first chunk end (usually IHDR)
+    const view = new DataView(pngBytes.buffer, pngBytes.byteOffset, pngBytes.byteLength);
+    const firstChunkLength = view.getUint32(8, false);
+    const firstChunkType = String.fromCharCode(pngBytes[12], pngBytes[13], pngBytes[14], pngBytes[15]);
+    
+    if (firstChunkType !== "IHDR") {
+        return pngBytes; // Unexpected PNG structure
+    }
+    
+    const ihdrEndOffset = 8 + 4 + 4 + firstChunkLength + 4; // usually 33
+    
+    const newBytes = new Uint8Array(pngBytes.length + textChunk.length);
+    newBytes.set(pngBytes.subarray(0, ihdrEndOffset), 0);
+    newBytes.set(textChunk, ihdrEndOffset);
+    newBytes.set(pngBytes.subarray(ihdrEndOffset), ihdrEndOffset + textChunk.length);
+    
+    return newBytes;
+}
+
+/**
+ * PNGの保存 (Aladin等で利用可能なDescription / CommentへのWCSメタデータ注入)
+ */
+export const exportPNG = async (canvas: HTMLCanvasElement, wcs?: CalibrationData | null, location?: LocationData | null): Promise<Blob> => {
+    const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/png");
+    });
+    if (!blob) throw new Error("PNG conversion failed");
+    
+    let wcsCommentText = "";
+    if (wcs) {
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+        const lines: string[] = [];
+        for (let i = 0; i < headerStr.length; i += 80) {
+            const card = headerStr.substring(i, i + 80);
+            if (card.startsWith("END")) {
+                lines.push(card);
+                break;
+            }
+            if (card.trim()) {
+                lines.push(card);
+            }
+        }
+        wcsCommentText = lines.join("\r\n");
+    }
+
+    if (!wcsCommentText) {
+        return blob;
+    }
+
+    const arrayBuffer = await blob.arrayBuffer();
+    let pngBytes = new Uint8Array(arrayBuffer);
+    
+    try {
+        // Description / Comment として WCS FITSヘッダーを注入
+        pngBytes = injectPngMetadata(pngBytes, "Description", wcsCommentText);
+        pngBytes = injectPngMetadata(pngBytes, "Comment", wcsCommentText);
+    } catch (e) {
+        console.error("PNG metadata injection failed:", e);
+    }
+
+    return new Blob([pngBytes], { type: 'image/png' });
+};

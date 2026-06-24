@@ -149,10 +149,19 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) の組み立て ---
     let desc = "ASTROTIFF by T-Astro Web Studio.";
     if (wcs) {
-        // CCDCiel や ASTAP の標準的な WCS 解析に合わせ、flipY = true で FITS ヘッダーを生成し、
-        // 2880バイトの倍数にパディングされた完全なFITSヘッダー文字列をそのまま使用します。
-        // パディングの欠落があると、CCDCielなどの厳密なFITS/WCSデコーダでパースエラーを引き起こします。
-        desc = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+        // AstroTIFF 1.0 規格における ImageDescription (Tag 270) への FITS ヘッダーの埋め込みは、
+        // 規格書 (with no line terminators) に準拠し、改行コードを含まない 80文字固定長カードの完全な連続文字列として構築します。
+        // これにより CCDCiel や ASTAP などの WCS 解析ツールで確実に読み込まれるようになります。
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+        const lines: string[] = [];
+        for (let i = 0; i < headerStr.length; i += 80) {
+            const card = headerStr.substring(i, i + 80);
+            lines.push(card);
+            if (card.startsWith("END")) {
+                break;
+            }
+        }
+        desc = lines.join("\r\n");
     } else if (location) {
         desc += ` SITE[Lat=${location.latitude.toFixed(6)},Lon=${location.longitude.toFixed(6)},Alt=${location.elevation || 0}]`;
     }
@@ -163,8 +172,8 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
 
     // --- 各バリューデータの正確なバイト数とオフセットの計算 (ワード境界へのアライメント) ---
     const headerSize = 8;
-    const numEntries = 13;
-    const ifdSize = 2 + (numEntries * 12) + 4; // 162 bytes
+    const numEntries = 15;
+    const ifdSize = 2 + (numEntries * 12) + 4; // 186 bytes
     
     let extraOffset = headerSize + ifdSize; // 170 (標準的な偶数境界)
 
@@ -242,6 +251,8 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     p = writeIFD(view, p, 0x011A, 5, 1, xResolutionOffset);
     p = writeIFD(view, p, 0x011B, 5, 1, yResolutionOffset);
     p = writeIFD(view, p, 0x0128, 3, 1, 2); // Unit: Inch
+    p = writeIFD(view, p, 0xC696, 2, descLen + 1, descOffset); // FITS tag (Tag 50838 / 0xC696)
+    p = writeIFD(view, p, 0xC697, 2, descLen + 1, descOffset); // FITSHeader tag (Tag 50839 / 0xC697)
     
     view.setUint32(p, 0, true);
     return new Blob([buffer], { type: 'image/tiff' });
@@ -407,10 +418,10 @@ function createTxtChunk(keyword: string, text: string): Uint8Array {
     // 1. Length (4 bytes)
     view.setUint32(0, dataLength, false); // Big Endian
     
-    // 2. Chunk Type "tEXt"
+    // 2. Chunk Type "tEXt" (注: 3文字目は大文字の 'X' (88) です)
     chunkBytes[4] = 116; // 't'
     chunkBytes[5] = 69;  // 'E'
-    chunkBytes[6] = 120; // 'x'
+    chunkBytes[6] = 88;  // 'X'
     chunkBytes[7] = 116; // 't'
     
     // 3. Keyword
@@ -465,14 +476,23 @@ export const exportPNG = async (canvas: HTMLCanvasElement, wcs?: CalibrationData
     });
     if (!blob) throw new Error("PNG conversion failed");
     
-    let fitsHeaderRaw = "";
+    let wcsCommentText = "";
     if (wcs) {
-        // CCDCiel, ASTAP, Aladin などの天体ツールが WCS 情報を確実に自動同期できるように
-        // 2880バイトの倍数にパディングされた、改行なしの完全な FITS ヘッダー文字列を取得します。
-        fitsHeaderRaw = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+        // Aladin やその他天体ツールが WCS 情報を確実に自動同期できるように、
+        // 各レコードが 80 文字固定長で改行コード \r\n で区切られた WCS 文字列を生成します。
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+        const lines: string[] = [];
+        for (let i = 0; i < headerStr.length; i += 80) {
+            const card = headerStr.substring(i, i + 80);
+            lines.push(card);
+            if (card.startsWith("END")) {
+                break;
+            }
+        }
+        wcsCommentText = lines.join("\r\n");
     }
 
-    if (!fitsHeaderRaw) {
+    if (!wcsCommentText) {
         return blob;
     }
 
@@ -481,13 +501,12 @@ export const exportPNG = async (canvas: HTMLCanvasElement, wcs?: CalibrationData
     
     try {
         // 各種天体ツールがメタデータを参照して自動的に座標検出・同期表示を行えるよう、
-        // 予想されうる全ての標準・カスタムテキストチャンクキーに改行なしの完全なFITSヘッダーを注入します。
-        // ※改行コード（\r\n）が混入すると、1枚80文字固定のカードレコード構成が崩れ、天体ビューアのFITSデコーダでパースエラーになります。
-        pngBytes = injectPngMetadata(pngBytes, "FITS", fitsHeaderRaw);
-        pngBytes = injectPngMetadata(pngBytes, "WCS", fitsHeaderRaw);
-        pngBytes = injectPngMetadata(pngBytes, "FITSHeader", fitsHeaderRaw);
-        pngBytes = injectPngMetadata(pngBytes, "Description", fitsHeaderRaw);
-        pngBytes = injectPngMetadata(pngBytes, "Comment", fitsHeaderRaw);
+        // \r\n で区切った WCS メタデータを標準の Comment、Description などのチャンクに注入します。
+        pngBytes = injectPngMetadata(pngBytes, "FITS", wcsCommentText);
+        pngBytes = injectPngMetadata(pngBytes, "WCS", wcsCommentText);
+        pngBytes = injectPngMetadata(pngBytes, "FITSHeader", wcsCommentText);
+        pngBytes = injectPngMetadata(pngBytes, "Description", wcsCommentText);
+        pngBytes = injectPngMetadata(pngBytes, "Comment", wcsCommentText);
     } catch (e) {
         console.error("PNG metadata injection failed:", e);
     }

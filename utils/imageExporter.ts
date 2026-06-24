@@ -149,20 +149,10 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) の組み立て ---
     let desc = "ASTROTIFF by T-Astro Web Studio.";
     if (wcs) {
-        // CCDCiel や ASTAP の標準的な WCS 解析に合わせ、flipY = true で FITS ヘッダーを生成
-        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
-        const lines: string[] = [];
-        for (let i = 0; i < headerStr.length; i += 80) {
-            const card = headerStr.substring(i, i + 80);
-            if (card.startsWith("END")) {
-                lines.push(card); // END カードは 80 文字そのままで追加
-                break;
-            }
-            if (card.trim()) {
-                lines.push(card); // 80文字の固定長カードをそのまま追加（CCDCiel が FITS 構造を正常にパースできるようにするため）
-            }
-        }
-        desc = lines.join("\r\n");
+        // CCDCiel や ASTAP の標準的な WCS 解析に合わせ、flipY = true で FITS ヘッダーを生成し、
+        // 2880バイトの倍数にパディングされた完全なFITSヘッダー文字列をそのまま使用します。
+        // パディングの欠落があると、CCDCielなどの厳密なFITS/WCSデコーダでパースエラーを引き起こします。
+        desc = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
     } else if (location) {
         desc += ` SITE[Lat=${location.latitude.toFixed(6)},Lon=${location.longitude.toFixed(6)},Alt=${location.elevation || 0}]`;
     }
@@ -475,24 +465,14 @@ export const exportPNG = async (canvas: HTMLCanvasElement, wcs?: CalibrationData
     });
     if (!blob) throw new Error("PNG conversion failed");
     
-    let wcsCommentText = "";
+    let fitsHeaderRaw = "";
     if (wcs) {
-        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
-        const lines: string[] = [];
-        for (let i = 0; i < headerStr.length; i += 80) {
-            const card = headerStr.substring(i, i + 80);
-            if (card.startsWith("END")) {
-                lines.push(card);
-                break;
-            }
-            if (card.trim()) {
-                lines.push(card);
-            }
-        }
-        wcsCommentText = lines.join("\r\n");
+        // CCDCiel, ASTAP, Aladin などの天体ツールが WCS 情報を確実に自動同期できるように
+        // 2880バイトの倍数にパディングされた、改行なしの完全な FITS ヘッダー文字列を取得します。
+        fitsHeaderRaw = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
     }
 
-    if (!wcsCommentText) {
+    if (!fitsHeaderRaw) {
         return blob;
     }
 
@@ -500,9 +480,14 @@ export const exportPNG = async (canvas: HTMLCanvasElement, wcs?: CalibrationData
     let pngBytes = new Uint8Array(arrayBuffer);
     
     try {
-        // Description / Comment として WCS FITSヘッダーを注入
-        pngBytes = injectPngMetadata(pngBytes, "Description", wcsCommentText);
-        pngBytes = injectPngMetadata(pngBytes, "Comment", wcsCommentText);
+        // 各種天体ツールがメタデータを参照して自動的に座標検出・同期表示を行えるよう、
+        // 予想されうる全ての標準・カスタムテキストチャンクキーに改行なしの完全なFITSヘッダーを注入します。
+        // ※改行コード（\r\n）が混入すると、1枚80文字固定のカードレコード構成が崩れ、天体ビューアのFITSデコーダでパースエラーになります。
+        pngBytes = injectPngMetadata(pngBytes, "FITS", fitsHeaderRaw);
+        pngBytes = injectPngMetadata(pngBytes, "WCS", fitsHeaderRaw);
+        pngBytes = injectPngMetadata(pngBytes, "FITSHeader", fitsHeaderRaw);
+        pngBytes = injectPngMetadata(pngBytes, "Description", fitsHeaderRaw);
+        pngBytes = injectPngMetadata(pngBytes, "Comment", fitsHeaderRaw);
     } catch (e) {
         console.error("PNG metadata injection failed:", e);
     }

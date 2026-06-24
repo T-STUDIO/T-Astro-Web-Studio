@@ -135,6 +135,7 @@ const AppSimulator: React.FC = () => {
   const [isDriveConnected, setIsDriveConnected] = useState(false);
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
+  const prevIsAutoSyncLocationEnabled = useRef<boolean>(false);
 
   const addLog = useCallback((key: string, substitutions: any = {}, type: LogEntry['type'] = 'info') => {
     const entry: LogEntry = {
@@ -158,13 +159,6 @@ const AppSimulator: React.FC = () => {
     }
   }, [location, connectionStatus, addLog]);
 
-  const handleToggleAutoSyncLocation = useCallback((enabled: boolean) => {
-    setIsAutoSyncLocationEnabled(enabled);
-    if (enabled && connectionStatus === 'Connected') {
-      onSendLocationToMount();
-    }
-  }, [connectionStatus, onSendLocationToMount]);
-
   useEffect(() => {
     SampService.init((status) => {
       setSampStatus(status);
@@ -187,15 +181,22 @@ const AppSimulator: React.FC = () => {
   }, [sampStatus, telescopePosition, selectedObject]);
 
   useEffect(() => {
-    if (!isAutoSyncLocationEnabled) return;
+    if (!isAutoSyncLocationEnabled) {
+      prevConnectionStatus.current = connectionStatus;
+      prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
+      return;
+    }
     const isConnectedNow = connectionStatus === 'Connected';
     const wasDisconnected = prevConnectionStatus.current !== 'Connected';
-    if (isConnectedNow && (wasDisconnected || location)) {
-      setTimeout(() => {
+    const wasAutoSyncDisabled = !prevIsAutoSyncLocationEnabled.current;
+    if (isConnectedNow && (wasDisconnected || wasAutoSyncDisabled || location)) {
+      const timer = setTimeout(() => {
         onSendLocationToMount();
-       }, 3000);
+      }, 1500);
+      return () => clearTimeout(timer);
     }
     prevConnectionStatus.current = connectionStatus;
+    prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
   }, [location, connectionStatus, isAutoSyncLocationEnabled, onSendLocationToMount]);
 
   useEffect(() => {
@@ -521,7 +522,7 @@ const AppSimulator: React.FC = () => {
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                        onToggleAutoSyncLocation={handleToggleAutoSyncLocation}
+                        onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                         onSendLocationToMount={onSendLocationToMount}
                         mountSyncStatus={mountSyncStatus}
                         telescopePosition={telescopePosition}

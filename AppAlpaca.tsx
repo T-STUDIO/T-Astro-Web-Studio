@@ -139,6 +139,7 @@ const AppAlpaca: React.FC = () => {
   const [isDriveConnected, setIsDriveConnected] = useState(false);
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
+  const prevIsAutoSyncLocationEnabled = useRef<boolean>(false);
 
   const addLog = useCallback((key: string, substitutions: any = {}, type: LogEntry['type'] = 'info') => {
     const entry: LogEntry = {
@@ -162,13 +163,6 @@ const AppAlpaca: React.FC = () => {
     }
   }, [location, connectionStatus, addLog]);
 
-  const handleToggleAutoSyncLocation = useCallback((enabled: boolean) => {
-    setIsAutoSyncLocationEnabled(enabled);
-    if (enabled && connectionStatus === 'Connected') {
-      onSendLocationToMount();
-    }
-  }, [connectionStatus, onSendLocationToMount]);
-
   useEffect(() => {
     SampService.init((status) => {
       setSampStatus(status);
@@ -191,15 +185,22 @@ const AppAlpaca: React.FC = () => {
   }, [sampStatus, telescopePosition, selectedObject]);
 
   useEffect(() => {
-    if (!isAutoSyncLocationEnabled) return;
+    if (!isAutoSyncLocationEnabled) {
+      prevConnectionStatus.current = connectionStatus;
+      prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
+      return;
+    }
     const isConnectedNow = connectionStatus === 'Connected';
     const wasDisconnected = prevConnectionStatus.current !== 'Connected';
-    if (isConnectedNow && (wasDisconnected || location)) {
-      setTimeout(() => {
+    const wasAutoSyncDisabled = !prevIsAutoSyncLocationEnabled.current;
+    if (isConnectedNow && (wasDisconnected || wasAutoSyncDisabled || location)) {
+      const timer = setTimeout(() => {
         onSendLocationToMount();
-       }, 3000);
+      }, 1500);
+      return () => clearTimeout(timer);
     }
     prevConnectionStatus.current = connectionStatus;
+    prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
   }, [location, connectionStatus, isAutoSyncLocationEnabled, onSendLocationToMount]);
 
   useEffect(() => {
@@ -537,7 +538,7 @@ const AppAlpaca: React.FC = () => {
                         alpacaMessageCount={alpacaMessageCount}
                         cameraCapabilities={cameraCapabilities}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                        onToggleAutoSyncLocation={handleToggleAutoSyncLocation}
+                        onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
                         onSendLocationToMount={onSendLocationToMount}
                         mountSyncStatus={mountSyncStatus}
                         activeView={activeView}

@@ -158,6 +158,13 @@ const AppSimulator: React.FC = () => {
     }
   }, [location, connectionStatus, addLog]);
 
+  const handleToggleAutoSyncLocation = useCallback((enabled: boolean) => {
+    setIsAutoSyncLocationEnabled(enabled);
+    if (enabled && connectionStatus === 'Connected') {
+      onSendLocationToMount();
+    }
+  }, [connectionStatus, onSendLocationToMount]);
+
   useEffect(() => {
     SampService.init((status) => {
       setSampStatus(status);
@@ -514,7 +521,7 @@ const AppSimulator: React.FC = () => {
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                        onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
+                        onToggleAutoSyncLocation={handleToggleAutoSyncLocation}
                         onSendLocationToMount={onSendLocationToMount}
                         mountSyncStatus={mountSyncStatus}
                         telescopePosition={telescopePosition}

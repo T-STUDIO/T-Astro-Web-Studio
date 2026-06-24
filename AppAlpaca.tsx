@@ -162,6 +162,13 @@ const AppAlpaca: React.FC = () => {
     }
   }, [location, connectionStatus, addLog]);
 
+  const handleToggleAutoSyncLocation = useCallback((enabled: boolean) => {
+    setIsAutoSyncLocationEnabled(enabled);
+    if (enabled && connectionStatus === 'Connected') {
+      onSendLocationToMount();
+    }
+  }, [connectionStatus, onSendLocationToMount]);
+
   useEffect(() => {
     SampService.init((status) => {
       setSampStatus(status);
@@ -530,7 +537,7 @@ const AppAlpaca: React.FC = () => {
                         alpacaMessageCount={alpacaMessageCount}
                         cameraCapabilities={cameraCapabilities}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                        onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
+                        onToggleAutoSyncLocation={handleToggleAutoSyncLocation}
                         onSendLocationToMount={onSendLocationToMount}
                         mountSyncStatus={mountSyncStatus}
                         activeView={activeView}

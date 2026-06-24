@@ -207,6 +207,13 @@ const App: React.FC = () => {
     }
   }, [location, connectionStatus, addLog]);
 
+  const handleToggleAutoSyncLocation = useCallback((enabled: boolean) => {
+    setIsAutoSyncLocationEnabled(enabled);
+    if (enabled && connectionStatus === 'Connected') {
+      onSendLocationToMount();
+    }
+  }, [connectionStatus, onSendLocationToMount]);
+
   useEffect(() => {
     SampService.init((status) => {
       setSampStatus(status);
@@ -560,7 +567,7 @@ const App: React.FC = () => {
                 onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                 onOpenDeviceSettings={(type, name) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                 isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
+                onToggleAutoSyncLocation={handleToggleAutoSyncLocation}
                 sampStatus={sampStatus}
                 onConnectSamp={async () => { 
                   if (sampStatus === 'Connected') {
@@ -665,7 +672,7 @@ const App: React.FC = () => {
                         onOpenDeviceSettings={(type: DeviceType, name: string) => { setSelectedDeviceType(type); setSelectedDeviceName(name); setIsDeviceSettingsOpen(true); }}
                         onShowDiagnostics={() => setIsDiagnosticsOpen(true)}
                         isAutoSyncLocationEnabled={isAutoSyncLocationEnabled}
-                        onToggleAutoSyncLocation={setIsAutoSyncLocationEnabled}
+                        onToggleAutoSyncLocation={handleToggleAutoSyncLocation}
                         onSendLocationToMount={onSendLocationToMount}
                         mountSyncStatus={mountSyncStatus}
                         activeView={activeView}

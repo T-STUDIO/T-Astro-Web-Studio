@@ -25,17 +25,24 @@ export const GeminiApiKeyModal: React.FC<GeminiApiKeyModalProps> = ({ isOpen, on
   if (!isOpen) return null;
 
   const handleRegister = () => {
-    const trimmed = apiKey.trim();
-    if (!trimmed) {
+    let finalKey = apiKey.trim();
+    if (!finalKey) {
       setErrorMsg('APIキーを入力してください。');
       return;
     }
+    
+    // Authorizationキー（Authorization: Bearer xxx や Bearer xxx）に対応させるためのパース処理
+    const authBearerMatch = finalKey.match(/^(?:Authorization:\s*)?Bearer\s+(.+)$/i);
+    if (authBearerMatch) {
+      finalKey = authBearerMatch[1].trim();
+    }
+
     // Basic format validation for half-width alphanumeric or typical API key characters
-    if (!/^[a-zA-Z0-9_\-]+$/.test(trimmed)) {
+    if (!/^[a-zA-Z0-9_\-]+$/.test(finalKey)) {
       setErrorMsg('APIキーに無効な文字が含まれています。半角英数字で入力してください。');
       return;
     }
-    onRegister(trimmed);
+    onRegister(finalKey);
   };
 
   const handleGetApiKey = () => {

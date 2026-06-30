@@ -149,6 +149,7 @@ const App: React.FC = () => {
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
   const prevMountConnected = useRef<boolean>(false);
   const prevIsAutoSyncLocationEnabled = useRef<boolean>(false);
+  const wasBothActive = useRef<boolean>(false);
 
   const addLog = useCallback((key: string, substitutions: any = {}, type: LogEntry['type'] = 'info') => {
     const entry: LogEntry = {
@@ -238,24 +239,43 @@ const App: React.FC = () => {
     }
   }, [sampStatus, telescopePosition, selectedObject]);
 
+  const [isMountDeviceConnected, setIsMountDeviceConnected] = useState(false);
+
   useEffect(() => {
-    if (!isAutoSyncLocationEnabled) {
-      prevConnectionStatus.current = connectionStatus;
-      prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
+    if (connectionStatus !== 'Connected') {
+      setIsMountDeviceConnected(false);
       return;
     }
-    const isConnectedNow = connectionStatus === 'Connected';
-    const wasDisconnected = prevConnectionStatus.current !== 'Connected';
-    const wasAutoSyncDisabled = !prevIsAutoSyncLocationEnabled.current;
-    if (isConnectedNow && (wasDisconnected || wasAutoSyncDisabled || location)) {
-      const timer = setTimeout(() => {
-        onSendLocationToMount();
-      }, 1500);
-      return () => clearTimeout(timer);
+    const interval = setInterval(() => {
+      try {
+        const devs = AstroService.getDevices() || [];
+        const mountDev = devs.find((d: any) => d.type === 'Mount');
+        const isConnected = mountDev ? mountDev.connected : false;
+        setIsMountDeviceConnected(isConnected);
+      } catch (e) {
+        // ignore
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [connectionStatus]);
+
+  useEffect(() => {
+    const isConnected = connectionStatus === 'Connected' && isMountDeviceConnected;
+    const isEnabled = isAutoSyncLocationEnabled;
+    const isBothActive = isConnected && isEnabled;
+
+    if (isBothActive) {
+      if (!wasBothActive.current) {
+        const timer = setTimeout(() => {
+          onSendLocationToMount();
+        }, 1500);
+        wasBothActive.current = true;
+        return () => clearTimeout(timer);
+      }
+    } else {
+      wasBothActive.current = false;
     }
-    prevConnectionStatus.current = connectionStatus;
-    prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
-  }, [location, connectionStatus, isAutoSyncLocationEnabled, onSendLocationToMount]);
+  }, [connectionStatus, isMountDeviceConnected, isAutoSyncLocationEnabled, onSendLocationToMount]);
 
   useEffect(() => {
     if (connectionStatus !== 'Connected') { setMountSyncStatus('idle'); }

@@ -53,7 +53,13 @@ Use this precise scientific data as the primary source of truth, and describe th
   `;
 
   try {
-    const apiKey = (typeof window !== 'undefined' ? window.localStorage.getItem('gemini_api_key') : null) || '';
+    let apiKey = (typeof window !== 'undefined' ? window.localStorage.getItem('gemini_api_key') : null) || '';
+    if (apiKey) {
+      const authBearerMatch = apiKey.match(/^(?:Authorization:\s*)?Bearer\s+(.+)$/i);
+      if (authBearerMatch) {
+        apiKey = authBearerMatch[1].trim();
+      }
+    }
     if (!apiKey) {
       return language === 'ja'
         ? "Gemini APIキーが設定されていません。AI機能を使用するにはAPIキーを登録してください。ブラウザURLの末尾に「?set_api_key=true」を入力して移動すると、再書き換え画面を表示できます。"
@@ -124,7 +130,13 @@ export const summarizeExternalInfo = async (objectName: string, rawText: string,
   `;
 
   try {
-    const apiKey = (typeof window !== 'undefined' ? window.localStorage.getItem('gemini_api_key') : null) || '';
+    let apiKey = (typeof window !== 'undefined' ? window.localStorage.getItem('gemini_api_key') : null) || '';
+    if (apiKey) {
+      const authBearerMatch = apiKey.match(/^(?:Authorization:\s*)?Bearer\s+(.+)$/i);
+      if (authBearerMatch) {
+        apiKey = authBearerMatch[1].trim();
+      }
+    }
     if (!apiKey) {
       return language === 'ja' ? "Gemini APIキーが設定されていません。" : "Gemini API Key is not set.";
     }

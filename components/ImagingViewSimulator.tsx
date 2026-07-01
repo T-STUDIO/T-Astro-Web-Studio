@@ -138,62 +138,33 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const solveAbortControllerRef = useRef<AbortController | null>(null);
 
-  const lastObjectNameRef = useRef<string>("");
-  const isSolveSuccessRef = useRef<boolean>(false);
+  const isSolveSuccessRef = useRef(false);
+  const prevSelectedObjectNameRef = useRef<string | null>(null);
 
-  const calculateCameraFov = useCallback((): number | undefined => {
-      try {
-          const activeCam = AstroService.getActiveCamera();
-          const rawParams = AstroService.getCameraParams();
-          const params = rawParams ? { ...rawParams } : { width: 0, height: 0, pixelSize: 0 };
-          
-          let focalLength = 0;
-          
-          if (activeCam && typeof window !== 'undefined') {
-              try {
-                  const savedParams = localStorage.getItem('planetarium_camera_params');
-                  if (savedParams) {
-                      const parsed = JSON.parse(savedParams);
-                      if (parsed[activeCam]) {
-                          const cameraManualParams = parsed[activeCam];
-                          if (params.width <= 0 && cameraManualParams.width > 0) params.width = cameraManualParams.width;
-                          if (params.height <= 0 && cameraManualParams.height > 0) params.height = cameraManualParams.height;
-                          if (params.pixelSize <= 0 && cameraManualParams.pixelSize > 0) params.pixelSize = cameraManualParams.pixelSize;
-                          if (cameraManualParams.focalLength > 0) focalLength = cameraManualParams.focalLength;
-                      }
-                  }
-              } catch (e) {
-                  console.error("Failed to load camera parameters", e);
-              }
-          }
-          
-          if (focalLength === 0) {
-              const savedFocal = localStorage.getItem('planetarium_manual_focal_length');
-              if (savedFocal) {
-                  focalLength = parseFloat(savedFocal) || 0;
-              }
-          }
-
-          if (focalLength === 0 && activeCam) {
-              focalLength = AstroService.getNumericValue(activeCam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 
-                            AstroService.getNumericValue(activeCam, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') ||
-                            AstroService.getNumericValue(activeCam, 'FocalLength', 'FocalLength') || 0;
-          }
-
-          if (focalLength <= 0 || params.width <= 0 || params.pixelSize <= 0) {
-              return undefined;
-          }
-
-          const sw = (params.width * params.pixelSize) / 1000.0;
-          const sh = (params.height * params.pixelSize) / 1000.0;
-          const fovW = (sw / focalLength) * (180.0 / Math.PI);
-          const fovH = (sh / focalLength) * (180.0 / Math.PI);
-          return Math.max(fovW, fovH);
-      } catch (err) {
-          console.warn("Failed to calculate camera FOV:", err);
-          return undefined;
+  useEffect(() => {
+    if (selectedObject) {
+      if (prevSelectedObjectNameRef.current !== selectedObject.name) {
+        isSolveSuccessRef.current = false;
+        prevSelectedObjectNameRef.current = selectedObject.name;
       }
-  }, []);
+    } else {
+      prevSelectedObjectNameRef.current = null;
+      isSolveSuccessRef.current = false;
+    }
+  }, [selectedObject]);
+
+  const calculateCameraFov = (): number => {
+    const fLen = simulatorSettings?.focalLength || 180;
+    const pWidth = simulatorSettings?.pixelWidth || 4656;
+    const pHeight = simulatorSettings?.pixelHeight || 3520;
+    const pSize = simulatorSettings?.pixelSize || 3.8;
+
+    const sw = pWidth * (pSize / 1000.0);
+    const sh = pHeight * (pSize / 1000.0);
+    const fovWDeg = (sw / fLen) * (180.0 / Math.PI);
+    const fovHDeg = (sh / fLen) * (180.0 / Math.PI);
+    return Math.max(fovWDeg, fovHDeg);
+  };
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hitRegions = useRef<HitRegion[]>([]);
@@ -555,19 +526,10 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
               try {
                   optRa = hmsToDegrees(selectedObject.ra);
                   optDec = dmsToDegrees(selectedObject.dec);
-
-                  const currentObjectName = selectedObject.name;
-                  if (lastObjectNameRef.current !== currentObjectName) {
-                      isSolveSuccessRef.current = false;
-                      lastObjectNameRef.current = currentObjectName;
-                  }
-
                   if (isSolveSuccessRef.current) {
                       const fov = calculateCameraFov();
-                      if (fov !== undefined && fov > 0) {
-                          optRadius = fov * 3.0;
-                          console.log(`[PlateSolve] Using narrowed search radius: 3x FOV = ${optRadius.toFixed(2)} deg`);
-                      }
+                      optRadius = fov * 3;
+                      console.log(`[Solver] Narrow search range applied: fov=${fov.toFixed(3)}, radius=${optRadius.toFixed(3)}`);
                   }
               } catch (err) {
                   console.warn("Failed to parse selected object coordinates:", err);
@@ -585,12 +547,10 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           if (result.success && result.calibration) {
               setWcsStatus('Success'); setSolvedCalibration(result.calibration); setNativeAnnotations(result.annotations);
               if (result.imageWidth) setSolverImageDimensions({ width: result.imageWidth, height: result.imageHeight! });
-              setShowAnnotations(true);
-              isSolveSuccessRef.current = true; // Set success to true for next solve
-              AstroService.syncToCoordinates(result.calibration.ra, result.calibration.dec);
+              setShowAnnotations(true); AstroService.syncToCoordinates(result.calibration.ra, result.calibration.dec);
+              isSolveSuccessRef.current = true;
           } else { 
               setWcsStatus('Failed'); 
-              isSolveSuccessRef.current = false; // Reset to false on failure
               setSolvingProgress(result.error === "Aborted" || result.error === "DOMException: The user aborted a request." ? t('imagingView.solveAborted', '解析を中止しました') : (result.error || 'Unknown error')); 
           }
       } catch (e: any) { 

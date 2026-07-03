@@ -143,7 +143,19 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const effTime = localTime || new Date();
 
     useEffect(() => {
-        const host = localSolverSettings?.host || 'localhost';
+        if (plateSolverType !== 'local') {
+            if (serverStars.length > 0) {
+                setServerStars([]);
+            }
+            return;
+        }
+
+        let host = localSolverSettings?.host || 'localhost';
+        if (host === 'localhost' || host === '127.0.0.1') {
+            if (typeof window !== 'undefined' && window.location.hostname) {
+                host = window.location.hostname;
+            }
+        }
         const port = localSolverSettings?.port || 6001;
 
         const viewFov = 60 / zoom;
@@ -201,7 +213,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         }, 600);
 
         return () => clearTimeout(delayDebounce);
-    }, [zoom, viewAz, viewAlt, localSolverSettings, effLocation, effTime, serverStars.length]);
+    }, [zoom, viewAz, viewAlt, plateSolverType, localSolverSettings, effLocation, effTime, serverStars.length]);
 
     const constellationStarIds = useMemo(() => {
         const ids = new Set<string>();

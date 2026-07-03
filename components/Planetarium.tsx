@@ -61,9 +61,10 @@ const REAL_STARS = getRealStarCatalog();
 
 const getStarColor = (mag: number, index: number, overrideColor?: string) => {
     if (overrideColor) return overrideColor;
-    if (mag > 4.5) return '#2e2e2e';
+    if (mag > 10) return 'rgba(255, 255, 255, 0.35)';
+    if (mag > 7.5) return 'rgba(255, 255, 255, 0.55)';
+    if (mag > 4.5) return '#5a5a5a';
     const colors = ['#99CCFF', '#E0EBFF', '#FBF8FF', '#FFF4E8', '#FFD1A3', '#FF9980'];
-    if (mag > 10) return '#FFFFFF'; 
     return colors[index % colors.length];
 };
 
@@ -191,7 +192,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             const raStr = degreesToHms(s.ra);
                             const decStr = degreesToDms(s.dec);
                             return {
-                                id: `server-star-${idx}`,
+                                id: `server-star-${s.ra.toFixed(6)}-${s.dec.toFixed(6)}`,
                                 name: `Star (Mag ${s.mag.toFixed(1)})`,
                                 nameJa: `恒星 (光度 ${s.mag.toFixed(1)})`,
                                 type: 'Star',
@@ -488,8 +489,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
         const renderObject = (obj: any, isBackground: boolean) => {
             if (obj.ra === 'Dynamic' || obj.dec === 'Dynamic') return;
+            const isServerStar = obj.id && obj.id.startsWith('server-star-');
             const isCurated = curatedObjectIds.has(obj.id);
-            if (obj.magnitude > (['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit)) { 
+            const magLimit = isServerStar ? 15.0 : (['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit);
+            if (obj.magnitude > magLimit) { 
                 if (!constellationStarIds.has(obj.id) && !(recommendedMode && isCurated)) return; 
             }
             if (obj.type === 'Galaxy' && !settings.showGalaxies) return; 

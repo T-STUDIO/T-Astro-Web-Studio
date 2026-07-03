@@ -39,7 +39,8 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         }
     }
     
-    const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id);
+    const isServerStar = object.id?.startsWith('server-star-');
+    const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || isServerStar;
     const needsFetch = !isDbObject && !!object.name;
 
     const [isLoading, setIsLoading] = useState(needsFetch);

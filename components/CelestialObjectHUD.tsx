@@ -5,6 +5,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { resolveAstroData, AstroData } from '../services/astroDataService';
 import { CELESTIAL_OBJECTS, NGC_TO_MESSIER } from '../constants';
 import { CloseIcon } from './icons/CloseIcon';
+import { satelliteTrackService } from '../services/SatelliteTrackService';
 
 interface CelestialObjectHUDProps {
     object: CelestialObject;
@@ -58,6 +59,19 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         return () => { isMounted = false; };
     }, [object, language, needsFetch]);
 
+    const [isTracking, setIsTracking] = useState(false);
+
+    useEffect(() => {
+        const updateTrackStatus = () => {
+            const state = satelliteTrackService.getState();
+            setIsTracking(state.isActive && state.targetId === object.id);
+        };
+
+        updateTrackStatus();
+        const interval = setInterval(updateTrackStatus, 500);
+        return () => clearInterval(interval);
+    }, [object]);
+
     if (!object || !data) return null;
 
     let displayType = data.type;
@@ -80,8 +94,13 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         <div className="absolute top-12 md:top-4 left-2 md:left-4 z-30 flex flex-col gap-1.5 pointer-events-none w-52 max-h-[calc(100vh-100px)] overflow-y-auto scrollbar-none">
             <div className="bg-slate-900/90 p-2 md:p-3 rounded-lg border border-red-900/40 backdrop-blur-md shadow-2xl w-full pointer-events-auto box-border">
                 <div className="flex justify-between items-start border-b border-red-900/30 pb-1 mb-1">
-                    <h3 className="text-red-400 font-bold text-[11px] md:text-sm truncate flex-1 leading-tight pr-1" title={displayName}>
-                        {displayName}
+                    <h3 className="text-red-400 font-bold text-[11px] md:text-sm truncate flex-1 leading-tight pr-1 flex items-center gap-1.5" title={displayName}>
+                        <span>{displayName}</span>
+                        {isTracking && (
+                            <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-green-500/10 border border-green-500/20 text-[7px] text-green-400 font-black tracking-widest uppercase animate-pulse leading-none">
+                                ● {language === 'ja' ? '追尾中' : 'TRACK' }
+                            </span>
+                        )}
                     </h3>
                     {onClose && (
                         <button onClick={onClose} className="text-slate-500 hover:text-white shrink-0">
@@ -111,6 +130,18 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
                         <span className="text-slate-500 text-right whitespace-nowrap">Alt:</span>
                         <span className={data.isRising ? 'text-green-400' : 'text-red-400'}>{data.alt}°</span>
                     </div>
+
+                    {isTracking && (
+                        <div className="border-t border-red-950/40 mt-1.5 pt-1.5">
+                            <button
+                                onClick={() => satelliteTrackService.stopTracking()}
+                                className="w-full bg-red-950/80 hover:bg-red-900 border border-red-500/30 text-red-200 font-black text-[9px] py-1 rounded transition-colors uppercase tracking-widest flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                                {language === 'ja' ? '自動追尾を停止' : 'STOP TRACKING'}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
             

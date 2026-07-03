@@ -218,6 +218,7 @@ const SettingsPanel = memo((props: any) => {
             <ToggleSwitch id="star-labels" label={t('controlPanel.starLabels')} title={t('tooltips.starLabels')} checked={planetariumSettings.showStarLabels} onChange={(v) => onPlanetariumSettingsChange({ showStarLabels: v })} />
             <ToggleSwitch id="dso-labels" label={t('controlPanel.dsoLabels')} title={t('tooltips.dsoLabels')} checked={planetariumSettings.showDSOLabels} onChange={(v) => onPlanetariumSettingsChange({ showDSOLabels: v })} />
             <ToggleSwitch id="const-labels" label={t('controlPanel.constellationLabels')} title={t('tooltips.constellationLines')} checked={planetariumSettings.showConstellationLabels} onChange={(v) => onPlanetariumSettingsChange({ showConstellationLabels: v })} />
+            <ToggleSwitch id="show-planets-top" label={t('controlPanel.showPlanets')} checked={planetariumSettings.showPlanets} onChange={(v) => onPlanetariumSettingsChange({ showPlanets: v })} />
             <ToggleSwitch id="az-alt-grid" label={t('controlPanel.azAltGrid')} title={t('tooltips.grids')} checked={planetariumSettings.showAzAltGrid} onChange={(v) => onPlanetariumSettingsChange({ showAzAltGrid: v })} />
             <ToggleSwitch id="ra-dec-grid" label={t('controlPanel.raDecGrid')} title={t('tooltips.grids')} checked={planetariumSettings.showRaDecGrid} onChange={(v) => onPlanetariumSettingsChange({ showRaDecGrid: v })} />
             <ToggleSwitch id="horizon" label={t('controlPanel.showHorizon')} title={t('tooltips.horizon')} checked={planetariumSettings.showHorizon} onChange={(v) => onPlanetariumSettingsChange({ showHorizon: v })} />
@@ -240,6 +241,7 @@ const SettingsPanel = memo((props: any) => {
              <ToggleSwitch id="show-clusters" label={t('controlPanel.showClusters')} checked={planetariumSettings.showClusters} onChange={(v) => onPlanetariumSettingsChange({ showClusters: v })} />
              <ToggleSwitch id="show-satellites" label={t('controlPanel.showSatellites')} checked={planetariumSettings.showSatellites} onChange={(v) => onPlanetariumSettingsChange({ showSatellites: v })} />
              <ToggleSwitch id="show-comets" label={t('controlPanel.showComets')} checked={planetariumSettings.showComets} onChange={(v) => onPlanetariumSettingsChange({ showComets: v })} />
+             <ToggleSwitch id="show-planets" label={t('controlPanel.showPlanets')} checked={planetariumSettings.showPlanets} onChange={(v) => onPlanetariumSettingsChange({ showPlanets: v })} />
           </div>
           
           <div className="space-y-2 p-3 bg-slate-800/50 rounded-lg border border-slate-700">

@@ -41,8 +41,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             title: '🚀 クイックスタートガイド',
             subsections: [
                 {
-                    title: '1. 事前のドライバ起動（※最重要）',
-                    content: '本アプリは事前に外部でドライバを起動しておく必要がありますが、サポートされている環境下では、INDI接続時に利用可能なドライバの「一括自動起動機能（INDI Driver Selection）」を利用してブラウザから直接、サーバー側でドライバを選んでバックエンド連携起動することも可能です。'
+                    title: '1. INDIドライバの起動から接続、設定まで完全完結（※最重要）',
+                    content: 'INDIサーバーが動作する環境（StellarMateやRaspberry Pi、各種Linux/PC環境など）に本アプリを組み込んだ場合、外部の管理ソフトやコマンドラインを使用することなく、アプリ内の「INDIドライバセレクター」から使いたいドライバ群を一括起動・管理することが可能です。もちろん、すでに別途起動済みのドライバへの直接接続も標準サポートしています。'
                 },
                 {
                     title: '2. 機材の接続設定',
@@ -55,6 +55,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 {
                     title: '4. 撮影とライブスタックの開始',
                     content: '・[撮影制御]タブで露出時間（ms）やゲインなどを設定します。\n・「プレビュー」で構図やピントを確認し、「Loop」で連続撮影を開始します。\n・「ライブスタッキング開始」を押すと、複数撮影された画像が自動でズレ補正されながら重ね合わされ、暗い星雲や星団が鮮明に浮かび上がります。'
+                },
+                {
+                    title: '5. 撮影画像書き出し',
+                    content: 'FITS、JPEG、PNG、TIFFなど複数形式でファイル書き出し可能です。FITS、JPEG、PNGはAladinと座標データが同期します。'
                 }
             ]
         },
@@ -62,12 +66,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             title: '🔌 ドライバ接続手順と環境設定',
             subsections: [
                 {
-                    title: '【重要】事前準備（ドライバの別途起動）',
-                    content: 'INDI / ASCOM Alpaca ともに、本アプリを使用する前に「外部ソフト上でドライバを起動完了させておく」必要があります。\n・INDIの場合: INDI Web ManagerやKStarsなどで事前にINDIサーバーと対象機器のプロファイル等を起動させます。\n・Alpacaの場合: ASCOM Platform、ASCOM Remote、またはAlpaca対応デバイス自体を別途起動させ、ネットワーク上に公開しておく必要があります。'
+                    title: '【重要】事前準備と一括自動起動',
+                    content: '本システムは、機器を直接操作するドライバ（INDI / ASCOM Alpaca）と接続して稼働します。\n・ASCOM Alpacaの場合: ASCOM Platform、ASCOM Remote、またはAlpaca対応デバイス自体を別途起動させ、ネットワーク上に公開しておく必要があります。\n・INDIの場合: 事前に外部でドライバ（INDI Web Manager等）を立ち上げておくこともできますが、本アプリがINDIサーバー（StellarMate等）と同システムで動作している場合は、内蔵のバックエンドを用いて「一括自動起動機能」が利用できます。ブラウザ上だけで全ての起動プロセスを完結させられます。'
                 },
                 {
                     title: 'INDI接続（WebSocketプロトコルについて）',
-                    content: '・本アプリはブラウザ上で動作する仕様上、通常のINDIポート（TCP 7624）へ直接ソケットを繋ぐことができません。\n・そのため、事前に外部で「Websockify（ウェブソキシファイ）」などの仲介サーバー等を動かし、TCPポート(7624)を『WebSocket対応の変換ポート』へと中継・変換した上で、本アプリのINDI接続設定にその変換されたポートを指定してください。'
+                    content: '・本アプリはブラウザ上で動作する仕様上、通常のINDIポート（TCP 7624）へ直接ソケットを繋ぐことができません。\n・そのため、内蔵のバックエンドサーバでWebSocket、INDIドライバ起動コマンドなど送信しています。デフォルトで設定されている8625ポートでINDIドライバに接続できます。ポート設定でポート番号を変更することも可能です。'
                 },
                 {
                     title: 'Alpaca接続',
@@ -75,11 +79,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 },
                 {
                     title: 'セキュリティとブラウザ設定 (HttpsでのMixed Content問題)',
-                    content: '・HTTPS（セキュアなインターネット接続、本AI Studioプレビューを含む）で本アプリをご利用の場合、ブラウザのセキュリティ制限（Mixed Contentブロック）により、イントラネットやローカルPC上の通信（HTTP, http://localhost:6001等）へのリクエストが強制遮断されます。\n・【対策】動作を有効にするには、ブラウザのURL欄左のセキュリティ設定（鍵マークやサイト情報など）を開き、「サイトの設定」から『安全でないコンテンツ (Insecure content)』を「許可 (Allow)」に指定するか、安全なHTTP（非セキュア）の接続で本アプリを開くようにしてください。'
+                    content: '・HTTPS（セキュアなインターネット接続、本AI Studioプレビューを含む）で本アプリをご利用の場合、ブラウザのセキュリティ制限（Mixed Contentブロック）により、イントラネットやローカルPC上の通信（HTTP, http://localhost:6001等）へのリクエストが強制遮断されます。\n・【対策】動作を有効にするには、ブラウザのURL欄左 of セキュリティ設定（鍵マークやサイト情報など）を開き、「サイトの設定」から『安全でないコンテンツ (Insecure content)』を「許可 (Allow)」に指定するか、安全なHTTP（非セキュア）の接続で本アプリを開くようにしてください。'
                 },
                 {
-                    title: 'INDIドライバ自動起動接続機能',
-                    content: '・INDI接続を選択して「接続」ボタンを押すと、サーバー側でインストールされている利用可能ドライバ群（CCDs、Telescopes、Focusers、Domes、Filter Wheels等）の一覧をダイナミックに取得します。\n・起動したいドライバを選択し、「Start & Connect」をクリックすると、サーバーサイドで必要なデバイスドライバを自動立ち上げし、シームレスに接続を開始できます。'
+                    title: '🔌 INDIドライバ起動プロセス・接続・設定の完全統合制御',
+                    content: '本アプリは、単なる機材接続クライアントに留まらず、INDIサーバー上のドライバマネージャーとしての高度な管理機能を備えています。\n・INDI接続を選択して「接続」ボタンを押すと、サーバー側でインストールされている利用可能ドライバ群（CCDs、Telescopes、Focusers、Domes、Filter Wheels等）の一覧をダイナミックに取得し、画面にカテゴリ別で自動展開します。\n・起動したいドライバを選択し、「Start & Connect」をクリックするだけで、サーバーサイドのバックグラウンドプロセスとして該当ドライバを全自動で立ち上げ、即座に接続と制御パラメータ同期を行います。\n・これにより、Raspberry PiやStellarMateなどのINDIサーバー環境において、一切のコマンドライン操作や外部ツール（INDI Web ManagerやKStars）に頼ることなく、ドライバ起動から機材接続、撮影、詳細設定プロパティ調整まで完全に本システムのみで完結できます。'
                 }
             ]
         },
@@ -91,12 +95,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     content: '・撮影した星野写真に含まれる星々のパターンを解析し、望遠鏡が本当に向いている「正確な天球座標（赤経・赤緯）」を算出・特定する機能です。これにより、マウントの機械的ズレを補正しながら、天体を寸分狂わず視野中央に自動導入します。'
                 },
                 {
-                    title: 'ローカルソルバー（TSPS＋Astrometry）',
-                    content: '・動作ポート：【6001】\n・お手元のPCまたは同一ネットワーク内でローカル型ソルバー「Astrometry.net」および「TSPS (T-Studio Plate Solver)」のAPIサーバーを稼働して解決します。\n・インターネットが無くても動作し、1〜2秒前後で非常に高速に解析可能です。TSPSを事前に起動しておき、本アプリの設定から6001ポートのAPIへ接続するパスを指定してください。'
+                    title: 'ローカルソルバー（TSPS＋Astrometry+ASTAP）',
+                    content: '・動作ポート：【6001】\n・このアプリと同じPCに組み込まれたローカル型ソルバー「Astrometry.net」および「ASTAP」を「TSPS (T-Studio Plate Solver)」APIで利用できます。設定変更やインデックスファイルの取得もTSPSで行うことができます。TSPSで設定したパラメーターは本アプリで適用されます。\n・インターネットが無くても動作し、数秒で非常に高速に解析可能です。アプリとの連携により同期後は更に高速に解析が可能になります。'
                 },
                 {
                     title: 'リモートソルバー（nova.astrometryへのプロキシ）',
-                    content: '・動作プロキシポート：【6004】\n・オンライン上のパブリックサービス「Astrometry.net（nova.astrometry）」へ画像を送信して解析・解決します。インターネット接続が必須です。\n・【ポート6004の役割】ブラウザ上でCORS制限によりnova.astrometryへの直接APIリクエストが弾かれるのを防ぐため、ローカルで実行（http://localhost:3000 や http://stellarmate.local:3000 等の運用環境）している場合、本アプリはバックエンドで立ち上がっているプロキシサーバーである「6004ポート」を仲介してnova.astrometryにアクセスします。事前にAstrometry.netの「API Key」を取得・設定しておく必要があります。\n※オンライン(GitHub Pages等の非ローカル運用環境)で実行している場合は、外部オープンWebプロキシ「AllOrigins」を介した通信へとフォールバックされます。'
+                    content: '・動作プロキシポート：【6004】\n・オンライン上のパブリックサービス「Astrometry.net（nova.astrometry）」へ画像を送信して解析・解決します。インターネット接続が必須です。\n・【ポート6004の役割】ブラウザ上でCORS制限によりnova.astrometryへの直接APIリクエストが弾かれるのを防ぐため、ローカルで実行（ http://astrpi64.local:6001等の運用環境）している場合、本アプリはバックエンドで立ち上がっているプロキシサーバーである「6004ポート」を仲介してnova.astrometryにアクセスします。事前にAstrometry.netの「API Key」を取得・設定しておく必要があります。\n※オンライン(GitHub Pages等の非ローカル運用環境)で実行している場合は、外部オープンWebプロキシ「AllOrigins」を介した通信へとフォールバックされます。'
                 },
                 {
                     title: '自動センタリング機能',
@@ -144,10 +148,14 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             subsections: [
                 {
                     title: '表示操作とコントロール',
-                    content: '・ドラッグ: 視点をシームレスに全方位へ移動します。\n・マウスホイール: 視野をダイナミックにズームイン / ズームアウトします。\n・右クリック: プラネタリウム表示の視野中心を初期化・復元します。\n・タッチ（タブレット等）: 指2本でのピンチイン・アウトに対応しています。'
+                    content: '・ドラッグ: 視点をシームレスに全方位へ移動します。\n・マウスホイール: 視野をダイナミックにズームイン / ズームアウトします。\n・右クリック: プラネタリウム表示 of 視野中心を初期化・復元します。\n・スマホ・タブレットのピンチイン・アウト、スワイプなどに対応しているため快適に操作できます。'
                 },
                 {
-                    title: 'DSS実写画像表示（Digitized Sky Survey）',
+                    title: '🌙 月・太陽系惑星の精密軌道計算とリアルタイム自動追尾',
+                    content: '・月や各惑星（水星、金星、火星、木星、土星、天王星、海王星）の精密なケプラー軌道要素および位置計算アルゴリズムを新搭載。現時刻における天球座標（赤経・赤緯）や視直径、光度などを瞬時に計算し、プラネタリウム上にリアルタイムに配置・描画します。\n・月や惑星は秒単位で位置が変化する（固有の地心位置運動を持つ）ため、恒星時追尾のままでは視野から徐々に外れてしまいます。本アプリでは人工衛星や彗星と同様に、選択した月・惑星に対して『1秒毎の自動軌道再計算および架台位置追尾補正エンジン』が作動します。\n・「天体へ移動（GoTo）」をクリックすると、マウント架台に対して毎秒、最新の計算座標（RA/Dec）を再送信して追従（Tracking）し続けるため、視野中央にこれらを完璧にロックして観測・撮影が行えます。'
+                },
+                {
+                    title: 'DSS実写画像表示（Digitized Sky Survey）、現在動作していません。',
                     content: '・「設定」タブから「DSSを表示」ボタンをオンにし、プラネタリウムの倍率を2.0倍以上にズームアップすると、星雲や銀河のCGの位置に、Aladin Liteから取得された『実際のカラー写真（Digitized Sky Survey）』がそのまま美しく重ね合わされて表示されます。（外部データ取得のため、インターネット接続が必要です）'
                 },
                 {
@@ -227,8 +235,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             title: '🚀 Quick Start Guide',
             subsections: [
                 {
-                    title: '1. Start Drivers First (※ Most Important)',
-                    content: 'This application typically requires your astronomical hardware drivers to be running externally. However, under supported environments, you can automatically run required drivers on the server side using the dynamic "INDI Driver Selection" panel during connection.'
+                    title: '1. Complete INDI Driver Launch & Lifecycle Control (※ Most Important)',
+                    content: 'When integrated with a system running an INDI server (StellarMate, Raspberry Pi, Linux PC, etc.), this application manages the entire hardware lifecycle. You can directly select, launch, and connect your astronomical hardware drivers from the browser using our integrated "INDI Driver Selector" without opening any command lines or external managers.'
                 },
                 {
                     title: '2. Connect Your Hardware',
@@ -241,6 +249,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 {
                     title: '4. Expose and Live Stack',
                     content: '・Go to the [Imaging] tab, adjust exposure time (ms) and gain.\n・Use "Preview" to confirm, "Loop" to stream continuously.\n・Click "Start Live Stacking" to accumulate frames. The software will auto-align and mathematically blend frames to reveal faint, beautiful deep sky nebulae and star clusters.'
+                },
+                {
+                    title: '5. Export Captured Images',
+                    content: 'Supports file exportation in multiple formats, including FITS, JPEG, PNG, and TIFF. FITS, JPEG, and PNG formats dynamically synchronize coordinates metadata with Aladin.'
                 }
             ]
         },
@@ -248,12 +260,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             title: '🔌 Driver Setup & Requirements',
             subsections: [
                 {
-                    title: '【Crucial】Pre-launching Drivers Externally',
-                    content: 'For both INDI and ASCOM Alpaca protocols, physical device drivers must be running in external services (e.g., INDI Web Manager, kstars, ASCOM Platform, ASCOM Remote) beforehand.'
+                    title: '【Crucial】Pre-launching & Automated Dynamic Driver Startup',
+                    content: 'This application connects to physical equipment drivers (INDI or ASCOM Alpaca).\n・For ASCOM Alpaca: Drivers or ASCOM Remote must be running externally beforehand.\n// eslint-disable-next-line \n・For INDI: You can use existing external drivers, or if this app is hosted on the same device as your INDI server (e.g. StellarMate/Raspberry Pi), you can utilize our built-in backend system to enjoy the "All-in-one Automatic Driver Startup" feature. This allows you to manage the entire initialization workflow completely through the browser UI.'
                 },
                 {
-                    title: 'INDI Connection (WebSocket Port Rule)',
-                    content: '・Browsers cannot open direct raw TCP socket ports (like default TCP 7624).\n・You must run "Websockify" or a similar bridge utility externally to relay standard TCP port 7624 into a Web-friendly WebSocket Port, and specify that converted websocket relay port in this client application setup.'
+                    title: 'INDI Connection (WebSocket & Port Setup)',
+                    content: '・Since browser environments cannot directly open raw TCP sockets (such as default TCP 7624), our built-in backend server handles the underlying WebSocket communication and transmits INDI driver startup signals dynamically.\n・You can connect to your INDI drivers via the default pre-configured port 8625. If necessary, you can customize the target port number within the port settings menu.'
                 },
                 {
                     title: 'Alpaca Connection',
@@ -264,8 +276,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     content: '・When running this app via HTTPS (e.g. this AI Studio environment), browsers block connection attempts to unencrypted local service routes (HTTP, http://localhost:6001 etc.).\n・【Solution】Click the lock icon (site settings) next to the browser URL, go to "Site Settings", find "Insecure content" and select "Allow". Alternatively, boot this application using a standard unencrypted HTTP URL.'
                 },
                 {
-                    title: 'Dynamic INDI Driver Selection & Launcher',
-                    content: '・When selecting the INDI protocol and clicking Connect, the server queries currently installed, available drivers (CCDs, Telescopes, Focusers, Domes, Filter Wheels).\n・Toggle your target drivers and click "Start & Connect" to automatically launch and run them on the server side in a single batch.'
+                    title: '🔌 Complete Integration of INDI Driver Launcher & Manager',
+                    content: 'This app is not just a standard connection client; it operates as a full-fledged INDI server driver manager.\n・When selecting the INDI protocol and clicking Connect, the server queries currently installed, available drivers (CCDs, Telescopes, Focusers, Domes, Filter Wheels) dynamically and displays them by category.\n・By toggling your physical gear and clicking "Start & Connect", the server-side backend automatically fires up the chosen drivers in the background and starts seamless communication and parameter sync.\n・This bypasses the need for any terminal operations or auxiliary tools (like INDI Web Manager or KStars) in Raspberry Pi/Linux setups, enabling a truly unified, standalone operational telescope workspace.'
                 }
             ]
         },
@@ -330,11 +342,15 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             subsections: [
                 {
                     title: 'User Interface Map Navigation',
-                    content: '・Drag: Panning across the celestial sphere.\n・Scroll Wheel: Seamlessly zoom-in/out to inspect fields.\n・Right Click: Resets the viewport center to default settings.\n・Touch controls: Pinch-to-zoom is supported.'
+                    content: '・Drag: Panning across the celestial sphere.\n・Scroll Wheel: Seamlessly zoom-in/out to inspect fields.\n・Right Click: Resets the viewport center to default settings.\n・Supports comfortable operations on smartphones and tablets, including pinch-to-zoom and swiping.'
                 },
                 {
-                    title: 'Actual DSS Overlay (Digitized Sky Survey)',
-                    content: '・Toggle "Show DSS" in Settings and zoom in beyond 2.0x in the planetarium. Actual astrophotography tiles from the Digitized Sky Survey smoothly overlay on Deep Sky Objects (Requires internet connection to stream from Aladin Lite server).'
+                    title: '🌙 High-Precision Lunar & Planetary Orbits and Real-time Tracking',
+                    content: '・Includes high-precision Keplerian orbital element calculation and a detailed lunar periodic coordinate model to dynamically compute the exact RA/Dec of the Moon, Venus, Mars, Jupiter, Saturn, Uranus, and Neptune for any instant.\n・Since solar system bodies move continuously relative to background stars, standard sidereal tracking causes them to drift out of view. This app introduces a dedicated "Dynamic Coordinate Recalculation Engine" (similar to satellite and comet trackers) that recalculates the target position every single second.\n・When you click "GoTo Target", the engine sends automated micro-slew commands to your mount once per second, keeping the body perfectly locked and framed in the center of your telescope field.'
+                },
+                {
+                    title: 'Actual DSS Overlay (Digitized Sky Survey) [Currently Offline]',
+                    content: '・Toggle "Show DSS" in Settings and zoom in beyond 2.0x in the planetarium. (Note: Currently offline / not operational).'
                 },
                 {
                     title: 'Visual Options',

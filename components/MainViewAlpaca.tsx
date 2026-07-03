@@ -194,6 +194,8 @@ export const MainViewAlpaca: React.FC<MainViewProps> = ({
                 isAutoCenterEnabled={isAutoCenterEnabled}
                 onToggleAutoCenter={onToggleAutoCenter}
                 MountController={MountController}
+                plateSolverType={plateSolverType}
+                localSolverSettings={localSolverSettings}
             />
         </div>
 

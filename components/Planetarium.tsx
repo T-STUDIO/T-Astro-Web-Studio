@@ -1,8 +1,8 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { CelestialObject, SlewStatus, PlanetariumSettings, LocationData, TelescopePosition } from '../types';
+import { CelestialObject, SlewStatus, PlanetariumSettings, LocationData, TelescopePosition, PlateSolverType, LocalSolverSettings } from '../types';
 import { CELESTIAL_OBJECTS, CONSTELLATIONS } from '../constants';
-import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, projectStereographic, calculateTransitTime, azAltToRaDec } from '../utils/coords';
+import { calculateLST, hmsToDegrees, dmsToDegrees, raDecToAzAlt, projectStereographic, calculateTransitTime, azAltToRaDec, degreesToHms, degreesToDms } from '../utils/coords';
 import { ZoomInIcon } from './icons/ZoomInIcon';
 import { ZoomOutIcon } from './icons/ZoomOutIcon';
 import { ResetIcon } from './icons/ResetIcon';
@@ -14,6 +14,7 @@ import * as AstroService from '../services/AstroService';
 import { loadSettings } from '../services/SettingsService';
 import { satelliteService, Satellite } from '../services/satelliteService';
 import { cometService, Comet } from '../services/cometService';
+import { solarSystemService } from '../services/solarSystemService';
 import { useTranslation } from '../contexts/LanguageContext';
 import { getRealStarCatalog } from '../utils/starCatalog';
 import { BACKGROUND_STARS } from '../utils/starGenerator';
@@ -45,6 +46,8 @@ interface PlanetariumProps {
   isAutoCenterEnabled?: boolean;
   onToggleAutoCenter?: (enabled: boolean) => void;
   MountController?: React.ComponentType<any>;
+  plateSolverType?: PlateSolverType;
+  localSolverSettings?: LocalSolverSettings;
 }
 
 interface HitRegion {
@@ -84,7 +87,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     isMini = false,
     isAutoCenterEnabled,
     onToggleAutoCenter,
-  MountController
+    MountController,
+    plateSolverType,
+    localSolverSettings
 }) => {
     const { t, language } = useTranslation();
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -96,6 +101,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const [viewAlt, setViewAlt] = useState(30);  
     const [zoom, setZoom] = useState(60 / 70); 
 
+    const [serverStars, setServerStars] = useState<any[]>([]);
+    const lastQueryRef = useRef({ ra: -1, dec: -1, fov: -1 });
     const [recommendedMode, setRecommendedMode] = useState(false);
     
     const [isDragging, setIsDragging] = useState(false);
@@ -135,6 +142,67 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const effLocation = location || { latitude: 35.6, longitude: 139.6 };
     const effTime = localTime || new Date();
 
+    useEffect(() => {
+        const host = localSolverSettings?.host || 'localhost';
+        const port = localSolverSettings?.port || 6001;
+
+        const viewFov = 60 / zoom;
+        if (viewFov > 15.0) {
+            if (serverStars.length > 0) {
+                setServerStars([]);
+            }
+            return;
+        }
+
+        const lst = calculateLST(effLocation.longitude, effTime);
+        const center = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
+
+        const last = lastQueryRef.current;
+        const dist = Math.sqrt(Math.pow(center.ra - last.ra, 2) + Math.pow(center.dec - last.dec, 2));
+        const fovRatio = Math.abs(viewFov - last.fov) / viewFov;
+
+        if (dist < viewFov * 0.15 && fovRatio < 0.15 && serverStars.length > 0) {
+            return;
+        }
+
+        const delayDebounce = setTimeout(async () => {
+            try {
+                const radius = Math.min(10, viewFov * 0.75);
+                const lastPath = localStorage.getItem("last_index_path") || "/home/astrpi64/.local/share/kstars/astrometry";
+                
+                const url = `http://${host}:${port}/api/planetarium/stars?ra=${center.ra}&dec=${center.dec}&radius=${radius}&path=${encodeURIComponent(lastPath)}`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data.stars)) {
+                        const processed = data.stars.map((s: any, idx: number) => {
+                            const raStr = degreesToHms(s.ra);
+                            const decStr = degreesToDms(s.dec);
+                            return {
+                                id: `server-star-${idx}`,
+                                name: `Star (Mag ${s.mag.toFixed(1)})`,
+                                nameJa: `恒星 (光度 ${s.mag.toFixed(1)})`,
+                                type: 'Star',
+                                ra: raStr,
+                                dec: decStr,
+                                raDeg: s.ra,
+                                decDeg: s.dec,
+                                magnitude: s.mag,
+                                color: '#ffffff'
+                            };
+                        });
+                        setServerStars(processed);
+                        lastQueryRef.current = { ra: center.ra, dec: center.dec, fov: viewFov };
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to fetch server stars:", e);
+            }
+        }, 600);
+
+        return () => clearTimeout(delayDebounce);
+    }, [zoom, viewAz, viewAlt, localSolverSettings, effLocation, effTime, serverStars.length]);
+
     const constellationStarIds = useMemo(() => {
         const ids = new Set<string>();
         CONSTELLATIONS.forEach(c => {
@@ -151,9 +219,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const c = document.createElement('canvas'); c.width = size; c.height = size;
         const ctx = c.getContext('2d'); if (!ctx) return null;
         const grad = ctx.createRadialGradient(half, half, 0, half, half, half);
-        grad.addColorStop(0, 'rgba(210, 210, 230, 0.4)'); 
-        grad.addColorStop(0.3, 'rgba(200, 200, 220, 0.2)');
-        grad.addColorStop(0.7, 'rgba(190, 190, 210, 0.05)');
+        grad.addColorStop(0, 'rgba(220, 220, 240, 0.12)'); 
+        grad.addColorStop(0.2, 'rgba(210, 210, 230, 0.07)');
+        grad.addColorStop(0.5, 'rgba(200, 200, 220, 0.03)');
+        grad.addColorStop(0.8, 'rgba(190, 190, 210, 0.005)');
         grad.addColorStop(1, 'rgba(180, 180, 200, 0)');
         ctx.fillStyle = grad; ctx.fillRect(0, 0, size, size);
         return c;
@@ -406,6 +475,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const userScale = settings.starScale || 1.0; const effectiveStarScale = userScale * 0.6; const viewFov = 60 / zoom; const pixelsPerDegree = Math.min(width, height) / viewFov;
 
         const renderObject = (obj: any, isBackground: boolean) => {
+            if (obj.ra === 'Dynamic' || obj.dec === 'Dynamic') return;
             const isCurated = curatedObjectIds.has(obj.id);
             if (obj.magnitude > (['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit)) { 
                 if (!constellationStarIds.has(obj.id) && !(recommendedMode && isCurated)) return; 
@@ -455,7 +525,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 ctx.fillStyle = isSelected ? '#f87171' : (recommendedMode && isCurated) ? '#fbbf24' : '#e2e8f0'; ctx.fillText(name, p.x + radius + 8, p.y);
             }
         };
-        staticData.backgroundStars.forEach(o => renderObject(o, true)); staticData.dsoObjects.forEach(o => renderObject(o, false)); staticData.priorityObjects.forEach(o => renderObject(o, false));
+        if (serverStars && serverStars.length > 0) {
+            serverStars.forEach(o => renderObject(o, false));
+        } else {
+            staticData.backgroundStars.forEach(o => renderObject(o, true));
+        }
+        staticData.dsoObjects.forEach(o => renderObject(o, false));
+        staticData.priorityObjects.forEach(o => renderObject(o, false));
         if (settings.showConstellationLines) {
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 1; ctx.beginPath();
             CONSTELLATIONS.forEach(c => c.lines.forEach(line => { const p1 = starMap.get(line.from); const p2 = starMap.get(line.to); if (p1 && p2) { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); } }));
@@ -497,6 +573,26 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     ctx.stroke();
                 }
 
+                const isSelected = selectedObject?.id === sat.id;
+                if (isSelected) {
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                const mockObj: CelestialObject = {
+                    id: sat.id,
+                    name: sat.name,
+                    nameJa: sat.nameJa,
+                    type: 'Planet',
+                    ra: degreesToHms(sat.ra),
+                    dec: degreesToDms(sat.dec),
+                    magnitude: 8
+                };
+                hitRegions.current.push({ x: p.x, y: p.y, radius: 15, object: mockObj });
+
                 ctx.font = '10px monospace';
                 const name = language === 'ja' ? sat.nameJa : sat.name;
                 ctx.textAlign = 'left';
@@ -533,6 +629,26 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
                 ctx.fill();
 
+                const isSelected = selectedObject?.id === comet.id;
+                if (isSelected) {
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                const mockObj: CelestialObject = {
+                    id: comet.id,
+                    name: comet.name,
+                    nameJa: comet.nameJa,
+                    type: 'Planet',
+                    ra: degreesToHms(comet.ra),
+                    dec: degreesToDms(comet.dec),
+                    magnitude: 10
+                };
+                hitRegions.current.push({ x: p.x, y: p.y, radius: 15, object: mockObj });
+
                 ctx.strokeStyle = 'rgba(74, 222, 128, 0.2)';
                 ctx.lineWidth = 3;
                 ctx.beginPath();
@@ -549,6 +665,128 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 ctx.strokeText(`☄️ ${name}`, p.x + 8, p.y + 6);
                 ctx.fillStyle = '#4ade80';
                 ctx.fillText(`☄️ ${name}`, p.x + 8, p.y + 6);
+                ctx.restore();
+            });
+        }
+
+        // --- 2.5. 月・太陽系惑星 of 描画 ---
+        if (settings.showPlanets) {
+            const solarSystemObjects = solarSystemService.calculatePositions();
+            solarSystemObjects.forEach(obj => {
+                const { alt, az } = raDecToAzAlt(obj.raDeg, obj.decDeg, effLocation.latitude, lst);
+                if (alt < 0) return;
+                const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                if (!p || p.x < 0 || p.x > width || p.y < 0 || p.y > height) return;
+
+                ctx.save();
+
+                const isSelected = selectedObject?.id === obj.id;
+                const size = obj.size || 5;
+
+                // 天体に応じた個別描画
+                if (obj.id === 'moon') {
+                    // 月の描画 (満ち欠けは簡易的にクレーター風に表現)
+                    const glow = ctx.createRadialGradient(p.x, p.y, size * 0.2, p.x, p.y, size);
+                    glow.addColorStop(0, '#ffffff');
+                    glow.addColorStop(0.5, '#fef3c7');
+                    glow.addColorStop(1, 'rgba(252, 211, 77, 0)');
+                    
+                    ctx.fillStyle = glow;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, size * 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 月の本体円盤
+                    ctx.fillStyle = '#fef3c7';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, size * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 月の模様を少し入れる
+                    ctx.fillStyle = '#d97706';
+                    ctx.globalAlpha = 0.15;
+                    ctx.beginPath();
+                    ctx.arc(p.x - size*0.1, p.y - size*0.1, size * 0.15, 0, Math.PI * 2);
+                    ctx.arc(p.x + size*0.15, p.y + size*0.05, size * 0.1, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (obj.id === 'saturn') {
+                    // 土星の描画（環を含む）
+                    ctx.shadowColor = obj.color || '#fed7aa';
+                    ctx.shadowBlur = 4;
+                    
+                    // 環の描画
+                    ctx.strokeStyle = 'rgba(254, 215, 170, 0.8)';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.ellipse(p.x, p.y, size * 1.8, size * 0.6, -Math.PI / 8, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // 本体
+                    ctx.fillStyle = obj.color || '#fed7aa';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (obj.id === 'jupiter') {
+                    // 木星の描画（縞模様）
+                    ctx.fillStyle = obj.color || '#fdba74';
+                    ctx.shadowColor = obj.color || '#fdba74';
+                    ctx.shadowBlur = 4;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 縞模様を描く
+                    ctx.strokeStyle = '#c2410c';
+                    ctx.lineWidth = 1;
+                    ctx.globalAlpha = 0.4;
+                    ctx.beginPath();
+                    ctx.moveTo(p.x - size, p.y - size * 0.3);
+                    ctx.lineTo(p.x + size, p.y - size * 0.3);
+                    ctx.moveTo(p.x - size, p.y + size * 0.3);
+                    ctx.lineTo(p.x + size, p.y + size * 0.3);
+                    ctx.stroke();
+                } else {
+                    // その他の惑星の描画
+                    ctx.fillStyle = obj.color || '#fff';
+                    ctx.shadowColor = obj.color || '#fff';
+                    ctx.shadowBlur = 4;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 選択時の赤い枠
+                if (isSelected) {
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, size + 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // クリック用のヒット領域追加
+                const hitObj: CelestialObject = {
+                    id: obj.id,
+                    name: obj.name,
+                    nameJa: obj.nameJa,
+                    type: 'Planet',
+                    ra: obj.ra,
+                    dec: obj.dec,
+                    magnitude: obj.magnitude
+                };
+                hitRegions.current.push({ x: p.x, y: p.y, radius: Math.max(15, size + 4), object: hitObj });
+
+                // 天体名ラベルの描画
+                ctx.font = 'bold 10px sans-serif';
+                const name = language === 'ja' ? obj.nameJa : obj.name;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.lineWidth = 3;
+                ctx.strokeText(name, p.x + size + 6, p.y);
+                ctx.fillStyle = isSelected ? '#f87171' : '#e2e8f0';
+                ctx.fillText(name, p.x + size + 6, p.y);
+
                 ctx.restore();
             });
         }
@@ -779,7 +1017,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading, satellitesList, cometsList, manualFocalLength]);
+    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading, satellitesList, cometsList, manualFocalLength, serverStars]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }

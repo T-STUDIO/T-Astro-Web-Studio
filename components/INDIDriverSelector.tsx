@@ -148,7 +148,8 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
             });
             const data = await res.json();
             if (data.status === 'ok') {
-                console.log('[INDIDriverSelector] Successfully started selected drivers batch.');
+                console.log('[INDIDriverSelector] Successfully started selected drivers batch. Waiting for boot...');
+                await new Promise(resolve => setTimeout(resolve, 1500));
                 onStartSuccess();
             } else {
                 onConnect();

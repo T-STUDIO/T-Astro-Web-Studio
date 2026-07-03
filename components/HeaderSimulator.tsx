@@ -7,10 +7,11 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 interface HeaderProps {
   currentDriver: 'INDI' | 'Alpaca' | 'Simulator';
   onToggleHelp?: () => void;
+  onOpenApiKeyModal?: () => void;
   className?: string;
 }
 
-export const HeaderSimulator: React.FC<HeaderProps> = ({ currentDriver, onToggleHelp, className }) => {
+export const HeaderSimulator: React.FC<HeaderProps> = ({ currentDriver, onToggleHelp, onOpenApiKeyModal, className }) => {
   const { t } = useTranslation();
   
   return (
@@ -22,6 +23,15 @@ export const HeaderSimulator: React.FC<HeaderProps> = ({ currentDriver, onToggle
         </div>
       </div>
       <div className="flex items-center gap-2">
+        {onOpenApiKeyModal && (
+          <button 
+              onClick={onOpenApiKeyModal}
+              title={t('tooltips.apiKey') || 'Set Gemini API Key'}
+              className="px-3 py-1.5 rounded-md text-xs font-black tracking-tighter bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white transition-all"
+          >
+              APIキー
+          </button>
+        )}
         {onToggleHelp && (
           <button
             onClick={onToggleHelp}

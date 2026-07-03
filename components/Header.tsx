@@ -9,6 +9,7 @@ interface HeaderProps {
   onToggleTSConnect?: () => void;
   isTSConnectActive?: boolean;
   onToggleHelp?: () => void;
+  onOpenApiKeyModal?: () => void;
   className?: string;
 }
 
@@ -17,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTSConnect, 
   isTSConnectActive, 
   onToggleHelp,
+  onOpenApiKeyModal,
   className 
 }) => {
   const { t } = useTranslation();
@@ -30,6 +32,15 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        {onOpenApiKeyModal && (
+          <button 
+              onClick={onOpenApiKeyModal}
+              title={t('tooltips.apiKey') || 'Set Gemini API Key'}
+              className="px-3 py-1.5 rounded-md text-xs font-black tracking-tighter bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white transition-all"
+          >
+              APIキー
+          </button>
+        )}
         {currentDriver === 'INDI' && onToggleTSConnect && (
             <button 
                 onClick={onToggleTSConnect}

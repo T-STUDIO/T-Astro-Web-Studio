@@ -257,11 +257,11 @@ export const galacticToRaDec = (l: number, b: number): { ra: number, dec: number
     const lRad = l * rad;
     const bRad = b * rad;
 
-    const sinDelta = Math.cos(deltaP) * Math.cos(bRad) * Math.sin(lRad - lCP) + Math.sin(deltaP) * Math.sin(bRad);
+    const sinDelta = Math.sin(bRad) * Math.sin(deltaP) + Math.cos(bRad) * Math.cos(deltaP) * Math.cos(lCP - lRad);
     const decRad = Math.asin(sinDelta);
 
-    const y = Math.cos(bRad) * Math.cos(lRad - lCP);
-    const x = Math.sin(deltaP) * Math.cos(bRad) * Math.sin(lRad - lCP) - Math.cos(deltaP) * Math.sin(bRad);
+    const y = Math.cos(bRad) * Math.sin(lCP - lRad);
+    const x = Math.sin(bRad) * Math.cos(deltaP) - Math.cos(bRad) * Math.sin(deltaP) * Math.cos(lCP - lRad);
     
     let alphaRad = Math.atan2(y, x) + alphaP;
     

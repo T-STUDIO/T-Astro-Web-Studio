@@ -497,6 +497,7 @@ const AppAlpaca: React.FC = () => {
       <Header 
         currentDriver="Alpaca" 
         onToggleHelp={() => setIsHelpOpen(true)}
+        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
       />
       <div className="flex-1 flex overflow-hidden relative">
           <>

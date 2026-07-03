@@ -485,6 +485,7 @@ const AppSimulator: React.FC = () => {
       <Header 
         currentDriver="Simulator" 
         onToggleHelp={() => setIsHelpOpen(true)}
+        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
       />
       <div className="flex-1 flex overflow-hidden relative">
           <>

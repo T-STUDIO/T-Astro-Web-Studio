@@ -69,6 +69,7 @@ export interface PlanetariumSettings {
   showClusters: boolean;
   showSatellites: boolean;
   showComets: boolean;
+  showPlanets: boolean;
 }
 
 export interface Constellation {

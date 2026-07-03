@@ -29,7 +29,16 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     const { t, language } = useTranslation();
     
     let displayName = language === 'ja' && object.nameJa ? object.nameJa : object.name;
-    const ngcMatch = object.name.match(/NGC\s*(\d+)/i);
+    if (!displayName) {
+        const isBgStar = object.id?.startsWith('bg_star_');
+        const isServerStar = object.id?.startsWith('server-star-');
+        if (isBgStar || isServerStar) {
+            displayName = language === 'ja' ? `恒星 (光度 ${object.magnitude?.toFixed(1)})` : `Star (Mag ${object.magnitude?.toFixed(1)})`;
+        } else {
+            displayName = language === 'ja' ? '未知の天体' : 'Unknown Object';
+        }
+    }
+    const ngcMatch = object.name?.match(/NGC\s*(\d+)/i);
     
     if (ngcMatch) {
         const ngcNum = parseInt(ngcMatch[1]);
@@ -39,8 +48,9 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         }
     }
     
+    const isBgStar = object.id?.startsWith('bg_star_');
     const isServerStar = object.id?.startsWith('server-star-');
-    const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || isServerStar;
+    const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || isServerStar || isBgStar;
     const needsFetch = !isDbObject && !!object.name;
 
     const [isLoading, setIsLoading] = useState(needsFetch);

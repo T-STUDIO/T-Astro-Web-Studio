@@ -513,7 +513,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 else radius = Math.max(4, (10 - obj.magnitude) * 1.5) * Math.sqrt(zoom);
                 color = obj.type === 'Galaxy' ? 'rgba(180, 60, 60, 0.5)' : obj.type === 'Star Cluster' ? 'rgba(180, 140, 20, 0.5)' : 'rgba(40, 120, 60, 0.5)';
             } else { radius = Math.max(0.6, 3.5 * Math.pow(1.6, -0.22 * obj.magnitude)) * (0.8 + 0.2 * zoom) * effectiveStarScale; color = getStarColor(obj.magnitude, 0, obj.color); }
-            if (!isBackground) hitRegions.current.push({ x: p.x, y: p.y, radius: Math.max(radius * 2.5, 15), object: obj });
+            hitRegions.current.push({ x: p.x, y: p.y, radius: Math.max(radius * 2.5, 15), object: obj });
             if (recommendedMode && isCurated && !isBackground) {
                 ctx.save(); ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 4, 0, Math.PI * 2); ctx.stroke();
                 ctx.globalAlpha = 0.2; ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(p.x, p.y, radius + 8, 0, Math.PI * 2); ctx.fill(); ctx.restore();

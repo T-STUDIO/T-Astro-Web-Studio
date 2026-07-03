@@ -35,6 +35,7 @@ setAstroService(AstroService);
 import { MountController } from './components/MountController';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
+import { satelliteTrackService, TrackerState } from './services/SatelliteTrackService';
 
 import { hmsToDegrees, dmsToDegrees } from './utils/coords';
 
@@ -46,6 +47,14 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('Planetarium');
   const [selectedObject, setSelectedObject] = useState<CelestialObject | null>(null);
   const [slewStatus, setSlewStatus] = useState<SlewStatus>('Idle');
+  const [trackState, setTrackState] = useState<TrackerState>({
+    isActive: false,
+    targetId: null,
+    targetName: null,
+    raDeg: 0,
+    decDeg: 0
+  });
+
   const [planetariumSettings, setPlanetariumSettings] = useState<PlanetariumSettings>(initialSettings.planetariumSettings);
   const [location, setLocation] = useState<LocationData | null>(initialSettings.location);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('Idle');
@@ -159,6 +168,25 @@ const App: React.FC = () => {
     };
     setLogs(prev => [entry, ...prev].slice(0, 100));
   }, [t]);
+
+  useEffect(() => {
+    satelliteTrackService.registerCallbacks(
+      (state) => {
+        setTrackState(state);
+        if (state.isActive) {
+          setSlewStatus('Slewing');
+        } else {
+          setSlewStatus('Idle');
+        }
+      },
+      (key, subs, type) => {
+        addLog(key, subs, type);
+      }
+    );
+    return () => {
+      satelliteTrackService.stopTracking();
+    };
+  }, [addLog]);
 
   const lastConfiguredPort = useRef<number | null>(null);
   const lastConfiguredHost = useRef<string | null>(null);
@@ -486,18 +514,37 @@ const App: React.FC = () => {
   };
 
   const handleSlew = async () => {
-    await AutoCenterService.execute({
-      target: selectedObject,
-      isAutoCenterEnabled,
-      connectionStatus,
-      exposure, gain, offset,
-      solverType: plateSolverType,
-      apiKey: astrometryApiKey,
-      localSettings: localSolverSettings,
-      setStatus: setSlewStatus,
-      addLog: addLog,
-      astroService: AstroService
-    });
+    if (!selectedObject) return;
+
+    const isSatellite = selectedObject.id?.startsWith('sat_');
+    const isComet = selectedObject.id?.startsWith('comet_');
+    const isSolarSystem = selectedObject.id === 'moon' || ['mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'].includes(selectedObject.id || '');
+
+    if (isSatellite || isComet || isSolarSystem) {
+      if (trackState.isActive && trackState.targetId === selectedObject.id) {
+        // 現在同一の天体を追従中なら、追尾を停止
+        satelliteTrackService.stopTracking();
+      } else {
+        // 新規追従開始
+        satelliteTrackService.startTracking(selectedObject.id);
+      }
+    } else {
+      // 通常の天体
+      satelliteTrackService.stopTracking();
+
+      await AutoCenterService.execute({
+        target: selectedObject,
+        isAutoCenterEnabled,
+        connectionStatus,
+        exposure, gain, offset,
+        solverType: plateSolverType,
+        apiKey: astrometryApiKey,
+        localSettings: localSolverSettings,
+        setStatus: setSlewStatus,
+        addLog: addLog,
+        astroService: AstroService
+      });
+    }
   };
 
   const handleShowGeminiInfo = async (name: string) => {

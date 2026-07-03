@@ -32,8 +32,8 @@ import { CELESTIAL_OBJECTS } from './constants';
 import { MountControllerSimulator } from './components/MountControllerSimulator';
 import { AutoCenterService } from './services/AutoCenterService';
 import { BroadcastService } from './viewer/BroadcastService';
-
 import { hmsToDegrees, dmsToDegrees } from './utils/coords';
+import { satelliteTrackService, TrackerState } from './services/SatelliteTrackService';
 
 const AppSimulator: React.FC = () => {
   const { t, language } = useTranslation();
@@ -43,6 +43,13 @@ const AppSimulator: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('Planetarium');
   const [selectedObject, setSelectedObject] = useState<CelestialObject | null>(null);
   const [slewStatus, setSlewStatus] = useState<SlewStatus>('Idle');
+  const [trackState, setTrackState] = useState<TrackerState>({
+    isActive: false,
+    targetId: null,
+    targetName: null,
+    ra: 0,
+    dec: 0
+  });
   const [planetariumSettings, setPlanetariumSettings] = useState<PlanetariumSettings>(initialSettings.planetariumSettings);
   const [location, setLocation] = useState<LocationData | null>(initialSettings.location);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('Idle');
@@ -136,6 +143,7 @@ const AppSimulator: React.FC = () => {
 
   const prevConnectionStatus = useRef<ConnectionStatus>('Disconnected');
   const prevIsAutoSyncLocationEnabled = useRef<boolean>(false);
+  const wasBothActive = useRef<boolean>(false);
 
   const addLog = useCallback((key: string, substitutions: any = {}, type: LogEntry['type'] = 'info') => {
     const entry: LogEntry = {
@@ -145,6 +153,25 @@ const AppSimulator: React.FC = () => {
     };
     setLogs(prev => [entry, ...prev].slice(0, 100));
   }, [t]);
+
+  useEffect(() => {
+    satelliteTrackService.registerCallbacks(
+      (state) => {
+        setTrackState(state);
+        if (state.isActive) {
+          setSlewStatus('Slewing');
+        } else {
+          setSlewStatus('Idle');
+        }
+      },
+      (key, subs, type) => {
+        addLog(key, subs, type);
+      }
+    );
+    return () => {
+      satelliteTrackService.stopTracking();
+    };
+  }, [addLog]);
 
   const onSendLocationToMount = useCallback(async () => {
     if (!location || connectionStatus !== 'Connected') return;
@@ -181,23 +208,22 @@ const AppSimulator: React.FC = () => {
   }, [sampStatus, telescopePosition, selectedObject]);
 
   useEffect(() => {
-    if (!isAutoSyncLocationEnabled) {
-      prevConnectionStatus.current = connectionStatus;
-      prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
-      return;
+    const isConnected = connectionStatus === 'Connected';
+    const isEnabled = isAutoSyncLocationEnabled;
+    const isBothActive = isConnected && isEnabled;
+
+    if (isBothActive) {
+      if (!wasBothActive.current) {
+        const timer = setTimeout(() => {
+          onSendLocationToMount();
+        }, 1500);
+        wasBothActive.current = true;
+        return () => clearTimeout(timer);
+      }
+    } else {
+      wasBothActive.current = false;
     }
-    const isConnectedNow = connectionStatus === 'Connected';
-    const wasDisconnected = prevConnectionStatus.current !== 'Connected';
-    const wasAutoSyncDisabled = !prevIsAutoSyncLocationEnabled.current;
-    if (isConnectedNow && (wasDisconnected || wasAutoSyncDisabled || location)) {
-      const timer = setTimeout(() => {
-        onSendLocationToMount();
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-    prevConnectionStatus.current = connectionStatus;
-    prevIsAutoSyncLocationEnabled.current = isAutoSyncLocationEnabled;
-  }, [location, connectionStatus, isAutoSyncLocationEnabled, onSendLocationToMount]);
+  }, [connectionStatus, isAutoSyncLocationEnabled, onSendLocationToMount]);
 
   useEffect(() => {
     if (connectionStatus !== 'Connected') { setMountSyncStatus('idle'); }
@@ -379,18 +405,37 @@ const AppSimulator: React.FC = () => {
   };
 
   const handleSlew = async () => {
-    await AutoCenterService.execute({
-      target: selectedObject,
-      isAutoCenterEnabled,
-      connectionStatus,
-      exposure, gain, offset,
-      solverType: plateSolverType,
-      apiKey: astrometryApiKey,
-      localSettings: localSolverSettings,
-      setStatus: setSlewStatus,
-      addLog: addLog,
-      astroService: AstroService
-    });
+    if (!selectedObject) return;
+
+    const isSatellite = selectedObject.id?.startsWith('sat_');
+    const isComet = selectedObject.id?.startsWith('comet_');
+    const isSolarSystem = selectedObject.id === 'moon' || ['mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'].includes(selectedObject.id || '');
+
+    if (isSatellite || isComet || isSolarSystem) {
+      if (trackState.isActive && trackState.targetId === selectedObject.id) {
+        // 現在同一の天体を追従中なら、追尾を停止
+        satelliteTrackService.stopTracking();
+      } else {
+        // 新規追従開始
+        satelliteTrackService.startTracking(selectedObject.id);
+      }
+    } else {
+      // 通常の天体
+      satelliteTrackService.stopTracking();
+
+      await AutoCenterService.execute({
+        target: selectedObject,
+        isAutoCenterEnabled,
+        connectionStatus,
+        exposure, gain, offset,
+        solverType: plateSolverType,
+        apiKey: astrometryApiKey,
+        localSettings: localSolverSettings,
+        setStatus: setSlewStatus,
+        addLog: addLog,
+        astroService: AstroService
+      });
+    }
   };
 
   const handleShowGeminiInfo = async (name: string) => {

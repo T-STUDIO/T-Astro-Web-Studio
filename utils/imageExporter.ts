@@ -148,7 +148,7 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
 
     // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) の組み立て ---
     // AstroTIFF 1.0 規格における ImageDescription (Tag 270) への FITS ヘッダーの埋め込みは、
-    // 規格書 (with no line terminators) に準拠し、改行コードを含まない 80文字固定長カードの完全な連続文字列として構築します。
+    // CCDciel や ASTAP 等の一般的なパーサーの改行（CRLF）処理に適合させるため、改行コード（\r\n）で区切られた 80文字固定長カードの連続文字列として構築します。
     // WCSが提供されない場合であっても、常に画像サイズ、時刻、観測地、その他基本メタデータを含む有効なFITSヘッダーを組み立てることで、ヘッダー情報が空になるのを防止します。
     const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
     const lines: string[] = [];
@@ -159,7 +159,7 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
             break;
         }
     }
-    const desc = lines.join("");
+    const desc = lines.join("\r\n");
 
     const descEncoder = new TextEncoder();
     const descBytes = descEncoder.encode(desc);

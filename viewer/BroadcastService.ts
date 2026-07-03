@@ -10,7 +10,7 @@ export class BroadcastService {
     private constructor() {
         this.channel = new BroadcastChannel('t-astro-broadcast');
         this.channel.onmessage = (event) => {
-            if (event.data.type === 'IMAGE_UPDATE' && this.onImageReceived) {
+            if (event.data.type === 'IMAGE_UPDATE' && typeof this.onImageReceived === 'function') {
                 this.onImageReceived(event.data.url, event.data.metadata);
             }
         };

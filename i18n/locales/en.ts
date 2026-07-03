@@ -232,6 +232,7 @@ export const en = {
     showClusters: 'Show Clusters',
     showSatellites: 'Show Satellites',
     showComets: 'Show Comets',
+    showPlanets: 'Show Moon & Planets',
     targetAcquisition: 'Target Acquisition',
     plateSolvingSettings: 'Plate Solving Settings',
     selectTarget: 'Select a Target',
@@ -518,5 +519,8 @@ export const en = {
     driveError: 'Google Drive Error: {{message}}',
     loadingSettings: 'Loading settings...',
     uploadingSettings: 'Uploading settings to Google Drive...',
+    satelliteTrackStarted: 'Track Loop: Started automatic tracking for {{targetName}}.',
+    satelliteTrackTracking: 'Tracking: {{targetName}} (RA: {{ra}}, Dec: {{dec}})',
+    satelliteTrackStopped: 'Track Loop: Stopped automatic tracking for {{targetName}}.',
   }
 };

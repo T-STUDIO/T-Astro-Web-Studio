@@ -261,6 +261,7 @@ export const ja = {
     showClusters: '星団を表示',
     showSatellites: '人工衛星を表示',
     showComets: '彗星を表示',
+    showPlanets: '月・惑星を表示',
     targetAcquisition: '天体導入',
     plateSolvingSettings: 'PlateSolving設定',
     selectTarget: 'ターゲットを選択',
@@ -551,5 +552,8 @@ export const ja = {
     driveError: 'Googleドライブエラー: {{message}}',
     loadingSettings: '設定を読み込み中...',
     uploadingSettings: '設定をGoogleドライブにアップロード中...',
+    satelliteTrackStarted: '追尾ループ：{{targetName}} の追従自動追尾を開始しました。',
+    satelliteTrackTracking: '追従中：{{targetName}} (RA: {{ra}}, Dec: {{dec}})',
+    satelliteTrackStopped: '追尾ループ：{{targetName}} の自動追尾を停止しました。',
   }
 };

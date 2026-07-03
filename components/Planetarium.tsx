@@ -191,10 +191,28 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         const processed = data.stars.map((s: any, idx: number) => {
                             const raStr = degreesToHms(s.ra);
                             const decStr = degreesToDms(s.dec);
+                            
+                            let name = `Star (Mag ${s.mag.toFixed(1)})`;
+                            let nameJa = `恒星 (光度 ${s.mag.toFixed(1)})`;
+                            
+                            if (s.hd) {
+                                name = `HD ${s.hd}`;
+                                nameJa = `HD ${s.hd}`;
+                            } else if (s.hip) {
+                                name = `HIP ${s.hip}`;
+                                nameJa = `HIP ${s.hip}`;
+                            } else if (s.tyc) {
+                                name = `TYC ${s.tyc}`;
+                                nameJa = `TYC ${s.tyc}`;
+                            } else if (s.ucac) {
+                                name = `UCAC ${s.ucac}`;
+                                nameJa = `UCAC ${s.ucac}`;
+                            }
+
                             return {
                                 id: `server-star-${s.ra.toFixed(6)}-${s.dec.toFixed(6)}`,
-                                name: `Star (Mag ${s.mag.toFixed(1)})`,
-                                nameJa: `恒星 (光度 ${s.mag.toFixed(1)})`,
+                                name: name,
+                                nameJa: nameJa,
                                 type: 'Star',
                                 ra: raStr,
                                 dec: decStr,

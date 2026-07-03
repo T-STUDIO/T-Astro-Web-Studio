@@ -3,6 +3,7 @@ import { CelestialObject } from '../types';
 import { fetchWikiAstroData } from './wikipediaService';
 import { fetchSimbadData } from './simbadService';
 import { CELESTIAL_OBJECTS, NGC_TO_MESSIER } from '../constants';
+import { solarSystemService } from './solarSystemService';
 
 export interface AstroData {
     type: string;
@@ -26,6 +27,21 @@ const TYPE_MAP_JA: Record<string, string> = {
 };
 
 export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'): Promise<AstroData> => {
+    const isSolarSystem = obj.id === 'moon' || ['mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'].includes(obj.id || '');
+    if (isSolarSystem) {
+        const solarObj = solarSystemService.calculatePositions().find(s => s.id === obj.id);
+        if (solarObj) {
+            return {
+                type: lang === 'ja' ? '惑星' : 'Planet',
+                magnitude: solarObj.magnitude.toFixed(1),
+                ra: solarObj.ra,
+                dec: solarObj.dec,
+                source: 'Database',
+                isLoading: false
+            };
+        }
+    }
+
     const isAnno = obj.id?.startsWith('anno_');
     if (isAnno) {
         const cleanSimbadName = obj.name.split('(')[0].trim();

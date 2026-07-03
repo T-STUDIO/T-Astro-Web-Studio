@@ -8,7 +8,11 @@ export interface WikiAstroData {
 
 export const fetchWikiImage = async (objectName: string): Promise<string | null> => {
   try {
-    const searchName = objectName.split('(')[0].trim();
+    let searchName = objectName.split('(')[0].trim();
+    const messierMatch = searchName.match(/^M\s*(\d+)$/i);
+    if (messierMatch) {
+      searchName = `Messier ${messierMatch[1]}`;
+    }
     
     const params = new URLSearchParams({
       action: 'query',
@@ -42,7 +46,11 @@ export const fetchWikiImage = async (objectName: string): Promise<string | null>
 
 export const fetchWikiAstroData = async (objectName: string, lang: 'en' | 'ja' = 'en'): Promise<WikiAstroData | null> => {
     try {
-        const searchName = objectName.split('(')[0].trim();
+        let searchName = objectName.split('(')[0].trim();
+        const messierMatch = searchName.match(/^M\s*(\d+)$/i);
+        if (messierMatch) {
+            searchName = `Messier ${messierMatch[1]}`;
+        }
         const endpoint = `https://${lang}.wikipedia.org/w/api.php`;
 
         // 1. Search to get the correct Title (handling redirects via API is safer in content fetch, but search helps match relevance)
@@ -95,7 +103,11 @@ export const fetchWikiAstroData = async (objectName: string, lang: 'en' | 'ja' =
 
 export const fetchWikiSummary = async (objectName: string, lang: 'en' | 'ja' = 'en'): Promise<string | null> => {
     try {
-        const searchName = objectName.split('(')[0].trim();
+        let searchName = objectName.split('(')[0].trim();
+        const messierMatch = searchName.match(/^M\s*(\d+)$/i);
+        if (messierMatch) {
+            searchName = `Messier ${messierMatch[1]}`;
+        }
         const endpoint = `https://${lang}.wikipedia.org/w/api.php`;
 
         const params = new URLSearchParams({

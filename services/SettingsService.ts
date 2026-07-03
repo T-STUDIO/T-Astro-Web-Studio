@@ -49,7 +49,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     planetariumSettings: {
         showConstellationLines: true,
         showAzAltGrid: true,
-        showRaDecGrid: true,
+        showRaDecGrid: false,
         showStarLabels: true,
         showDSOLabels: false,
         showConstellationLabels: true,
@@ -65,6 +65,7 @@ const DEFAULT_SETTINGS: AppSettings = {
         showClusters: true,
         showSatellites: false,
         showComets: false,
+        showPlanets: true,
     },
     exposure: 1000,
     gain: 100,

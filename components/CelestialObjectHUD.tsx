@@ -30,7 +30,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     
     let displayName = language === 'ja' && object.nameJa ? object.nameJa : object.name;
     if (!displayName) {
-        const isBgStar = object.id?.startsWith('bg_star_');
+        const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
         const isServerStar = object.id?.startsWith('server-star-');
         if (isBgStar || isServerStar) {
             displayName = language === 'ja' ? `恒星 (光度 ${object.magnitude?.toFixed(1)})` : `Star (Mag ${object.magnitude?.toFixed(1)})`;
@@ -48,7 +48,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         }
     }
     
-    const isBgStar = object.id?.startsWith('bg_star_');
+    const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
     const isServerStar = object.id?.startsWith('server-star-');
     const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || isServerStar || isBgStar;
     const needsFetch = !isDbObject && !!object.name;

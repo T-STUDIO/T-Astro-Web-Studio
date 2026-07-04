@@ -183,7 +183,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const radius = Math.min(10, viewFov * 0.75);
                 const lastPath = localStorage.getItem("last_index_path") || "/home/astrpi64/.local/share/kstars/astrometry";
                 
-                const url = `http://${host}:${port}/api/planetarium/stars?ra=${center.ra}&dec=${center.dec}&radius=${radius}&path=${encodeURIComponent(lastPath)}`;
+                let url = `http://${host}:${port}/api/planetarium/stars?ra=${center.ra}&dec=${center.dec}&radius=${radius}&path=${encodeURIComponent(lastPath)}`;
+                if (typeof window !== 'undefined' && (window.location.protocol === 'https:' || window.location.hostname === host)) {
+                    url = `/api/planetarium/stars?ra=${center.ra}&dec=${center.dec}&radius=${radius}&path=${encodeURIComponent(lastPath)}`;
+                }
                 const res = await fetch(url);
                 if (res.ok) {
                     const data = await res.json();
@@ -1094,7 +1097,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 for (const region of hitRegions.current) {
                     const d = Math.hypot(x - region.x, y - region.y);
                     if (d < region.radius) {
-                        const isMinor = !!(region.object.id?.startsWith('server-star-') || region.object.id?.startsWith('bg_star_'));
+                        const isMinor = !!(region.object.id?.startsWith('server-star-') || region.object.id?.startsWith('bg_star_') || region.object.id?.startsWith('real_star_'));
                         if (bestMatch === null || (bestIsMinor && !isMinor) || (bestIsMinor === isMinor && d < minDist)) {
                             minDist = d;
                             bestMatch = region.object;

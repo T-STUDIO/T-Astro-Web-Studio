@@ -235,7 +235,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         }, 600);
 
         return () => clearTimeout(delayDebounce);
-    }, [zoom, viewAz, viewAlt, plateSolverType, localSolverSettings, effLocation, effTime, serverStars.length]);
+    }, [zoom, viewAz, viewAlt, plateSolverType, localSolverSettings, effLocation, effTime]);
 
     const constellationStarIds = useMemo(() => {
         const ids = new Set<string>();

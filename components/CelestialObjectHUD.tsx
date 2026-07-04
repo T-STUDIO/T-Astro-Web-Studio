@@ -68,7 +68,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
             }).catch(() => { if (isMounted) setIsLoading(false); });
         }
         return () => { isMounted = false; };
-    }, [object, language, needsFetch]);
+    }, [object.id, language, needsFetch]);
 
     const [isTracking, setIsTracking] = useState(false);
 

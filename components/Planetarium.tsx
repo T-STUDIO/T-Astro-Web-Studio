@@ -512,7 +512,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             if (obj.ra === 'Dynamic' || obj.dec === 'Dynamic') return;
             const isServerStar = obj.id && obj.id.startsWith('server-star-');
             const isCurated = curatedObjectIds.has(obj.id);
-            const magLimit = ['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit;
+            const magLimit = isServerStar ? 15.0 : (['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit);
             if (obj.magnitude > magLimit) { 
                 if (!constellationStarIds.has(obj.id) && !(recommendedMode && isCurated)) return; 
             }

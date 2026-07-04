@@ -141,6 +141,9 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
         finalData.ra = wikiData.ra;
         finalData.dec = wikiData.dec;
         hasExternalData = true;
+    } else {
+        if (obj.ra) finalData.ra = obj.ra;
+        if (obj.dec) finalData.dec = obj.dec;
     }
 
     // 2. Magnitude (Wikipedia priority)
@@ -150,6 +153,10 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
     } else if (simbadData?.magnitude && simbadData.magnitude.trim() !== '') {
         finalData.magnitude = simbadData.magnitude;
         hasExternalData = true;
+    } else {
+        if (obj.magnitude !== undefined && obj.magnitude !== null) {
+            finalData.magnitude = obj.magnitude.toFixed(1);
+        }
     }
 
     // 3. Type (Wikipedia priority)

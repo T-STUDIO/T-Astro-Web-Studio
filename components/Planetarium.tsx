@@ -160,7 +160,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const port = localSolverSettings?.port || 6001;
 
         const viewFov = 60 / zoom;
-        if (viewFov > 15.0) {
+        if (viewFov > 30.0) {
             if (serverStars.length > 0) {
                 setServerStars([]);
             }
@@ -207,6 +207,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             } else if (s.ucac) {
                                 name = `UCAC ${s.ucac}`;
                                 nameJa = `UCAC ${s.ucac}`;
+                            } else if (s.gaia) {
+                                name = `Gaia DR2 ${s.gaia}`;
+                                nameJa = `Gaia DR2 ${s.gaia}`;
                             }
 
                             return {
@@ -509,7 +512,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             if (obj.ra === 'Dynamic' || obj.dec === 'Dynamic') return;
             const isServerStar = obj.id && obj.id.startsWith('server-star-');
             const isCurated = curatedObjectIds.has(obj.id);
-            const magLimit = isServerStar ? 15.0 : (['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit);
+            const magLimit = ['Galaxy', 'Nebula', 'Star Cluster'].includes(obj.type) ? dynamicDsoMagLimit : dynamicStarMagLimit;
             if (obj.magnitude > magLimit) { 
                 if (!constellationStarIds.has(obj.id) && !(recommendedMode && isCurated)) return; 
             }
@@ -1085,9 +1088,19 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const cX = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX; const cY = 'changedTouches' in e ? e.changedTouches[0].clientY : (e as React.MouseEvent).clientY;
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect(); const x = cX - rect.left; const y = cY - rect.top;
-                let bestMatch: CelestialObject | null = null; let minDist = Infinity;
+                let bestMatch: CelestialObject | null = null;
+                let minDist = Infinity;
+                let bestIsMinor = true;
                 for (const region of hitRegions.current) {
-                    const d = Math.hypot(x - region.x, y - region.y); if (d < region.radius && d < minDist) { minDist = d; bestMatch = region.object; }
+                    const d = Math.hypot(x - region.x, y - region.y);
+                    if (d < region.radius) {
+                        const isMinor = !!(region.object.id?.startsWith('server-star-') || region.object.id?.startsWith('bg_star_'));
+                        if (bestMatch === null || (bestIsMinor && !isMinor) || (bestIsMinor === isMinor && d < minDist)) {
+                            minDist = d;
+                            bestMatch = region.object;
+                            bestIsMinor = isMinor;
+                        }
+                    }
                 }
                 if (bestMatch) {
                     const isDoubleClick = (now - lastClickTimeRef.current) < 300; lastClickTimeRef.current = now;

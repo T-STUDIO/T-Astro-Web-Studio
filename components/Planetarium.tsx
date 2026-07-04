@@ -198,21 +198,27 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             let name = `Star (Mag ${s.mag.toFixed(1)})`;
                             let nameJa = `恒星 (光度 ${s.mag.toFixed(1)})`;
                             
-                            if (s.hd) {
-                                name = `HD ${s.hd}`;
-                                nameJa = `HD ${s.hd}`;
-                            } else if (s.hip) {
-                                name = `HIP ${s.hip}`;
-                                nameJa = `HIP ${s.hip}`;
-                            } else if (s.tyc) {
-                                name = `TYC ${s.tyc}`;
-                                nameJa = `TYC ${s.tyc}`;
-                            } else if (s.ucac) {
-                                name = `UCAC ${s.ucac}`;
-                                nameJa = `UCAC ${s.ucac}`;
-                            } else if (s.gaia) {
-                                name = `Gaia DR2 ${s.gaia}`;
-                                nameJa = `Gaia DR2 ${s.gaia}`;
+                            const hd = s.hd || s.HD;
+                            const hip = s.hip || s.HIP;
+                            const tyc = s.tyc || s.TYC;
+                            const ucac = s.ucac || s.UCAC;
+                            const gaia = s.gaia || s.GAIA;
+
+                            if (hd) {
+                                name = `HD ${hd}`;
+                                nameJa = `HD ${hd}`;
+                            } else if (hip) {
+                                name = `HIP ${hip}`;
+                                nameJa = `HIP ${hip}`;
+                            } else if (tyc) {
+                                name = `TYC ${tyc}`;
+                                nameJa = `TYC ${tyc}`;
+                            } else if (ucac) {
+                                name = `UCAC ${ucac}`;
+                                nameJa = `UCAC ${ucac}`;
+                            } else if (gaia) {
+                                name = `Gaia DR2 ${gaia}`;
+                                nameJa = `Gaia DR2 ${gaia}`;
                             }
 
                             return {

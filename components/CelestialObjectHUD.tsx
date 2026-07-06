@@ -29,26 +29,6 @@ interface CelestialObjectHUDProps {
 export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, data, isConnected, compact, onClose, MountController }) => {
     const { t, language } = useTranslation();
     
-    let displayName = language === 'ja' && object.nameJa ? object.nameJa : object.name;
-    if (!displayName) {
-        const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
-        const isServerStar = object.id?.startsWith('server-star-');
-        if (isBgStar || isServerStar) {
-            displayName = language === 'ja' ? `恒星 (光度 ${object.magnitude?.toFixed(1)})` : `Star (Mag ${object.magnitude?.toFixed(1)})`;
-        } else {
-            displayName = language === 'ja' ? '未知の天体' : 'Unknown Object';
-        }
-    }
-    const ngcMatch = object.name?.match(/NGC\s*(\d+)/i);
-    
-    if (ngcMatch) {
-        const ngcNum = parseInt(ngcMatch[1]);
-        const messierName = NGC_TO_MESSIER[ngcNum];
-        if (messierName) {
-            displayName = `${messierName} (${object.name})`;
-        }
-    }
-    
     const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
     const isServerStar = object.id?.startsWith('server-star-');
     const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || 
@@ -86,6 +66,30 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     }, [object]);
 
     if (!object || !data) return null;
+
+    let displayName = language === 'ja' && object.nameJa ? object.nameJa : object.name;
+    if (astroData && astroData.resolvedName) {
+        displayName = astroData.resolvedName;
+    }
+
+    if (!displayName) {
+        if (isBgStar || isServerStar) {
+            displayName = language === 'ja' ? `恒星 (光度 ${object.magnitude?.toFixed(1)})` : `Star (Mag ${object.magnitude?.toFixed(1)})`;
+        } else {
+            displayName = language === 'ja' ? '未知の天体' : 'Unknown Object';
+        }
+    }
+
+    const nameForNgcMatch = (astroData && astroData.resolvedName) ? astroData.resolvedName : object.name;
+    const ngcMatch = nameForNgcMatch?.match(/NGC\s*(\d+)/i);
+    
+    if (ngcMatch) {
+        const ngcNum = parseInt(ngcMatch[1]);
+        const messierName = NGC_TO_MESSIER[ngcNum];
+        if (messierName) {
+            displayName = `${messierName} (${nameForNgcMatch})`;
+        }
+    }
 
     let displayType = data.type;
     let displayMag = (data.magnitude !== undefined && data.magnitude !== null && !isNaN(Number(data.magnitude))) 

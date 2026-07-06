@@ -15,6 +15,22 @@ import { sendSkyCoord } from '../services/sampService';
 import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import { fetchSimbadData } from '../services/simbadService';
 
+const isGenericObject = (obj: CelestialObject | null) => {
+  if (!obj) return false;
+  const lowerName = (obj.name || '').toLowerCase();
+  const lowerNameJa = (obj.nameJa || '').toLowerCase();
+  const lowerId = (obj.id || '').toLowerCase();
+  return lowerName.includes('star (mag') || 
+         lowerName.includes('star(mag') ||
+         lowerNameJa.includes('恒星 (光度') || 
+         lowerNameJa.includes('恒星(光度') || 
+         lowerName.includes('background') || 
+         lowerId.includes('background') ||
+         lowerId.includes('server-star') ||
+         lowerId.includes('bg_star') ||
+         lowerId.includes('real_star');
+};
+
 interface GeminiInfoModalProps {
   isOpen: boolean;
   isLoading: boolean;
@@ -47,15 +63,23 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
       setIsDataLoading(true);
       
       const langCode = language === 'ja' ? 'ja' : 'en';
+      const generic = isGenericObject(object);
 
-      Promise.all([
-          fetchWikiImage(object.name),
-          resolveAstroData(object, langCode)
-      ]).then(([url, stats]) => {
-          if (url) setWikiImage(url);
+      if (generic) {
+        resolveAstroData(object, langCode).then(stats => {
           if (stats) setAstroData(stats);
           setIsDataLoading(false);
-      });
+        }).catch(() => setIsDataLoading(false));
+      } else {
+        Promise.all([
+            fetchWikiImage(object.name),
+            resolveAstroData(object, langCode)
+        ]).then(([url, stats]) => {
+            if (url) setWikiImage(url);
+            if (stats) setAstroData(stats);
+            setIsDataLoading(false);
+        }).catch(() => setIsDataLoading(false));
+      }
     }
   }, [isOpen, object, language]);
 
@@ -100,6 +124,28 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
 
   const handleSearchWikipedia = async () => {
       const resolvedName = (needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name;
+      const generic = isGenericObject(object);
+
+      if (generic) {
+          setIsSummarizing(true);
+          try {
+              const raVal = object.ra;
+              const decVal = object.dec;
+              const magVal = (object.magnitude !== undefined && object.magnitude !== null) ? object.magnitude.toFixed(1) : '---';
+              const infoText = language === 'ja'
+                  ? `天体名: ${resolvedName} (微光星・汎用天体)\n座標: 赤経 ${raVal}, 赤緯 ${decVal}\n等級: ${magVal}等星\nこの天体は個別のWikipedia記事がないため、この確定している情報をベースに、この等級や位置にある一般的な恒星としての科学的特徴（恒星の分類、色、予想される温度や性質など）を分かりやすく丁寧に日本語で解説してください。`
+                  : `Celestial Object: ${resolvedName} (Background Star)\nCoordinates: RA ${raVal}, Dec ${decVal}\nMagnitude: ${magVal}\nSince there is no specific Wikipedia article for this individual star, please explain the general scientific characteristics (spectral type, color, estimated temperature, stellar physics) of a star with these general coordinates and magnitude, in educational English.`;
+              
+              const summarized = await summarizeExternalInfo(resolvedName, infoText, 'Wikipedia', language);
+              setDisplayContent(summarized);
+          } catch (e) {
+              console.error("Wikipedia proxy summary failed", e);
+          } finally {
+              setIsSummarizing(false);
+          }
+          return;
+      }
+
       const name = language === 'ja' && object.nameJa ? object.nameJa.split('(')[0].trim() : resolvedName.split('(')[0].trim();
       const langPrefix = language === 'ja' ? 'ja' : 'en';
       
@@ -114,6 +160,8 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
           if (summaryText) {
               const summarized = await summarizeExternalInfo(resolvedName, summaryText, 'Wikipedia', language);
               setDisplayContent(summarized);
+          } else {
+              setDisplayContent(language === 'ja' ? "個別記事が見つかりませんでした。" : "No specific article found.");
           }
       } catch (e) {
           console.error("Wiki summarization failed", e);
@@ -124,6 +172,36 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
 
   const handleSearchSimbad = async () => {
       const resolvedName = (needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name;
+      const generic = isGenericObject(object);
+
+      if (generic) {
+          const raDeg = hmsToDegrees(object.ra);
+          const decDeg = dmsToDegrees(object.dec);
+          
+          // 1. Open sim-coo link in new tab using coordinates
+          const url = `http://simbad.cds.unistra.fr/simbad/sim-coo?Coord=${encodeURIComponent(raDeg + ' ' + decDeg)}`;
+          window.open(url, '_blank', 'noopener,noreferrer');
+
+          // 2. Coordinates & magnitude based AI explanation
+          setIsSummarizing(true);
+          try {
+              const raVal = object.ra;
+              const decVal = object.dec;
+              const magVal = (object.magnitude !== undefined && object.magnitude !== null) ? object.magnitude.toFixed(1) : '---';
+              const infoText = language === 'ja'
+                  ? `天体名: ${resolvedName} (汎用的な恒星)\n座標: 赤経 ${raVal} (十進: ${raDeg.toFixed(6)}°), 赤緯 ${decVal} (十進: ${decDeg.toFixed(6)}°)\n等級: ${magVal}等星\nこの天体は個別のSIMBAD名称検索にヒットしないため、座標から探した一般的な恒星の科学的性質（色、スペクトル型、光度、この天域における星野の特徴など）を、日本語でプロフェッショナルかつ分かりやすく解説してください。`
+                  : `Celestial Object: ${resolvedName} (Background Star)\nCoordinates: RA ${raVal} (deg: ${raDeg.toFixed(6)}), Dec ${decVal} (deg: ${decDeg.toFixed(6)})\nMagnitude: ${magVal}\nSince this star does not have a specific named SIMBAD entry, please explain the general scientific properties of a star with these coordinates and magnitude, in educational English.`;
+              
+              const summarized = await summarizeExternalInfo(resolvedName, infoText, 'SIMBAD', language);
+              setDisplayContent(summarized);
+          } catch (e) {
+              console.error("Simbad proxy summary failed", e);
+          } finally {
+              setIsSummarizing(false);
+          }
+          return;
+      }
+
       const name = resolvedName.split('(')[0].trim();
       
       // 1. Open link in new tab (existing behavior)
@@ -140,6 +218,8 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
               const rawText = `Type: ${simbadData.type}, RA: ${simbadData.ra}, Dec: ${simbadData.dec}, Magnitude: ${simbadData.magnitude}. ${aliases}`;
               const summarized = await summarizeExternalInfo(resolvedName, rawText, 'SIMBAD', language);
               setDisplayContent(summarized);
+          } else {
+              setDisplayContent(language === 'ja' ? "SIMBADデータが見つかりませんでした。" : "No SIMBAD data found.");
           }
       } catch (e) {
           console.error("Simbad summarization failed", e);
@@ -166,7 +246,7 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
           <div className="flex items-center gap-3">
             <GeminiIcon className="w-7 h-7 text-red-500" />
             <div className="overflow-hidden">
-                <h2 className="text-lg md:text-xl font-bold text-slate-100 truncate">{object.name}</h2>
+                <h2 className="text-lg md:text-xl font-bold text-slate-100 truncate">{(needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name}</h2>
                 <p className="text-xs text-red-400 truncate">{displayType}</p>
             </div>
           </div>
@@ -183,7 +263,7 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
                    <>
                        <img 
                          src={displayImage} 
-                         alt={object.name} 
+                         alt={(needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name} 
                          className="w-full h-full object-contain"
                        />
                        {imageSourceLabel && (

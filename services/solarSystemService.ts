@@ -26,13 +26,13 @@ interface OrbitElements {
 }
 
 const PLANET_ELEMENTS: OrbitElements[] = [
-    { id: 'mercury', name: 'Mercury', nameJa: '水星', a: 0.3871, e: 0.2056, i: 7.005, L0: 252.250, varpi: 77.456, Omega: 48.331, T: 0.2408, baseMag: 0.0, color: '#9ca3af', radius: 4 },
-    { id: 'venus', name: 'Venus', nameJa: '金星', a: 0.7233, e: 0.0068, i: 3.395, L0: 181.979, varpi: 131.532, Omega: 76.680, T: 0.6152, baseMag: -4.0, color: '#fef08a', radius: 6 },
-    { id: 'mars', name: 'Mars', nameJa: '火星', a: 1.5237, e: 0.0934, i: 1.850, L0: 355.453, varpi: 336.041, Omega: 49.578, T: 1.8808, baseMag: -1.0, color: '#f87171', radius: 5 },
-    { id: 'jupiter', name: 'Jupiter', nameJa: '木星', a: 5.2034, e: 0.0484, i: 1.303, L0: 34.404, varpi: 14.753, Omega: 100.556, T: 11.8626, baseMag: -2.5, color: '#fdba74', radius: 9 },
-    { id: 'saturn', name: 'Saturn', nameJa: '土星', a: 9.5371, e: 0.0541, i: 2.484, L0: 49.944, varpi: 92.431, Omega: 113.715, T: 29.4475, baseMag: 0.4, color: '#fed7aa', radius: 8 },
-    { id: 'uranus', name: 'Uranus', nameJa: '天王星', a: 19.1913, e: 0.0473, i: 0.770, L0: 313.232, varpi: 170.964, Omega: 74.229, T: 84.0168, baseMag: 5.7, color: '#a5f3fc', radius: 5 },
-    { id: 'neptune', name: 'Neptune', nameJa: '海王星', a: 30.0690, e: 0.0086, i: 1.769, L0: 304.880, varpi: 44.971, Omega: 131.721, T: 164.7913, baseMag: 7.8, color: '#60a5fa', radius: 5 }
+    { id: 'mercury', name: 'Mercury', nameJa: '水星', a: 0.3871, e: 0.2056, i: 7.005, L0: 252.250, varpi: 77.456, Omega: 48.331, T: 0.2408, baseMag: -0.42, color: '#9ca3af', radius: 4 },
+    { id: 'venus', name: 'Venus', nameJa: '金星', a: 0.7233, e: 0.0068, i: 3.395, L0: 181.979, varpi: 131.532, Omega: 76.680, T: 0.6152, baseMag: -4.40, color: '#fef08a', radius: 6 },
+    { id: 'mars', name: 'Mars', nameJa: '火星', a: 1.5237, e: 0.0934, i: 1.850, L0: 355.453, varpi: 336.041, Omega: 49.578, T: 1.8808, baseMag: -1.52, color: '#f87171', radius: 5 },
+    { id: 'jupiter', name: 'Jupiter', nameJa: '木星', a: 5.2034, e: 0.0484, i: 1.303, L0: 34.404, varpi: 14.753, Omega: 100.556, T: 11.8626, baseMag: -9.40, color: '#fdba74', radius: 9 },
+    { id: 'saturn', name: 'Saturn', nameJa: '土星', a: 9.5371, e: 0.0541, i: 2.484, L0: 49.944, varpi: 92.431, Omega: 113.715, T: 29.4475, baseMag: -8.88, color: '#fed7aa', radius: 8 },
+    { id: 'uranus', name: 'Uranus', nameJa: '天王星', a: 19.1913, e: 0.0473, i: 0.770, L0: 313.232, varpi: 170.964, Omega: 74.229, T: 84.0168, baseMag: -7.19, color: '#a5f3fc', radius: 5 },
+    { id: 'neptune', name: 'Neptune', nameJa: '海王星', a: 30.0690, e: 0.0086, i: 1.769, L0: 304.880, varpi: 44.971, Omega: 131.721, T: 164.7913, baseMag: -6.87, color: '#60a5fa', radius: 5 }
 ];
 
 export class SolarSystemService {
@@ -122,8 +122,29 @@ export class SolarSystemService {
             if (ra < 0) ra += 360.0;
             const dec = Math.asin(z_eq / dist) * 180.0 / Math.PI;
 
-            // 距離に基づき等級を簡易補正
-            const phase_corr = p.id === 'mercury' || p.id === 'venus' ? 5 * Math.log10(r * dist) : 5 * Math.log10(r * dist);
+            // Phase angle alpha (Sun - Planet - Earth angle in radians)
+            let cos_alpha = (r * r + dist * dist - R_earth * R_earth) / (2 * r * dist);
+            if (cos_alpha < -1) cos_alpha = -1;
+            if (cos_alpha > 1) cos_alpha = 1;
+            const alpha = Math.acos(cos_alpha);
+            const alpha_deg = alpha * 180.0 / Math.PI;
+
+            // Apparent magnitude calculation using standard astronomical phase models
+            let phase_corr = 5 * Math.log10(r * dist);
+            if (p.id === 'mercury') {
+                phase_corr += 0.0380 * alpha_deg - 0.000273 * alpha_deg * alpha_deg + 0.000002 * alpha_deg * alpha_deg * alpha_deg;
+            } else if (p.id === 'venus') {
+                phase_corr += 0.0009 * alpha_deg + 0.000239 * alpha_deg * alpha_deg - 0.00000065 * alpha_deg * alpha_deg * alpha_deg;
+            } else if (p.id === 'mars') {
+                phase_corr += 0.016 * alpha_deg;
+            } else if (p.id === 'jupiter') {
+                phase_corr += 0.005 * alpha_deg;
+            } else if (p.id === 'saturn') {
+                phase_corr += 0.044 * alpha_deg;
+            } else if (p.id === 'uranus') {
+                phase_corr += 0.0028 * alpha_deg;
+            }
+
             const mag = p.baseMag + phase_corr;
 
             results.push({

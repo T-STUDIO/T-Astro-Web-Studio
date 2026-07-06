@@ -3,7 +3,9 @@ import { CelestialObject } from '../types';
 import { fetchWikiAstroData } from './wikipediaService';
 import { fetchSimbadData } from './simbadService';
 import { CELESTIAL_OBJECTS, NGC_TO_MESSIER } from '../constants';
+import { EXTENDED_DSO_CATALOG } from '../utils/dsoCatalog';
 import { solarSystemService } from './solarSystemService';
+import { degreesToHms, degreesToDms, hmsToDegrees, dmsToDegrees } from '../utils/coords';
 
 export interface AstroData {
     type: string;
@@ -12,6 +14,7 @@ export interface AstroData {
     dec: string;
     source: 'Database' | 'Wikipedia' | 'Simbad' | 'Wiki+Simbad';
     isLoading?: boolean;
+    resolvedName?: string;
 }
 
 const TYPE_MAP_JA: Record<string, string> = {
@@ -42,24 +45,12 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
         }
     }
 
-    const isAnno = obj.id?.startsWith('anno_');
-    if (isAnno) {
-        const cleanSimbadName = obj.name.split('(')[0].trim();
-        const simbadData = await fetchSimbadData(cleanSimbadName, lang).catch(() => null);
-        if (simbadData) {
-            return {
-                type: simbadData.type || obj.type || '---',
-                magnitude: simbadData.magnitude || '---',
-                ra: simbadData.ra || '---',
-                dec: simbadData.dec || '---',
-                source: 'Simbad',
-                isLoading: false
-            };
-        }
-    }
-
     // 内部データベースの正規の天体かどうかを検索
     const dbObject = CELESTIAL_OBJECTS.find(o => 
+        o.id === obj.id || 
+        o.name === obj.name || 
+        (o.nameJa && obj.nameJa && o.nameJa === obj.nameJa)
+    ) || EXTENDED_DSO_CATALOG.find(o => 
         o.id === obj.id || 
         o.name === obj.name || 
         (o.nameJa && obj.nameJa && o.nameJa === obj.nameJa)
@@ -88,6 +79,75 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
             magnitude: obj.magnitude ? obj.magnitude.toFixed(1) : '---',
             ra: obj.ra,
             dec: obj.dec,
+            source: 'Database',
+            isLoading: false
+        };
+    }
+
+    // --- Try Local SQLite Database Resolve First (Zero-Network, Instant) ---
+    try {
+        const cleanQueryName = obj.name.split('(')[0].split('（')[0].trim();
+        let url = `/api/resolve_name?name=${encodeURIComponent(cleanQueryName)}`;
+        if (obj.ra && obj.dec) {
+            const raDeg = typeof obj.ra === 'number' ? obj.ra : hmsToDegrees(obj.ra);
+            const decDeg = typeof obj.dec === 'number' ? obj.dec : dmsToDegrees(obj.dec);
+            if (!isNaN(raDeg) && !isNaN(decDeg)) {
+                url += `&ra=${raDeg}&dec=${decDeg}`;
+            }
+        }
+        const localRes = await fetch(url);
+        const localData = await localRes.json();
+        if (localData && localData.status === 'success') {
+            let dispType = localData.type || '---';
+            if (lang === 'ja' && TYPE_MAP_JA[dispType]) {
+                dispType = TYPE_MAP_JA[dispType];
+            }
+            
+            // SQLite returns floats for RA/Dec degrees, format them into HMS/DMS for HUD
+            const rawRa = Number(localData.ra);
+            const rawDec = Number(localData.dec);
+            const formattedRa = isNaN(rawRa) ? (localData.ra || '---') : degreesToHms(rawRa);
+            const formattedDec = isNaN(rawDec) ? (localData.dec || '---') : degreesToDms(rawDec);
+
+            return {
+                type: dispType,
+                magnitude: (localData.mag !== undefined && localData.mag !== null && !isNaN(Number(localData.mag))) ? Number(localData.mag).toFixed(1) : '---',
+                ra: formattedRa,
+                dec: formattedDec,
+                source: 'Database',
+                isLoading: false,
+                resolvedName: localData.name
+            };
+        }
+    } catch (e) {
+        console.warn("Failed to query resolve_name from local SQLite API:", e);
+    }
+
+    const isAnno = obj.id?.startsWith('anno_');
+    if (isAnno) {
+        const cleanSimbadName = obj.name.split('(')[0].trim();
+        try {
+            const simbadData = await fetchSimbadData(cleanSimbadName, lang);
+            if (simbadData) {
+                return {
+                    type: simbadData.type || obj.type || '---',
+                    magnitude: simbadData.magnitude || '---',
+                    ra: simbadData.ra || '---',
+                    dec: simbadData.dec || '---',
+                    source: 'Simbad',
+                    isLoading: false
+                };
+            }
+        } catch (simbadErr) {
+            console.warn("Failed online SIMBAD query for anno, falling back to original annotation details:", simbadErr);
+        }
+        
+        // If SIMBAD lookup fails or is offline, instantly return the original annotated values to prevent infinite loading
+        return {
+            type: obj.type || '---',
+            magnitude: (obj.magnitude !== undefined && obj.magnitude !== null) ? obj.magnitude.toFixed(1) : '---',
+            ra: obj.ra || '---',
+            dec: obj.dec || '---',
             source: 'Database',
             isLoading: false
         };

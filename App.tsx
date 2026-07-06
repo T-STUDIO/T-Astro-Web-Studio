@@ -30,6 +30,7 @@ import * as GeminiService from './services/geminiService';
 import * as SampService from './services/sampService';
 import { LiveStackingEngine, setAstroService } from './services/LiveStackingEngine'; // New Import
 import { CELESTIAL_OBJECTS } from './constants';
+import { resolveAstroData } from './services/astroDataService';
 
 setAstroService(AstroService);
 import { MountController } from './components/MountController';
@@ -551,7 +552,20 @@ const App: React.FC = () => {
       const obj = CELESTIAL_OBJECTS.find(o => o.name === name) || selectedObject;
       if (!obj) return;
       setIsGeminiModalOpen(true); setIsGeminiLoading(true);
-      try { const info = await GeminiService.getObjectInfo(obj.name, language, obj.id?.startsWith('anno_')); setGeminiContent(info); } 
+      try {
+          let queryName = obj.name;
+          const isGenericStar = !CELESTIAL_OBJECTS.some(o => o.name === obj.name) && 
+              (obj.name.startsWith('bg_star_') || obj.name.startsWith('server-star-') || obj.name.toLowerCase().includes('unnamed') || obj.name === 'Telescope Target');
+          
+          if (isGenericStar) {
+              const resolved = await resolveAstroData(obj, language === 'ja' ? 'ja' : 'en');
+              if (resolved && resolved.resolvedName) {
+                  queryName = resolved.resolvedName;
+              }
+          }
+          const info = await GeminiService.getObjectInfo(queryName, language, obj.id?.startsWith('anno_') || isGenericStar); 
+          setGeminiContent(info); 
+      } 
       finally { setIsGeminiLoading(false); }
   };
 

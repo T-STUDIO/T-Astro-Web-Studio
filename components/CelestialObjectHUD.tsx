@@ -26,14 +26,128 @@ interface CelestialObjectHUDProps {
     MountController?: React.ComponentType<any>;
 }
 
+const REAL_STARS_NAMES: Record<number, { en: string, ja: string }> = {
+    0: { en: "Sirius", ja: "シリウス" },
+    1: { en: "Canopus", ja: "カノープス" },
+    2: { en: "Arcturus", ja: "アークトゥルス" },
+    3: { en: "Rigil Kentaurus", ja: "リギル・ケンタウルス" },
+    4: { en: "Vega", ja: "ベガ" },
+    5: { en: "Capella", ja: "カペラ" },
+    6: { en: "Rigel", ja: "リゲル" },
+    7: { en: "Procyon", ja: "プロキオン" },
+    8: { en: "Betelgeuse", ja: "ベテルギウス" },
+    9: { en: "Achernar", ja: "アケルナル" },
+    10: { en: "Hadar", ja: "ハダル" },
+    11: { en: "Altair", ja: "アルタイル" },
+    12: { en: "Acrux", ja: "アクルックス" },
+    13: { en: "Aldebaran", ja: "アルデバラン" },
+    14: { en: "Antares", ja: "アンタレス" },
+    15: { en: "Spica", ja: "スピカ" },
+    16: { en: "Pollux", ja: "ポルックス" },
+    17: { en: "Fomalhaut", ja: "フォーマルハウト" },
+    18: { en: "Deneb", ja: "デネブ" },
+    19: { en: "Mimosa", ja: "ミモザ" },
+    20: { en: "Regulus", ja: "レグルス" },
+    21: { en: "Adhara", ja: "アダーラ" },
+    22: { en: "Shaula", ja: "シャウラ" },
+    23: { en: "Castor", ja: "カストル" },
+    24: { en: "Gacrux", ja: "ガクルックス" },
+    25: { en: "Elnath", ja: "エルナト" },
+    26: { en: "Alnilam", ja: "アルニラム" },
+    27: { en: "Alnitak", ja: "アルニタク" },
+    28: { en: "Alnair", ja: "アルナイル" },
+    29: { en: "Alioth", ja: "アリオト" },
+    30: { en: "Dubhe", ja: "ドゥーベ" },
+    31: { en: "Mirfak", ja: "ミルファク" },
+    32: { en: "Kaus Australis", ja: "カウス・アウストラリス" },
+    33: { en: "Wezen", ja: "ウェゼン" },
+    34: { en: "Alkaid", ja: "アルカイド" },
+    35: { en: "Sargas", ja: "サルガス" },
+    36: { en: "Avior", ja: "アビオール" },
+    37: { en: "Alhena", ja: "アルヘナ" },
+    38: { en: "Menkent", ja: "メンケント" },
+    39: { en: "Peacock", ja: "ピーコック" },
+    40: { en: "Polaris", ja: "ポラリス (北極星)" },
+    41: { en: "Alphard", ja: "アルファルド" },
+    42: { en: "Hamal", ja: "ハマル" },
+    43: { en: "Alpheratz", ja: "アルフェラッツ" },
+    44: { en: "Schedar", ja: "シェダル" },
+    45: { en: "Caph", ja: "カーフ" },
+    46: { en: "Gamma Cas", ja: "ガンマ・カス" },
+    47: { en: "Ruchbah", ja: "ルクバー" },
+    48: { en: "Segin", ja: "セギン" },
+    49: { en: "Merak", ja: "メラク" },
+    50: { en: "Phecda", ja: "フェクダ" },
+    51: { en: "Megrez", ja: "メグレス" },
+    52: { en: "Mizar", ja: "ミザール" },
+    53: { en: "Sadr", ja: "サドル" },
+    54: { en: "Gienah", ja: "ギエナー" },
+    55: { en: "Delta Cyg", ja: "デルタ・シグ" },
+    56: { en: "Albireo", ja: "アルビレオ" },
+    57: { en: "Bellatrix", ja: "ベラトリックス" },
+    58: { en: "Saiph", ja: "サイフ" },
+    59: { en: "Mintaka", ja: "ミンタカ" },
+    60: { en: "Markab", ja: "マルカブ" },
+    61: { en: "Scheat", ja: "シェアト" },
+    62: { en: "Algenib", ja: "アルゲニブ" },
+    63: { en: "Enif", ja: "エニフ" },
+    64: { en: "Sheliak", ja: "シェリアク" },
+    65: { en: "Sulafat", ja: "スラファト" },
+    66: { en: "Tarazed", ja: "タラゼド" },
+    67: { en: "Alshain", ja: "アルシャイン" },
+    68: { en: "Mirach", ja: "ミラク" },
+    69: { en: "Almach", ja: "アルマク" },
+    70: { en: "Denebola", ja: "デネボラ" },
+    71: { en: "Algieba", ja: "アルギエバ" },
+    72: { en: "Zosma", ja: "ゾスマ" },
+    73: { en: "Vindemiatrix", ja: "ヴィンデミアトリックス" },
+    74: { en: "Porrima", ja: "ポリマ" },
+    75: { en: "Alphecca", ja: "アルフェッカ" },
+    76: { en: "Izar", ja: "イザール" },
+    77: { en: "Muphrid", ja: "ムフリッド" },
+    78: { en: "Dschubba", ja: "ジュバ" },
+    79: { en: "Wei", ja: "ウェイ" },
+    80: { en: "Nunki", ja: "ヌンキ" },
+    81: { en: "Ascella", ja: "アセラ" }
+};
+
+const tryResolveFamousStarName = (obj: any) => {
+    if (!obj || !obj.id) return;
+    if (obj.id.startsWith('real_star_')) {
+        const parts = obj.id.split('_');
+        const idx = parseInt(parts[2], 10);
+        if (!isNaN(idx) && REAL_STARS_NAMES[idx]) {
+            obj.name = REAL_STARS_NAMES[idx].en;
+            obj.nameJa = REAL_STARS_NAMES[idx].ja;
+        }
+    }
+};
+
 export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, data, isConnected, compact, onClose, MountController }) => {
     const { t, language } = useTranslation();
     
+    // 有名な実在恒星（Sirius, Polaris等）の名前解決を最優先で適用
+    tryResolveFamousStarName(object);
+
+    // 早期に object.name を仮名で初期化して、以降の判定や親コンポーネントでの undefined によるクラッシュを防ぐ
+    if (object && !object.name) {
+        object.name = `Star (Mag ${object.magnitude?.toFixed(1)})`;
+    }
+
     const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
     const isServerStar = object.id?.startsWith('server-star-');
     const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || 
                        EXTENDED_DSO_CATALOG.some(o => o.id === object.id || (object.name && o.name === object.name));
-    const needsFetch = !isDbObject && !!object.name;
+    
+    // 恒星の汎用名であるか判定
+    const isGeneric = !object.name || 
+                      object.name.toLowerCase().includes('star (mag') || 
+                      object.name.toLowerCase().includes('star(mag') ||
+                      object.name.toLowerCase().includes('background') ||
+                      object.name.toLowerCase().includes('unnamed') ||
+                      (object.nameJa && (object.nameJa.includes('恒星 (光度') || object.nameJa.includes('恒星(光度')));
+
+    const needsFetch = !isDbObject && (!!object.name || isBgStar || isServerStar || isGeneric);
 
     const [isLoading, setIsLoading] = useState(needsFetch);
     const [astroData, setAstroData] = useState<AstroData | null>(null);
@@ -45,8 +159,24 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         
         if (object && needsFetch) {
             const langCode = language === 'ja' ? 'ja' : 'en';
-            resolveAstroData(object, langCode).then(res => {
-                if (isMounted) { setAstroData(res); setIsLoading(false); }
+            
+            // object.name が空か、汎用的な仮名の場合は、
+            // astroDataService.ts の if (!obj.name) を通過させ、
+            // solver_server.py で is_generic_star と判定されるように "Star" を設定したオブジェクトを渡す
+            const queryObj = { ...object };
+            if (!queryObj.name || isGeneric) {
+                queryObj.name = "Star";
+            }
+
+            resolveAstroData(queryObj, langCode).then(res => {
+                if (isMounted) { 
+                    setAstroData(res); 
+                    setIsLoading(false); 
+                    // データベースで解決された実名を親の selectedObject にも即時反映する
+                    if (res && res.resolvedName) {
+                        object.name = res.resolvedName;
+                    }
+                }
             }).catch(() => { if (isMounted) setIsLoading(false); });
         }
         return () => { isMounted = false; };

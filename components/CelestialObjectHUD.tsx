@@ -4,6 +4,7 @@ import { CelestialObject } from '../types';
 import { useTranslation } from '../contexts/LanguageContext';
 import { resolveAstroData, AstroData } from '../services/astroDataService';
 import { CELESTIAL_OBJECTS, NGC_TO_MESSIER } from '../constants';
+import { EXTENDED_DSO_CATALOG } from '../utils/dsoCatalog';
 import { CloseIcon } from './icons/CloseIcon';
 import { satelliteTrackService } from '../services/SatelliteTrackService';
 
@@ -50,7 +51,8 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     
     const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
     const isServerStar = object.id?.startsWith('server-star-');
-    const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || isServerStar || isBgStar;
+    const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || 
+                       EXTENDED_DSO_CATALOG.some(o => o.id === object.id || (object.name && o.name === object.name));
     const needsFetch = !isDbObject && !!object.name;
 
     const [isLoading, setIsLoading] = useState(needsFetch);
@@ -86,9 +88,11 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     if (!object || !data) return null;
 
     let displayType = data.type;
-    let displayMag = data.magnitude.toFixed(1);
-    let displayRa = data.ra;
-    let displayDec = data.dec;
+    let displayMag = (data.magnitude !== undefined && data.magnitude !== null && !isNaN(Number(data.magnitude))) 
+        ? Number(data.magnitude).toFixed(1) 
+        : '---';
+    let displayRa = data.ra || '---';
+    let displayDec = data.dec || '---';
 
     if (needsFetch) {
         if (isLoading) {

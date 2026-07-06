@@ -195,8 +195,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             const raStr = degreesToHms(s.ra);
                             const decStr = degreesToDms(s.dec);
                             
-                            let name = s.name || s.NAME || `Star (Mag ${s.mag.toFixed(1)})`;
-                            let nameJa = s.name || s.NAME || `恒星 (光度 ${s.mag.toFixed(1)})`;
+                            let name = `Star (Mag ${s.mag.toFixed(1)})`;
+                            let nameJa = `恒星 (光度 ${s.mag.toFixed(1)})`;
                             
                             const hd = s.hd || s.HD;
                             const hip = s.hip || s.HIP;
@@ -204,10 +204,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             const ucac = s.ucac || s.UCAC;
                             const gaia = s.gaia || s.GAIA;
 
-                            if (s.name || s.NAME) {
-                                name = s.name || s.NAME;
-                                nameJa = s.name || s.NAME;
-                            } else if (hd) {
+                            if (hd) {
                                 name = `HD ${hd}`;
                                 nameJa = `HD ${hd}`;
                             } else if (hip) {
@@ -1119,7 +1116,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     if (isDoubleClick && onCenter) { onCenter(bestMatch); }
                     else if (onSelectObject) { 
                         onSelectObject(bestMatch); 
-                        if (bestMatch && bestMatch.ra !== undefined && bestMatch.dec !== undefined) {
+                        if (bestMatch && bestMatch.ra && bestMatch.dec) {
                             const raVal = hmsToDegrees(bestMatch.ra);
                             const decVal = dmsToDegrees(bestMatch.dec);
                             AstroService.syncSkyCoord(raVal, decVal);

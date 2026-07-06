@@ -99,7 +99,8 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
   }
 
   const handleSearchWikipedia = async () => {
-      const name = language === 'ja' && object.nameJa ? object.nameJa.split('(')[0].trim() : object.name.split('(')[0].trim();
+      const resolvedName = (needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name;
+      const name = language === 'ja' && object.nameJa ? object.nameJa.split('(')[0].trim() : resolvedName.split('(')[0].trim();
       const langPrefix = language === 'ja' ? 'ja' : 'en';
       
       // 1. Open link in new tab (existing behavior)
@@ -111,7 +112,7 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
       try {
           const summaryText = await fetchWikiSummary(name, langPrefix as 'en' | 'ja');
           if (summaryText) {
-              const summarized = await summarizeExternalInfo(object.name, summaryText, 'Wikipedia', language);
+              const summarized = await summarizeExternalInfo(resolvedName, summaryText, 'Wikipedia', language);
               setDisplayContent(summarized);
           }
       } catch (e) {
@@ -122,7 +123,8 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
   };
 
   const handleSearchSimbad = async () => {
-      const name = object.name.split('(')[0].trim();
+      const resolvedName = (needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name;
+      const name = resolvedName.split('(')[0].trim();
       
       // 1. Open link in new tab (existing behavior)
       const url = `http://simbad.cds.unistra.fr/simbad/sim-basic?Ident=${encodeURIComponent(name)}&submit=SIMBAD+search`;
@@ -132,11 +134,11 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
       setIsSummarizing(true);
       try {
           // SIMBAD data is mostly structured, so we fetch it and ask Gemini to explain it
-          const simbadData = await fetchSimbadData(object.name, language);
+          const simbadData = await fetchSimbadData(resolvedName, language);
           if (simbadData) {
               const aliases = simbadData.aliases ? `Aliases: ${simbadData.aliases.join(', ')}` : '';
               const rawText = `Type: ${simbadData.type}, RA: ${simbadData.ra}, Dec: ${simbadData.dec}, Magnitude: ${simbadData.magnitude}. ${aliases}`;
-              const summarized = await summarizeExternalInfo(object.name, rawText, 'SIMBAD', language);
+              const summarized = await summarizeExternalInfo(resolvedName, rawText, 'SIMBAD', language);
               setDisplayContent(summarized);
           }
       } catch (e) {

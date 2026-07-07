@@ -33,18 +33,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     const isServerStar = object.id?.startsWith('server-star-');
     const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || 
                        EXTENDED_DSO_CATALOG.some(o => o.id === object.id || (object.name && o.name === object.name));
-    
-    // 恒星の汎用名（または名前がない、あるいは背景星）であるか判定
-    const isGeneric = !object.name || 
-                      object.name.toLowerCase() === 'star' ||
-                      object.name.toLowerCase().includes('star (mag') || 
-                      object.name.toLowerCase().includes('star(mag') ||
-                      object.name.toLowerCase().includes('background') ||
-                      object.name.toLowerCase().includes('unnamed') ||
-                      (object.nameJa && (object.nameJa.includes('恒星 (光度') || object.nameJa.includes('恒星(光度')));
-
-    // データベース天体以外で、名前があるか、もしくは座標検索（背景星・汎用恒星）が可能な場合に検索を実行する
-    const needsFetch = !isDbObject && (!!object.name || isBgStar || isServerStar || isGeneric);
+    const needsFetch = !isDbObject && !!object.name;
 
     const [isLoading, setIsLoading] = useState(needsFetch);
     const [astroData, setAstroData] = useState<AstroData | null>(null);
@@ -56,16 +45,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         
         if (object && needsFetch) {
             const langCode = language === 'ja' ? 'ja' : 'en';
-            
-            // object.name が空か、汎用的な仮名の場合は、
-            // astroDataService.ts で coordinates があれば SQLite にクエリを流せるように
-            // 仮名 "Star" を設定して渡す
-            const queryObj = { ...object };
-            if (!queryObj.name || isGeneric) {
-                queryObj.name = "Star";
-            }
-
-            resolveAstroData(queryObj, langCode).then(res => {
+            resolveAstroData(object, langCode).then(res => {
                 if (isMounted) { setAstroData(res); setIsLoading(false); }
             }).catch(() => { if (isMounted) setIsLoading(false); });
         }

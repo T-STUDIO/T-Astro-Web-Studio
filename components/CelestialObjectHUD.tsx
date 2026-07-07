@@ -34,7 +34,8 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     const isServerStar = object.id?.startsWith('server-star-');
     const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || 
                        EXTENDED_DSO_CATALOG.some(o => o.id === object.id || (object.name && o.name === object.name));
-    const needsFetch = !isDbObject && (!!object.name || isBgStar || isServerStar);
+    const hasCoords = object.ra !== undefined && object.dec !== undefined && object.ra !== '---' && object.dec !== '---';
+    const needsFetch = !isDbObject && (!!object.name || hasCoords);
 
     const [isLoading, setIsLoading] = useState(needsFetch);
     const [astroData, setAstroData] = useState<AstroData | null>(null);
@@ -92,16 +93,16 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         }
     }
 
-    let displayType = data.type;
+    let displayType = data.type || object.type || '---';
     let displayMag = (data.magnitude !== undefined && data.magnitude !== null && !isNaN(Number(data.magnitude))) 
         ? Number(data.magnitude).toFixed(1) 
-        : '---';
-    let displayRa = data.ra || '---';
-    let displayDec = data.dec || '---';
+        : (object.magnitude !== undefined ? object.magnitude.toFixed(1) : '---');
+    let displayRa = data.ra || object.ra || '---';
+    let displayDec = data.dec || object.dec || '---';
 
     if (needsFetch) {
         if (isLoading) {
-            displayType = '...'; displayMag = '...'; displayRa = '...'; displayDec = '...';
+            // Keep the pre-loaded data/object coords instead of showing empty '...'
         } else if (astroData) {
             displayType = astroData.type; displayMag = astroData.magnitude; displayRa = astroData.ra; displayDec = astroData.dec;
         }

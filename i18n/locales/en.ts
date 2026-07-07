@@ -26,7 +26,6 @@ export const en = {
     saveToDrive: 'Upload all settings to your Google Drive account.',
     loadFromDrive: 'Download and apply settings from Google Drive.',
     clientId: 'Enter your Google Cloud Console OAuth Client ID to enable Drive sync.',
-    apiKey: 'Set Gemini API Key for AI target info.',
     
     plateSolving: 'Analyze the image to identify the exact center coordinates (WCS).',
     novaSolver: 'Use Astrometry.net cloud service for image analysis (Internet required).',

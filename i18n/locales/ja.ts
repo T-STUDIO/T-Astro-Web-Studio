@@ -26,7 +26,6 @@ export const ja = {
     saveToDrive: 'すべての設定をGoogleドライブアカウントにアップロードします。',
     loadFromDrive: 'Googleドライブから設定をダウンロードして適用します。',
     clientId: 'Google Cloud Consoleで取得したOAuthクライアントIDを入力してください。',
-    apiKey: 'AIによる天体詳細情報の取得（Gemini API）に使用するAPIキーを設定します。',
     
     plateSolving: '画像を解析して、その中心の正確な天文座標（WCS）を特定します。',
     novaSolver: 'Astrometry.netのクラウドサービスを使用して画像を解析します（ネット接続が必要）。',

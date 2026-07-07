@@ -44,9 +44,10 @@ interface GeminiInfoModalProps {
   onCenter?: (object: CelestialObject) => void;
   isConnected?: boolean;
   sampStatus?: SampStatus;
+  localSolverSettings?: { host: string; port: number };
 }
 
-export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoading: isInitialLoading, content: initialContent, object, realtimeData, onClose, onGoTo, onCenter, isConnected, sampStatus }) => {
+export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoading: isInitialLoading, content: initialContent, object, realtimeData, onClose, onGoTo, onCenter, isConnected, sampStatus, localSolverSettings }) => {
   const { language, t } = useTranslation();
   const [wikiImage, setWikiImage] = useState<string | null>(null);
   const [astroData, setAstroData] = useState<AstroData | null>(null);
@@ -121,14 +122,14 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
       }
 
       if (generic) {
-        resolveAstroData(queryObj, langCode).then(stats => {
+        resolveAstroData(queryObj, langCode, localSolverSettings).then(stats => {
           if (stats) setAstroData(stats);
           setIsDataLoading(false);
         }).catch(() => setIsDataLoading(false));
       } else {
         Promise.all([
             fetchWikiImage(object.name),
-            resolveAstroData(queryObj, langCode)
+            resolveAstroData(queryObj, langCode, localSolverSettings)
         ]).then(([url, stats]) => {
             if (url) setWikiImage(url);
             if (stats) setAstroData(stats);

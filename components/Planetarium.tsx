@@ -1336,6 +1336,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         isConnected={isConnected} 
                         onClose={() => onSelectObject && onSelectObject(null)} 
                         MountController={MountController}
+                        localSolverSettings={localSolverSettings}
                     />
                 </div>
             )}

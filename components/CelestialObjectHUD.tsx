@@ -24,16 +24,17 @@ interface CelestialObjectHUDProps {
     compact?: boolean;
     onClose?: () => void;
     MountController?: React.ComponentType<any>;
+    localSolverSettings?: { host: string; port: number };
 }
 
-export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, data, isConnected, compact, onClose, MountController }) => {
+export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, data, isConnected, compact, onClose, MountController, localSolverSettings }) => {
     const { t, language } = useTranslation();
     
     const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
     const isServerStar = object.id?.startsWith('server-star-');
     const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || 
                        EXTENDED_DSO_CATALOG.some(o => o.id === object.id || (object.name && o.name === object.name));
-    const needsFetch = !isDbObject && !!object.name;
+    const needsFetch = !isDbObject && (!!object.name || isBgStar || isServerStar);
 
     const [isLoading, setIsLoading] = useState(needsFetch);
     const [astroData, setAstroData] = useState<AstroData | null>(null);
@@ -45,12 +46,12 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         
         if (object && needsFetch) {
             const langCode = language === 'ja' ? 'ja' : 'en';
-            resolveAstroData(object, langCode).then(res => {
+            resolveAstroData(object, langCode, localSolverSettings).then(res => {
                 if (isMounted) { setAstroData(res); setIsLoading(false); }
             }).catch(() => { if (isMounted) setIsLoading(false); });
         }
         return () => { isMounted = false; };
-    }, [object.id, language, needsFetch]);
+    }, [object.id, language, needsFetch, localSolverSettings?.host, localSolverSettings?.port]);
 
     const [isTracking, setIsTracking] = useState(false);
 

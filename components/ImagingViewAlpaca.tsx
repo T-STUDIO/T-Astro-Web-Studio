@@ -704,7 +704,7 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
   return (
     <div className="relative w-full h-full bg-black overflow-hidden flex flex-col select-none">
        {!isMini && selectedObject && isHudOpen && (
-           <CelestialObjectHUD object={selectedObject} data={selectedObjectData} isConnected={!!isLiveViewActive || isCapturing} onClose={() => setIsHudOpen(false)} />
+           <CelestialObjectHUD object={selectedObject} data={selectedObjectData} isConnected={!!isLiveViewActive || isCapturing} onClose={() => setIsHudOpen(false)} localSolverSettings={localSolverSettings} />
        )}
        <div className="relative w-full h-full bg-[#020617] active:cursor-grabbing overflow-hidden touch-none" style={{ cursor, touchAction: 'none' }} ref={containerRef} onWheel={(e) => setZoom(prev => Math.max(0.01, Math.min(20, prev * (1 - e.deltaY * 0.001))))} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
         <input type="file" accept="image/*,.fits,.fit,.fts" className="hidden" ref={fileInputRef} onChange={handleFileChange} />

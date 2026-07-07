@@ -12,105 +12,9 @@ import { ResetIcon } from './icons/ResetIcon';
 import { CELESTIAL_OBJECTS } from '../constants';
 import { AladinIcon } from './icons/AladinIcon';
 import { sendSkyCoord } from '../services/sampService';
-import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
+import { hmsToDegrees, dmsToDegrees, calculateLST, raDecToAzAlt, calculateTransitTime } from '../utils/coords';
 import { fetchSimbadData } from '../services/simbadService';
-
-const REAL_STARS_NAMES: Record<number, { en: string, ja: string }> = {
-    0: { en: "Sirius", ja: "シリウス" },
-    1: { en: "Canopus", ja: "カノープス" },
-    2: { en: "Arcturus", ja: "アークトゥルス" },
-    3: { en: "Rigil Kentaurus", ja: "リギル・ケンタウルス" },
-    4: { en: "Vega", ja: "ベガ" },
-    5: { en: "Capella", ja: "カペラ" },
-    6: { en: "Rigel", ja: "リゲル" },
-    7: { en: "Procyon", ja: "プロキオン" },
-    8: { en: "Betelgeuse", ja: "ベテルギウス" },
-    9: { en: "Achernar", ja: "アケルナル" },
-    10: { en: "Hadar", ja: "ハダル" },
-    11: { en: "Altair", ja: "アルタイル" },
-    12: { en: "Acrux", ja: "アクルックス" },
-    13: { en: "Aldebaran", ja: "アルデバラン" },
-    14: { en: "Antares", ja: "アンタレス" },
-    15: { en: "Spica", ja: "スピカ" },
-    16: { en: "Pollux", ja: "ポルックス" },
-    17: { en: "Fomalhaut", ja: "フォーマルハウト" },
-    18: { en: "Deneb", ja: "デネブ" },
-    19: { en: "Mimosa", ja: "ミモザ" },
-    20: { en: "Regulus", ja: "レグルス" },
-    21: { en: "Adhara", ja: "アダーラ" },
-    22: { en: "Shaula", ja: "シャウラ" },
-    23: { en: "Castor", ja: "カストル" },
-    24: { en: "Gacrux", ja: "ガクルックス" },
-    25: { en: "Elnath", ja: "エルナト" },
-    26: { en: "Alnilam", ja: "アルニラム" },
-    27: { en: "Alnitak", ja: "アルニタク" },
-    28: { en: "Alnair", ja: "アルナイル" },
-    29: { en: "Alioth", ja: "アリオト" },
-    30: { en: "Dubhe", ja: "ドゥーベ" },
-    31: { en: "Mirfak", ja: "ミルファク" },
-    32: { en: "Kaus Australis", ja: "カウス・アウストラリス" },
-    33: { en: "Wezen", ja: "ウェゼン" },
-    34: { en: "Alkaid", ja: "アルカイド" },
-    35: { en: "Sargas", ja: "サルガス" },
-    36: { en: "Avior", ja: "アビオール" },
-    37: { en: "Alhena", ja: "アルヘナ" },
-    38: { en: "Menkent", ja: "メンケント" },
-    39: { en: "Peacock", ja: "ピーコック" },
-    40: { en: "Polaris", ja: "ポラリス (北極星)" },
-    41: { en: "Alphard", ja: "アルファルド" },
-    42: { en: "Hamal", ja: "ハマル" },
-    43: { en: "Alpheratz", ja: "アルフェラッツ" },
-    44: { en: "Schedar", ja: "シェダル" },
-    45: { en: "Caph", ja: "カーフ" },
-    46: { en: "Gamma Cas", ja: "ガンマ・カス" },
-    47: { en: "Ruchbah", ja: "ルクバー" },
-    48: { en: "Segin", ja: "セギン" },
-    49: { en: "Merak", ja: "メラク" },
-    50: { en: "Phecda", ja: "フェクダ" },
-    51: { en: "Megrez", ja: "メグレス" },
-    52: { en: "Mizar", ja: "ミザール" },
-    53: { en: "Sadr", ja: "サドル" },
-    54: { en: "Gienah", ja: "ギエナー" },
-    55: { en: "Delta Cyg", ja: "デルタ・シグ" },
-    56: { en: "Albireo", ja: "アルビレオ" },
-    57: { en: "Bellatrix", ja: "ベラトリックス" },
-    58: { en: "Saiph", ja: "サイフ" },
-    59: { en: "Mintaka", ja: "ミンタカ" },
-    60: { en: "Markab", ja: "マルカブ" },
-    61: { en: "Scheat", ja: "シェアト" },
-    62: { en: "Algenib", ja: "アルゲニブ" },
-    63: { en: "Enif", ja: "エニフ" },
-    64: { en: "Sheliak", ja: "シェリアク" },
-    65: { en: "Sulafat", ja: "スラファト" },
-    66: { en: "Tarazed", ja: "タラゼド" },
-    67: { en: "Alshain", ja: "アルシャイン" },
-    68: { en: "Mirach", ja: "ミラク" },
-    69: { en: "Almach", ja: "アルマク" },
-    70: { en: "Denebola", ja: "デネボラ" },
-    71: { en: "Algieba", ja: "アルギエバ" },
-    72: { en: "Zosma", ja: "ゾスマ" },
-    73: { en: "Vindemiatrix", ja: "ヴィンデミアトリックス" },
-    74: { en: "Porrima", ja: "ポリマ" },
-    75: { en: "Alphecca", ja: "アルフェッカ" },
-    76: { en: "Izar", ja: "イザール" },
-    77: { en: "Muphrid", ja: "ムフリッド" },
-    78: { en: "Dschubba", ja: "ジュバ" },
-    79: { en: "Wei", ja: "ウェイ" },
-    80: { en: "Nunki", ja: "ヌンキ" },
-    81: { en: "Ascella", ja: "アセラ" }
-};
-
-const tryResolveFamousStarName = (obj: any) => {
-    if (!obj || !obj.id) return;
-    if (obj.id.startsWith('real_star_')) {
-        const parts = obj.id.split('_');
-        const idx = parseInt(parts[2], 10);
-        if (!isNaN(idx) && REAL_STARS_NAMES[idx]) {
-            obj.name = REAL_STARS_NAMES[idx].en;
-            obj.nameJa = REAL_STARS_NAMES[idx].ja;
-        }
-    }
-};
+import * as SettingsService from '../services/SettingsService';
 
 const isGenericObject = (obj: CelestialObject | null) => {
   if (!obj) return false;
@@ -144,21 +48,60 @@ interface GeminiInfoModalProps {
 
 export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoading: isInitialLoading, content: initialContent, object, realtimeData, onClose, onGoTo, onCenter, isConnected, sampStatus }) => {
   const { language, t } = useTranslation();
-  
-  // 有名な実在恒星（Sirius, Polaris等）の名前解決を適用
-  if (object) {
-      tryResolveFamousStarName(object);
-  }
-
   const [wikiImage, setWikiImage] = useState<string | null>(null);
   const [astroData, setAstroData] = useState<AstroData | null>(null);
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [displayContent, setDisplayContent] = useState(initialContent);
   const [isSummarizing, setIsSummarizing] = useState(false);
 
+  const [localRealtimeData, setLocalRealtimeData] = useState<ObjectRealtimeData | null>(null);
+
   useEffect(() => {
     setDisplayContent(initialContent);
   }, [initialContent]);
+
+  useEffect(() => {
+    if (realtimeData) {
+      setLocalRealtimeData(realtimeData);
+      return;
+    }
+
+    if (!isOpen || !object) {
+      setLocalRealtimeData(null);
+      return;
+    }
+
+    try {
+      let raDeg = 0;
+      let decDeg = 0;
+      if (object.raDeg !== undefined && object.decDeg !== undefined) {
+        raDeg = object.raDeg;
+        decDeg = object.decDeg;
+      } else {
+        raDeg = hmsToDegrees(object.ra);
+        decDeg = dmsToDegrees(object.dec);
+      }
+
+      const settings = SettingsService.loadSettings();
+      const loc = settings.location || { latitude: 35.6895, longitude: 139.6917, elevation: 0 };
+
+      const now = new Date();
+      const lst = calculateLST(loc.longitude, now);
+      const { alt, az } = raDecToAzAlt(raDeg, decDeg, loc.latitude, lst);
+      const transit = calculateTransitTime(raDeg, loc.longitude);
+      const isVisible = alt > 0;
+
+      setLocalRealtimeData({
+        azimuth: `${az.toFixed(1)}°`,
+        altitude: `${alt.toFixed(1)}°`,
+        transitTime: transit,
+        isVisible: isVisible
+      });
+    } catch (e) {
+      console.warn("Failed to calculate realtime data inside GeminiInfoModal:", e);
+      setLocalRealtimeData(null);
+    }
+  }, [isOpen, object, realtimeData]);
 
   useEffect(() => {
     if (isOpen && object) {
@@ -472,17 +415,17 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
               <div className="bg-slate-800/80 p-2 sm:p-3">
                   <div className="text-slate-500 uppercase text-[10px] font-bold tracking-wider mb-1">{t('geminiModal.realtime.azAlt')}</div>
                   <div className="text-xs sm:text-sm text-slate-300 font-mono">
-                      {realtimeData ? `${realtimeData.az}° / ${realtimeData.alt}°` : '-- / --'}
+                      {localRealtimeData ? `${localRealtimeData.azimuth} / ${localRealtimeData.altitude}` : '-- / --'}
                   </div>
               </div>
               <div className="bg-slate-800/80 p-2 sm:p-3">
                   <div className="text-slate-500 uppercase text-[10px] font-bold tracking-wider mb-1">{t('geminiModal.realtime.transit')}</div>
-                  <div className="text-sm sm:text-base text-slate-200 font-mono">{realtimeData?.transit || '--:--'}</div>
+                  <div className="text-sm sm:text-base text-slate-200 font-mono">{localRealtimeData?.transitTime || '--:--'}</div>
               </div>
                <div className="bg-slate-800/80 p-2 sm:p-3 col-span-2">
                   <div className="text-slate-500 uppercase text-[10px] font-bold tracking-wider mb-1">{t('geminiModal.realtime.visibility')}</div>
-                  <div className={`text-sm sm:text-base font-mono ${realtimeData?.isRising ? 'text-green-500' : 'text-red-500'}`}>
-                      {realtimeData ? (realtimeData.isRising ? t('geminiModal.realtime.visible') : t('geminiModal.realtime.set')) : '---'}
+                  <div className={`text-sm sm:text-base font-mono ${localRealtimeData?.isVisible ? 'text-green-500' : 'text-red-500'}`}>
+                      {localRealtimeData ? (localRealtimeData.isVisible ? t('geminiModal.realtime.visible') : t('geminiModal.realtime.set')) : '---'}
                   </div>
               </div>
            </div>

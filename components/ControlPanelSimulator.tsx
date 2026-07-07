@@ -516,7 +516,12 @@ const EquipmentPanel = memo((props: any) => {
                 <div className="space-y-1 mt-2 border-t border-slate-700 pt-2">
                     <label className="font-semibold text-slate-400 block">{t('controlPanel.location.localTime')}:</label>
                     <div className="flex gap-2"><input type="datetime-local" value={localTime ? toLocalISOString(localTime) : ''} onChange={(e) => onSetTime(new Date(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:border-red-500 outline-none select-text" title={t('tooltips.localTime')} /></div>
-                    <Button onClick={onSetTimeNow} variant={isTimeRunning ? 'primary' : 'secondary'} className="w-full text-xs h-8 mt-2">{isTimeRunning ? t('controlPanel.liveView') : t('deviceSettings.set')}</Button>
+                    <Button onClick={onSetTimeNow} variant={isTimeRunning ? 'primary' : 'secondary'} className="w-full text-xs h-8 mt-2">
+                        {isTimeRunning 
+                            ? (useTranslation().language === 'ja' ? 'リアルタイム同期中' : 'Syncing Live Time') 
+                            : (useTranslation().language === 'ja' ? '現在時刻を設定' : 'Set Current Time')
+                        }
+                    </Button>
                 </div>
             </div>
             <div className="space-y-2 mt-2"><Button onClick={() => onSendLocationToMount?.()} disabled={!isConnected || mountSyncStatus === 'sending'} variant={mountSyncStatus === 'success' ? 'secondary' : 'primary'} className={`w-full text-xs transition-colors ${mountSyncStatus === 'success' ? 'border-green-600 text-green-400 hover:text-green-300' : ''}`} title={t('tooltips.syncToMount')}>

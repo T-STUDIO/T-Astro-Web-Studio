@@ -98,38 +98,26 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
         const localRes = await fetch(url);
         const localData = await localRes.json();
         if (localData && localData.status === 'success') {
-            const localNameUpper = localData.name ? localData.name.toUpperCase() : "";
-            const isLocalGeneric = !localNameUpper || 
-                localNameUpper === 'STAR' || 
-                localNameUpper === 'UNNAMED' ||
-                localNameUpper.includes('恒星') ||
-                localNameUpper.includes('BACKGROUND') ||
-                localNameUpper.startsWith('BG_STAR') ||
-                localNameUpper.startsWith('REAL_STAR') ||
-                localNameUpper.startsWith('SERVER-STAR');
-
-            if (!isLocalGeneric) {
-                let dispType = localData.type || '---';
-                if (lang === 'ja' && TYPE_MAP_JA[dispType]) {
-                    dispType = TYPE_MAP_JA[dispType];
-                }
-                
-                // SQLite returns floats for RA/Dec degrees, format them into HMS/DMS for HUD
-                const rawRa = Number(localData.ra);
-                const rawDec = Number(localData.dec);
-                const formattedRa = isNaN(rawRa) ? (localData.ra || '---') : degreesToHms(rawRa);
-                const formattedDec = isNaN(rawDec) ? (localData.dec || '---') : degreesToDms(rawDec);
-
-                return {
-                    type: dispType,
-                    magnitude: (localData.mag !== undefined && localData.mag !== null && !isNaN(Number(localData.mag))) ? Number(localData.mag).toFixed(1) : '---',
-                    ra: formattedRa,
-                    dec: formattedDec,
-                    source: 'Database',
-                    isLoading: false,
-                    resolvedName: localData.name
-                };
+            let dispType = localData.type || '---';
+            if (lang === 'ja' && TYPE_MAP_JA[dispType]) {
+                dispType = TYPE_MAP_JA[dispType];
             }
+            
+            // SQLite returns floats for RA/Dec degrees, format them into HMS/DMS for HUD
+            const rawRa = Number(localData.ra);
+            const rawDec = Number(localData.dec);
+            const formattedRa = isNaN(rawRa) ? (localData.ra || '---') : degreesToHms(rawRa);
+            const formattedDec = isNaN(rawDec) ? (localData.dec || '---') : degreesToDms(rawDec);
+
+            return {
+                type: dispType,
+                magnitude: (localData.mag !== undefined && localData.mag !== null && !isNaN(Number(localData.mag))) ? Number(localData.mag).toFixed(1) : '---',
+                ra: formattedRa,
+                dec: formattedDec,
+                source: 'Database',
+                isLoading: false,
+                resolvedName: localData.name
+            };
         }
     } catch (e) {
         console.warn("Failed to query resolve_name from local SQLite API:", e);
@@ -178,42 +166,7 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
     }
 
     // Clean name for Simbad (remove parens)
-    let cleanSimbadName = searchName.split('(')[0].trim(); 
-    
-    const isGenericStar = !cleanSimbadName || 
-        cleanSimbadName.toLowerCase() === 'star' || 
-        cleanSimbadName.toLowerCase() === 'unnamed' ||
-        cleanSimbadName.includes('恒星') ||
-        cleanSimbadName.includes('background') ||
-        cleanSimbadName.startsWith('bg_star_') ||
-        cleanSimbadName.startsWith('real_star_') ||
-        cleanSimbadName.startsWith('server-star-');
-
-    if (isGenericStar && ((obj as any).raDeg !== undefined || obj.ra)) {
-        let raVal = 0;
-        let decVal = 0;
-        if ((obj as any).raDeg !== undefined && (obj as any).decDeg !== undefined) {
-            raVal = (obj as any).raDeg;
-            decVal = (obj as any).decDeg;
-        } else {
-            raVal = hmsToDegrees(obj.ra);
-            decVal = dmsToDegrees(obj.dec);
-        }
-
-        if (!isNaN(raVal) && !isNaN(decVal)) {
-            const raH = Math.floor(raVal / 15);
-            const raM = Math.floor(((raVal / 15) - raH) * 60);
-            const raS = (((raVal / 15) - raH) * 60 - raM) * 60;
-            
-            const decSign = decVal >= 0 ? '+' : '-';
-            const decAbs = Math.abs(decVal);
-            const decD = Math.floor(decAbs);
-            const decMin = Math.floor((decAbs - decD) * 60);
-            const decSec = ((decAbs - decD) * 60 - decMin) * 60;
-
-            cleanSimbadName = `${raH.toString().padStart(2, '0')} ${raM.toString().padStart(2, '0')} ${raS.toFixed(2).padStart(5, '0')} ${decSign}${decD.toString().padStart(2, '0')} ${decMin.toString().padStart(2, '0')} ${decSec.toFixed(2).padStart(5, '0')}`;
-        }
-    } 
+    const cleanSimbadName = searchName.split('(')[0].trim(); 
     
     // For Japanese Wikipedia search
     if (lang === 'ja' && obj.nameJa) {
@@ -275,51 +228,6 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
         hasExternalData = true;
     } else {
         finalData.type = internalType; 
-    }
-
-    if (simbadData?.aliases && simbadData.aliases.length > 0) {
-        // SIMBADから返された複数の別名（エイリアス）から、優先順位に適合する最適な名前を探す
-        // 優先順位: KStars (固有名) -> Tycho (TYC) -> HD -> HIP -> その他
-        let bestName = simbadData.aliases[0];
-        let bestPriority = 5; // 初期値（最も低い優先度）
-
-        for (const alias of simbadData.aliases) {
-            const aliasUpper = alias.toUpperCase().replace(/\s+/g, '');
-            
-            // カタログ名のプレフィックス判定
-            const isTyc = aliasUpper.startsWith('TYC') || aliasUpper.includes('TYCHO');
-            const isHd = aliasUpper.startsWith('HD');
-            const isHip = aliasUpper.startsWith('HIP');
-            
-            const isOtherCatalog = aliasUpper.startsWith('SAO') || 
-                                  aliasUpper.startsWith('BD') || 
-                                  aliasUpper.startsWith('CD') || 
-                                  aliasUpper.startsWith('USNO') || 
-                                  aliasUpper.startsWith('UCAC') || 
-                                  aliasUpper.startsWith('2MASS') || 
-                                  aliasUpper.startsWith('WISE');
-            
-            if (!isTyc && !isHd && !isHip && !isOtherCatalog && bestPriority > 1) {
-                // 固有名 (KStarsなどに登録されている固有名称)
-                bestName = alias;
-                bestPriority = 1;
-            } else if (isTyc && bestPriority > 2) {
-                // Tycho2 Catalog
-                bestName = alias;
-                bestPriority = 2;
-            } else if (isHd && bestPriority > 3) {
-                // HD Catalog
-                bestName = alias;
-                bestPriority = 3;
-            } else if (isHip && bestPriority > 4) {
-                // HIP Catalog
-                bestName = alias;
-                bestPriority = 4;
-            }
-        }
-
-        finalData.resolvedName = bestName;
-        hasExternalData = true;
     }
 
     if (hasExternalData) {

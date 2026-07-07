@@ -29,7 +29,7 @@ const TYPE_MAP_JA: Record<string, string> = {
     'Supernova Remnant': '超新星残骸'
 };
 
-export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'): Promise<AstroData> => {
+export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', localSolverSettings?: { host: string; port: number }): Promise<AstroData> => {
     const isSolarSystem = obj.id === 'moon' || ['mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'].includes(obj.id || '');
     if (isSolarSystem) {
         const solarObj = solarSystemService.calculatePositions().find(s => s.id === obj.id);
@@ -73,7 +73,15 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
         };
     }
 
-    if (!obj.name) {
+    const isBgStar = obj.id?.startsWith('bg_star_') || obj.id?.startsWith('real_star_');
+    const isServerStar = obj.id?.startsWith('server-star-');
+
+    let queryName = obj.name || '';
+    if (!queryName && (isBgStar || isServerStar)) {
+        queryName = 'Star';
+    }
+
+    if (!queryName) {
         return {
             type: internalType,
             magnitude: obj.magnitude ? obj.magnitude.toFixed(1) : '---',
@@ -86,8 +94,10 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja'):
 
     // --- Try Local SQLite Database Resolve First (Zero-Network, Instant) ---
     try {
-        const cleanQueryName = obj.name.split('(')[0].split('（')[0].trim();
-        let url = `/api/resolve_name?name=${encodeURIComponent(cleanQueryName)}`;
+        const cleanQueryName = queryName.split('(')[0].split('（')[0].trim();
+        const host = localSolverSettings?.host || 'localhost';
+        const port = localSolverSettings?.port || 6001;
+        let url = `http://${host}:${port}/api/resolve_name?name=${encodeURIComponent(cleanQueryName)}`;
         if (obj.ra && obj.dec) {
             const raDeg = typeof obj.ra === 'number' ? obj.ra : hmsToDegrees(obj.ra);
             const decDeg = typeof obj.dec === 'number' ? obj.dec : dmsToDegrees(obj.dec);

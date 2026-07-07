@@ -29,24 +29,21 @@ interface CelestialObjectHUDProps {
 export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, data, isConnected, compact, onClose, MountController }) => {
     const { t, language } = useTranslation();
     
-    // 早期に object.name を仮名で初期化して、以降の判定や親コンポーネントでの undefined によるクラッシュを防ぐ
-    if (object && !object.name) {
-        object.name = `Star (Mag ${object.magnitude?.toFixed(1)})`;
-    }
-
     const isBgStar = object.id?.startsWith('bg_star_') || object.id?.startsWith('real_star_');
     const isServerStar = object.id?.startsWith('server-star-');
     const isDbObject = CELESTIAL_OBJECTS.some(o => o.id === object.id) || 
                        EXTENDED_DSO_CATALOG.some(o => o.id === object.id || (object.name && o.name === object.name));
     
-    // 恒星の汎用名であるか判定
+    // 恒星の汎用名（または名前がない、あるいは背景星）であるか判定
     const isGeneric = !object.name || 
+                      object.name.toLowerCase() === 'star' ||
                       object.name.toLowerCase().includes('star (mag') || 
                       object.name.toLowerCase().includes('star(mag') ||
                       object.name.toLowerCase().includes('background') ||
                       object.name.toLowerCase().includes('unnamed') ||
                       (object.nameJa && (object.nameJa.includes('恒星 (光度') || object.nameJa.includes('恒星(光度')));
 
+    // データベース天体以外で、名前があるか、もしくは座標検索（背景星・汎用恒星）が可能な場合に検索を実行する
     const needsFetch = !isDbObject && (!!object.name || isBgStar || isServerStar || isGeneric);
 
     const [isLoading, setIsLoading] = useState(needsFetch);
@@ -61,22 +58,15 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
             const langCode = language === 'ja' ? 'ja' : 'en';
             
             // object.name が空か、汎用的な仮名の場合は、
-            // astroDataService.ts の if (!obj.name) を通過させ、
-            // solver_server.py で is_generic_star と判定されるように "Star" を設定したオブジェクトを渡す
+            // astroDataService.ts で coordinates があれば SQLite にクエリを流せるように
+            // 仮名 "Star" を設定して渡す
             const queryObj = { ...object };
             if (!queryObj.name || isGeneric) {
                 queryObj.name = "Star";
             }
 
             resolveAstroData(queryObj, langCode).then(res => {
-                if (isMounted) { 
-                    setAstroData(res); 
-                    setIsLoading(false); 
-                    // データベースで解決された実名を親の selectedObject にも即時反映する
-                    if (res && res.resolvedName) {
-                        object.name = res.resolvedName;
-                    }
-                }
+                if (isMounted) { setAstroData(res); setIsLoading(false); }
             }).catch(() => { if (isMounted) setIsLoading(false); });
         }
         return () => { isMounted = false; };

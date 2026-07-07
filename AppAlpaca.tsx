@@ -536,7 +536,7 @@ const AppAlpaca: React.FC = () => {
                         onUpdateLongitude={(lon: number) => setLocation(prev => ({ ...prev || { latitude: 0, longitude: 0 }, longitude: lon }))}
                         onUpdateElevation={(elev: number) => setLocation(prev => ({ ...prev || { latitude: 0, longitude: 0 }, elevation: elev }))}
                         localTime={localTime}
-                        onSetTime={setLocalTime}
+                        onSetTime={(time: Date) => { setLocalTime(time); setIsTimeRunning(false); }}
                         isTimeRunning={isTimeRunning}
                         onSetTimeNow={() => { setLocalTime(new Date()); setIsTimeRunning(true); }}
                         locationStatus={locationStatus}

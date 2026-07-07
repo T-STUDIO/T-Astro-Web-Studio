@@ -845,6 +845,7 @@ const App: React.FC = () => {
         onGoTo={handleSlew}
         onCenter={setSelectedObject}
         isConnected={connectionStatus === 'Connected'}
+        localSolverSettings={localSolverSettings}
       />
       <DeviceSettingsModal 
         isOpen={isDeviceSettingsOpen} 

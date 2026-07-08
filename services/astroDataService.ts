@@ -73,20 +73,18 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', 
         };
     }
 
-    const isBgStar = obj.id?.startsWith('bg_star_') || obj.id?.startsWith('real_star_');
-    const isServerStar = obj.id?.startsWith('server-star-');
-
     let queryName = obj.name || '';
-    if (!queryName && (isBgStar || isServerStar)) {
-        queryName = 'Star';
-    }
+    const isGeneric = !queryName || ['STAR', 'INDEXSTAR', 'BACKGROUND', '恒星'].includes(queryName.toUpperCase().trim());
 
-    if (!queryName) {
+
+    const hasCoords = obj.ra !== undefined && obj.dec !== undefined && obj.ra !== '---' && obj.dec !== '---';
+
+    if (!queryName && !hasCoords) {
         return {
             type: internalType,
-            magnitude: obj.magnitude ? obj.magnitude.toFixed(1) : '---',
-            ra: obj.ra,
-            dec: obj.dec,
+            magnitude: (obj.magnitude !== undefined && obj.magnitude !== null) ? obj.magnitude.toFixed(1) : '---',
+            ra: obj.ra || '---',
+            dec: obj.dec || '---',
             source: 'Database',
             isLoading: false
         };
@@ -94,11 +92,11 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', 
 
     // --- Try Local SQLite Database Resolve First (Zero-Network, Instant) ---
     try {
-        const cleanQueryName = queryName.split('(')[0].split('（')[0].trim();
+        const cleanQueryName = (queryName && !isGeneric) ? queryName.split('(')[0].split('（')[0].trim() : '';
         const host = localSolverSettings?.host || 'localhost';
         const port = localSolverSettings?.port || 6001;
         let url = `http://${host}:${port}/api/resolve_name?name=${encodeURIComponent(cleanQueryName)}`;
-        if (obj.ra && obj.dec) {
+        if (hasCoords) {
             const raDeg = typeof obj.ra === 'number' ? obj.ra : hmsToDegrees(obj.ra);
             const decDeg = typeof obj.dec === 'number' ? obj.dec : dmsToDegrees(obj.dec);
             if (!isNaN(raDeg) && !isNaN(decDeg)) {

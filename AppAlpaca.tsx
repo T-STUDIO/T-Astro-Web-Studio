@@ -461,7 +461,7 @@ const AppAlpaca: React.FC = () => {
               (obj.name.startsWith('bg_star_') || obj.name.startsWith('server-star-') || obj.name.toLowerCase().includes('unnamed') || obj.name === 'Telescope Target');
           
           if (isGenericStar) {
-              const resolved = await resolveAstroData(obj, language === 'ja' ? 'ja' : 'en');
+              const resolved = await resolveAstroData(obj, language === 'ja' ? 'ja' : 'en', localSolverSettings);
               if (resolved && resolved.resolvedName) {
                   queryName = resolved.resolvedName;
               }

@@ -17,20 +17,7 @@ import { fetchSimbadData } from '../services/simbadService';
 import * as SettingsService from '../services/SettingsService';
 
 const isGenericObject = (obj: CelestialObject | null) => {
-  if (!obj) return false;
-  const lowerName = (obj.name || '').toLowerCase();
-  const lowerNameJa = (obj.nameJa || '').toLowerCase();
-  const lowerId = (obj.id || '').toLowerCase();
-  return !obj.name ||
-         lowerName.includes('star (mag') || 
-         lowerName.includes('star(mag') ||
-         lowerNameJa.includes('恒星 (光度') || 
-         lowerNameJa.includes('恒星(光度') || 
-         lowerName.includes('background') || 
-         lowerId.includes('background') ||
-         lowerId.includes('server-star') ||
-         lowerId.includes('bg_star') ||
-         lowerId.includes('real_star');
+  return false;
 };
 
 interface GeminiInfoModalProps {

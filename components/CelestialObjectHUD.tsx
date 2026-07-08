@@ -75,11 +75,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
     }
 
     if (!displayName) {
-        if (isBgStar || isServerStar) {
-            displayName = language === 'ja' ? `恒星 (光度 ${object.magnitude?.toFixed(1)})` : `Star (Mag ${object.magnitude?.toFixed(1)})`;
-        } else {
-            displayName = language === 'ja' ? '未知の天体' : 'Unknown Object';
-        }
+        displayName = language === 'ja' ? '未知の天体' : 'Unknown Object';
     }
 
     const nameForNgcMatch = (astroData && astroData.resolvedName) ? astroData.resolvedName : object.name;

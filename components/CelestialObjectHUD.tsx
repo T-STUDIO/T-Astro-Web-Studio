@@ -74,8 +74,29 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
         displayName = astroData.resolvedName;
     }
 
-    if (!displayName) {
-        displayName = language === 'ja' ? '未知の天体' : 'Unknown Object';
+    const isGenericName = !displayName || 
+        ['STAR', 'INDEXSTAR', 'BACKGROUND', '恒星', 'UNKNOWN', 'UNKNOWN OBJECT', '未知の天体'].includes(displayName.toUpperCase().trim()) ||
+        displayName.startsWith('bg_star_') ||
+        displayName.startsWith('real_star_') ||
+        displayName.startsWith('server-star-') ||
+        displayName.toLowerCase().includes('unnamed');
+
+    if (isGenericName) {
+        const currentType = data?.type || object.type || '---';
+        const tLower = currentType.toLowerCase().trim();
+        if (tLower === 'star' || tLower === '恒星') {
+            displayName = language === 'ja' ? '恒星' : 'Star';
+        } else if (tLower === 'nebula' || tLower === '星雲') {
+            displayName = language === 'ja' ? '星雲' : 'Nebula';
+        } else if (tLower === 'galaxy' || tLower === '銀河') {
+            displayName = language === 'ja' ? '銀河' : 'Galaxy';
+        } else if (tLower === 'cluster' || tLower === '星団') {
+            displayName = language === 'ja' ? '星団' : 'Cluster';
+        } else if (tLower === 'planet' || tLower === '惑星') {
+            displayName = language === 'ja' ? '惑星' : 'Planet';
+        } else {
+            displayName = language === 'ja' ? '天体' : 'Celestial Object';
+        }
     }
 
     const nameForNgcMatch = (astroData && astroData.resolvedName) ? astroData.resolvedName : object.name;

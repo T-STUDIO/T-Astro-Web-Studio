@@ -17,7 +17,10 @@ import { fetchSimbadData } from '../services/simbadService';
 import * as SettingsService from '../services/SettingsService';
 
 const isGenericObject = (obj: CelestialObject | null) => {
-  return false;
+  if (!obj) return false;
+  const name = obj.name || '';
+  return !CELESTIAL_OBJECTS.some(o => o.name === name) && 
+         (name.startsWith('bg_star_') || name.startsWith('server-star-') || name.toLowerCase().includes('unnamed') || name === 'Telescope Target');
 };
 
 interface GeminiInfoModalProps {
@@ -100,13 +103,7 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
       const langCode = language === 'ja' ? 'ja' : 'en';
       const generic = isGenericObject(object);
 
-      // object.name が空か、汎用的な仮名の場合は、
-      // astroDataService.ts の if (!obj.name) を通過させ、
-      // solver_server.py で is_generic_star と判定されるように "Star" を設定したオブジェクトを渡す
       const queryObj = { ...object };
-      if (!queryObj.name || generic) {
-          queryObj.name = "Star";
-      }
 
       if (generic) {
         resolveAstroData(queryObj, langCode, localSolverSettings).then(stats => {
@@ -124,7 +121,7 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
         }).catch(() => setIsDataLoading(false));
       }
     }
-  }, [isOpen, object, language]);
+  }, [isOpen, object, language, localSolverSettings, localSolverSettings?.host, localSolverSettings?.port]);
 
   if (!isOpen || !object) return null;
 
@@ -163,6 +160,36 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
       displayMag = astroData.magnitude;
       displayRa = astroData.ra;
       displayDec = astroData.dec;
+  }
+
+  let displayName = (language === 'ja' && object.nameJa) ? object.nameJa : object.name;
+  if (astroData && astroData.resolvedName) {
+      displayName = astroData.resolvedName;
+  }
+
+  const isGenericName = !displayName || 
+      ['STAR', 'INDEXSTAR', 'BACKGROUND', '恒星', 'UNKNOWN', 'UNKNOWN OBJECT', '未知の天体'].includes(displayName.toUpperCase().trim()) ||
+      displayName.startsWith('bg_star_') ||
+      displayName.startsWith('real_star_') ||
+      displayName.startsWith('server-star-') ||
+      displayName.toLowerCase().includes('unnamed');
+
+  if (isGenericName) {
+      const currentType = displayType || object.type || '---';
+      const tLower = currentType.toLowerCase().trim();
+      if (tLower === 'star' || tLower === '恒星') {
+          displayName = language === 'ja' ? '恒星' : 'Star';
+      } else if (tLower === 'nebula' || tLower === '星雲') {
+          displayName = language === 'ja' ? '星雲' : 'Nebula';
+      } else if (tLower === 'galaxy' || tLower === '銀河') {
+          displayName = language === 'ja' ? '銀河' : 'Galaxy';
+      } else if (tLower === 'cluster' || tLower === '星団') {
+          displayName = language === 'ja' ? '星団' : 'Cluster';
+      } else if (tLower === 'planet' || tLower === '惑星') {
+          displayName = language === 'ja' ? '惑星' : 'Planet';
+      } else {
+          displayName = language === 'ja' ? '天体' : 'Celestial Object';
+      }
   }
 
   const handleSearchWikipedia = async () => {
@@ -291,7 +318,7 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
           <div className="flex items-center gap-3">
             <GeminiIcon className="w-7 h-7 text-red-500" />
             <div className="overflow-hidden">
-                <h2 className="text-lg md:text-xl font-bold text-slate-100 truncate">{(needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name}</h2>
+                <h2 className="text-lg md:text-xl font-bold text-slate-100 truncate">{displayName}</h2>
                 <p className="text-xs text-red-400 truncate">{displayType}</p>
             </div>
           </div>
@@ -308,7 +335,7 @@ export const GeminiInfoModal: React.FC<GeminiInfoModalProps> = ({ isOpen, isLoad
                    <>
                        <img 
                          src={displayImage} 
-                         alt={(needsFetch && astroData?.resolvedName) ? astroData.resolvedName : object.name} 
+                         alt={displayName} 
                          className="w-full h-full object-contain"
                        />
                        {imageSourceLabel && (

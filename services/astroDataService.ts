@@ -137,34 +137,7 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', 
     }
 
     const isAnno = obj.id?.startsWith('anno_');
-    if (isAnno) {
-        const cleanSimbadName = obj.name.split('(')[0].trim();
-        try {
-            const simbadData = await fetchSimbadData(cleanSimbadName, lang);
-            if (simbadData) {
-                return {
-                    type: simbadData.type || obj.type || '---',
-                    magnitude: simbadData.magnitude || '---',
-                    ra: simbadData.ra || '---',
-                    dec: simbadData.dec || '---',
-                    source: 'Simbad',
-                    isLoading: false
-                };
-            }
-        } catch (simbadErr) {
-            console.warn("Failed online SIMBAD query for anno, falling back to original annotation details:", simbadErr);
-        }
-        
-        // If SIMBAD lookup fails or is offline, instantly return the original annotated values to prevent infinite loading
-        return {
-            type: obj.type || '---',
-            magnitude: (obj.magnitude !== undefined && obj.magnitude !== null) ? obj.magnitude.toFixed(1) : '---',
-            ra: obj.ra || '---',
-            dec: obj.dec || '---',
-            source: 'Database',
-            isLoading: false
-        };
-    }
+    // Allow annotations to proceed to online resolution if local SQLite resolution fails
 
     // --- Search Name Resolution with NGC->Messier Preference ---
     let searchName = obj.name;
@@ -260,6 +233,16 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', 
 
     if (simbadData?.resolvedName) {
         finalData.resolvedName = simbadData.resolvedName;
+    }
+
+    if (isAnno) {
+        if (!finalData.resolvedName || finalData.resolvedName === '---') {
+            finalData.resolvedName = obj.name;
+        }
+        if (finalData.type === '---') finalData.type = obj.type || '---';
+        if (finalData.magnitude === '---' && obj.magnitude !== undefined && obj.magnitude !== null) {
+            finalData.magnitude = obj.magnitude.toFixed(1);
+        }
     }
 
     return finalData;

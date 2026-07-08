@@ -5,6 +5,7 @@ export interface SimbadData {
     ra: string;
     dec: string;
     aliases?: string[];
+    resolvedName?: string;
 }
 
 const PROXY_BASE = "https://corsproxy.io/?";
@@ -208,12 +209,15 @@ export const fetchSimbadData = async (objectName: string, lang: 'en' | 'ja' = 'e
             if (a) aliases.push(a);
         }
 
+        const oname = resolver.getElementsByTagName("oname")[0]?.textContent || resolver.getElementsByTagName("oid")[0]?.textContent;
+
         return {
             type: mapSimbadTypes(otype || '', lang),
             magnitude: mag,
             ra: raStr,
             dec: decStr,
-            aliases: aliases.length > 0 ? aliases : undefined
+            aliases: aliases.length > 0 ? aliases : undefined,
+            resolvedName: oname || undefined
         };
 
     } catch (e) {

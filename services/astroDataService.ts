@@ -74,7 +74,12 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', 
     }
 
     let queryName = obj.name || '';
-    const isGeneric = !queryName || ['STAR', 'INDEXSTAR', 'BACKGROUND', '恒星'].includes(queryName.toUpperCase().trim());
+    const isGeneric = !queryName || 
+        ['STAR', 'INDEXSTAR', 'BACKGROUND', '恒星'].includes(queryName.toUpperCase().trim()) ||
+        queryName.startsWith('bg_star_') ||
+        queryName.startsWith('server-star-') ||
+        queryName.toLowerCase().includes('unnamed') ||
+        queryName === 'Telescope Target';
 
 
     const hasCoords = obj.ra !== undefined && obj.dec !== undefined && obj.ra !== '---' && obj.dec !== '---';
@@ -174,7 +179,16 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', 
     }
 
     // Clean name for Simbad (remove parens)
-    const cleanSimbadName = searchName.split('(')[0].trim(); 
+    let cleanSimbadName = searchName.split('(')[0].trim(); 
+    
+    if (isGeneric && hasCoords) {
+        const raDeg = typeof obj.ra === 'number' ? obj.ra : hmsToDegrees(obj.ra);
+        const decDeg = typeof obj.dec === 'number' ? obj.dec : dmsToDegrees(obj.dec);
+        if (!isNaN(raDeg) && !isNaN(decDeg)) {
+            const decSign = decDeg >= 0 ? '+' : '';
+            cleanSimbadName = `${raDeg.toFixed(5)} ${decSign}${decDeg.toFixed(5)}`;
+        }
+    }
     
     // For Japanese Wikipedia search
     if (lang === 'ja' && obj.nameJa) {
@@ -242,6 +256,10 @@ export const resolveAstroData = async (obj: CelestialObject, lang: 'en' | 'ja', 
         if (wikiData && simbadData) finalData.source = 'Wiki+Simbad';
         else if (simbadData) finalData.source = 'Simbad';
         else if (wikiData) finalData.source = 'Wikipedia';
+    }
+
+    if (simbadData?.resolvedName) {
+        finalData.resolvedName = simbadData.resolvedName;
     }
 
     return finalData;

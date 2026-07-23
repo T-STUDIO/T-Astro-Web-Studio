@@ -1144,8 +1144,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     useEffect(() => {
         const controller = new AbortController();
         const signal = controller.signal;
+        const fov = 60 / zoom;
 
-        if (isMini || !settings.showDSS) {
+        if (isMini || !settings.showDSS || fov > 5.0) {
             setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();
@@ -1155,7 +1156,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const currentTime = effTimeRef.current;
         const lst = calculateLST(currentLoc.longitude, currentTime);
         const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
-        const fov = 60 / zoom;
         
         // Only update if moved significantly
         const dist = Math.hypot(center.ra - lastDssParams.current.ra, center.dec - lastDssParams.current.dec);
@@ -1173,9 +1173,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            // Adjust tile size based on zoom level
-            // For wide fields, we need larger tiles to cover the view
-            const tileFov = viewFov > 30 ? 15.0 : viewFov > 15 ? 7.5 : viewFov > 5 ? 3.0 : 1.5;
+            // Adjust tile size based on zoom level (max 2 degrees for STScI, max 1 degree for ESO)
+            const tileFov = viewFov > 3.0 ? 1.5 : 0.75;
             
             // If view is wider than one tile, fetch a grid
             const offsets = viewFov > tileFov * 0.4 ? [
@@ -1183,14 +1182,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 {dra: tileFov, ddec: 0}, {dra: -tileFov, ddec: 0},
                 {dra: 0, ddec: tileFov}, {dra: 0, ddec: -tileFov},
                 {dra: tileFov, ddec: tileFov}, {dra: -tileFov, ddec: tileFov},
-                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov},
-                // Add more tiles for very wide fields
-                ...(viewFov > tileFov * 1.2 ? [
-                    {dra: 2*tileFov, ddec: 0}, {dra: -2*tileFov, ddec: 0},
-                    {dra: 0, ddec: 2*tileFov}, {dra: 0, ddec: -2*tileFov},
-                    {dra: 2*tileFov, ddec: 2*tileFov}, {dra: -2*tileFov, ddec: 2*tileFov},
-                    {dra: 2*tileFov, ddec: -2*tileFov}, {dra: -2*tileFov, ddec: -2*tileFov}
-                ] : [])
+                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov}
             ] : [{dra: 0, ddec: 0}];
 
             const newTiles: { image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[] = [];
@@ -1204,12 +1196,12 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 
                 const sources = [
                     {
-                        name: 'NASA SkyView',
-                        url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
+                        name: 'STScI DSS',
+                        url: `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${targetRa}&d=${targetDec}&e=J2000&h=${Math.min(120, tileFov * 60)}&w=${Math.min(120, tileFov * 60)}&f=gif`
                     },
                     {
-                        name: 'Aladin',
-                        url: `https://aladin.cds.unistra.fr/AladinLite/export/nph-export.cgi?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=512&height=512&survey=P%2FDSS2%2Fcolor&format=jpg`
+                        name: 'ESO DSS',
+                        url: `https://archive.eso.org/dss/dss/image?ra=${targetRa}&dec=${targetDec}&x=${Math.min(60, tileFov * 60)}&y=${Math.min(60, tileFov * 60)}&mime-type=download-gif`
                     }
                 ];
 

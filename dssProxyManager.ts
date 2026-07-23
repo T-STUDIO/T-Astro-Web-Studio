@@ -4,44 +4,30 @@ import * as http from 'http';
 import { URL } from 'url';
 
 /**
- * Registers the DSS Proxy route inside the provided Express Router.
- * This manager encapsulates NASA SkyView and CDS Aladin DSS tile proxying
- * to completely resolve CORS constraints in the browser.
+ * Helper function to fetch URL with automatic redirect tracking (up to maxRedirects).
+ * Completely encapsulates SSL bypass, header spoofing, and safe timeouts.
  */
-export function registerDssProxy(router: Router) {
-    router.get('/dss/proxy', (req: Request, res: Response) => {
-        const targetUrl = req.query.url as string;
-        if (!targetUrl) {
-            return res.status(400).json({ error: 'Missing required url parameter' });
-        }
-
-        console.log(`[DSSProxy] Fetching DSS tile: ${targetUrl}`);
-
-        // Set permissive CORS headers for the client
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET');
-
+function fetchWithRedirects(
+    targetUrl: string,
+    baseHeaders: Record<string, string>,
+    maxRedirects: number = 5
+): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; stream: http.IncomingMessage; finalUrl: string }> {
+    return new Promise((resolve, reject) => {
         try {
             const parsedUrl = new URL(targetUrl);
             const isHttps = parsedUrl.protocol === 'https:';
             const transport = isHttps ? https : http;
 
-            const headers: Record<string, string> = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'image/jpeg,image/png,image/*;q=0.8',
-                'Connection': 'keep-alive'
-            };
+            const headers = { ...baseHeaders };
+            headers['Host'] = parsedUrl.host;
 
-            // Spoof headers based on host
+            // Spoof Referer based on hostname
             if (parsedUrl.hostname.includes('nasa.gov')) {
                 headers['Referer'] = 'https://skyview.gsfc.nasa.gov/';
-                headers['Host'] = 'skyview.gsfc.nasa.gov';
             } else if (parsedUrl.hostname.includes('unistra.fr') || parsedUrl.hostname.includes('aladin')) {
                 headers['Referer'] = 'https://aladin.cds.unistra.fr/';
-                headers['Host'] = parsedUrl.host;
             } else {
                 headers['Referer'] = parsedUrl.origin;
-                headers['Host'] = parsedUrl.host;
             }
 
             const options: https.RequestOptions = {
@@ -55,52 +41,111 @@ export function registerDssProxy(router: Router) {
                 options.agent = new https.Agent({ rejectUnauthorized: false });
             }
 
-            let clientAborted = false;
-            const proxyReq = transport.request(targetUrl, options, (proxyRes) => {
-                if (clientAborted) return;
+            const req = transport.request(targetUrl, options, (res) => {
+                const statusCode = res.statusCode || 200;
 
-                if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
-                    console.error(`[DSSProxy] Remote server returned ${proxyRes.statusCode}`);
-                    if (!res.headersSent) {
-                        res.status(proxyRes.statusCode).json({ error: `DSS target server returned ${proxyRes.statusCode}` });
+                // Handle Redirects (301, 302, 303, 307, 308)
+                if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
+                    if (maxRedirects <= 0) {
+                        req.destroy();
+                        return reject(new Error('Too many redirects'));
                     }
-                    return;
+                    const redirectUrl = new URL(res.headers.location, targetUrl).toString();
+                    console.log(`[DSSProxy] Redirecting to: ${redirectUrl}`);
+                    
+                    // Consume current response data to release memory/socket
+                    res.resume();
+                    
+                    resolve(fetchWithRedirects(redirectUrl, baseHeaders, maxRedirects - 1));
+                } else {
+                    resolve({ statusCode, headers: res.headers, stream: res, finalUrl: targetUrl });
                 }
-
-                const contentType = proxyRes.headers['content-type'] || 'image/jpeg';
-                res.setHeader('Content-Type', contentType);
-                res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache tiles for 1 day
-
-                // Pipe chunks directly to client to optimize memory and performance
-                proxyRes.pipe(res);
             });
 
-            proxyReq.on('timeout', () => {
-                proxyReq.destroy();
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
+
+            req.on('error', (err) => {
+                reject(err);
+            });
+
+            req.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+/**
+ * Registers the DSS Proxy route inside the provided Express Router.
+ * This manager encapsulates NASA SkyView and CDS Aladin DSS tile proxying
+ * to completely resolve CORS constraints in the browser.
+ */
+export function registerDssProxy(router: Router) {
+    router.get('/dss/proxy', async (req: Request, res: Response) => {
+        const targetUrl = req.query.url as string;
+        if (!targetUrl) {
+            return res.status(400).json({ error: 'Missing required url parameter' });
+        }
+
+        console.log(`[DSSProxy] Fetching DSS tile: ${targetUrl}`);
+
+        // Set permissive CORS headers for the client
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET');
+
+        const baseHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'image/jpeg,image/png,image/*;q=0.8',
+            'Connection': 'keep-alive'
+        };
+
+        let clientAborted = false;
+        let remoteStream: http.IncomingMessage | null = null;
+
+        // Cleanup resources if the client aborts
+        req.on('close', () => {
+            clientAborted = true;
+            if (remoteStream) {
+                remoteStream.destroy();
+            }
+        });
+
+        try {
+            const { statusCode, headers, stream } = await fetchWithRedirects(targetUrl, baseHeaders);
+            remoteStream = stream;
+
+            if (clientAborted) {
+                stream.destroy();
+                return;
+            }
+
+            if (statusCode >= 400) {
+                console.error(`[DSSProxy] Remote server returned status ${statusCode}`);
+                stream.destroy();
                 if (!res.headersSent) {
-                    res.status(504).json({ error: 'DSS Proxy Request Timeout' });
+                    res.status(statusCode).json({ error: `DSS target server returned status ${statusCode}` });
                 }
-            });
+                return;
+            }
 
-            proxyReq.on('error', (err: any) => {
-                if (clientAborted) return;
-                console.error('[DSSProxy] Error proxying tile:', err.message);
-                if (!res.headersSent) {
-                    res.status(500).json({ error: 'DSS Proxy Error', details: err.message });
-                }
-            });
+            const contentType = headers['content-type'] || 'image/jpeg';
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache tiles for 1 day
 
-            // If the client disconnects, abort the proxy request safely
-            req.on('close', () => {
-                clientAborted = true;
-                proxyReq.destroy();
-            });
-
-            proxyReq.end();
+            // Pipe the data chunks directly to the response
+            stream.pipe(res);
         } catch (error: any) {
-            console.error('[DSSProxy] URL parsing or execution error:', error.message);
+            if (clientAborted) return;
+            console.error('[DSSProxy] Error proxying tile:', error.message);
             if (!res.headersSent) {
-                res.status(500).json({ error: 'DSS Proxy Error', details: error.message });
+                if (error.message === 'Request timeout') {
+                    res.status(504).json({ error: 'DSS Proxy Request Timeout' });
+                } else {
+                    res.status(500).json({ error: 'DSS Proxy Error', details: error.message });
+                }
             }
         }
     });

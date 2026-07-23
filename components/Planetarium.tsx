@@ -1213,7 +1213,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     if (signal.aborted || tileLoaded) break;
                     try {
                         console.log(`[Planetarium] Fetching DSS tile (${targetRa.toFixed(2)}, ${targetDec.toFixed(2)}) from ${source.name}`);
-                        const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(source.url)}`;
+                        const proxiedUrl = `/api/dss/proxy?url=${encodeURIComponent(source.url)}`;
                         const response = await fetch(proxiedUrl, { signal });
                         if (!response.ok) throw new Error(`Proxy error ${response.status}`);
                         

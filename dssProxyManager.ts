@@ -30,7 +30,12 @@ function fetchWithRedirects(
                 headers['Referer'] = parsedUrl.origin;
             }
 
+            // Construct exact Node options with decompiled URL parameters
             const options: https.RequestOptions = {
+                protocol: parsedUrl.protocol,
+                hostname: parsedUrl.hostname,
+                port: parsedUrl.port || (isHttps ? 443 : 80),
+                path: parsedUrl.pathname + parsedUrl.search,
                 method: 'GET',
                 headers,
                 timeout: 20000 // 20-second timeout
@@ -41,7 +46,7 @@ function fetchWithRedirects(
                 options.agent = new https.Agent({ rejectUnauthorized: false });
             }
 
-            const req = transport.request(targetUrl, options, (res) => {
+            const req = transport.request(options, (res) => {
                 const statusCode = res.statusCode || 200;
 
                 // Handle Redirects (301, 302, 303, 307, 308)
@@ -50,13 +55,24 @@ function fetchWithRedirects(
                         req.destroy();
                         return reject(new Error('Too many redirects'));
                     }
-                    const redirectUrl = new URL(res.headers.location, targetUrl).toString();
-                    console.log(`[DSSProxy] Redirecting to: ${redirectUrl}`);
+                    
+                    const rawRedirectUrl = res.headers.location;
+                    const originalParsed = new URL(targetUrl);
+                    const redirectParsed = new URL(rawRedirectUrl, targetUrl);
+
+                    // NASA SkyView Workaround: If the Location header is missing query parameters
+                    // but the original URL had them, preserve and append them to prevent 504 / 404 errors.
+                    if (!redirectParsed.search && originalParsed.search) {
+                        redirectParsed.search = originalParsed.search;
+                    }
+
+                    const finalRedirectUrl = redirectParsed.toString();
+                    console.log(`[DSSProxy] Redirecting from ${targetUrl} to ${finalRedirectUrl}`);
                     
                     // Consume current response data to release memory/socket
                     res.resume();
                     
-                    resolve(fetchWithRedirects(redirectUrl, baseHeaders, maxRedirects - 1));
+                    resolve(fetchWithRedirects(finalRedirectUrl, baseHeaders, maxRedirects - 1));
                 } else {
                     resolve({ statusCode, headers: res.headers, stream: res, finalUrl: targetUrl });
                 }

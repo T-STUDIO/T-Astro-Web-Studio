@@ -364,7 +364,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         ctx.clearRect(0, 0, width, height);
         
         // 1. Draw Background (only if DSS is not active or WWT not ready)
-        const shouldShowWWT = !isMini && settings.showDSS && wwtInitialized && wwtControlRef.current;
+        // const shouldShowWWT = !isMini && settings.showDSS && wwtInitialized && wwtControlRef.current;
+        const shouldShowWWT = false;
         
         if (!shouldShowWWT) {
             ctx.fillStyle = '#020617';
@@ -1264,6 +1265,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         }
     }, [centerRequest, selectedObject, effLocation, effTime]);
 
+    // WWT is completely disabled to avoid conflict with DSS canvas rendering
+    /*
     useEffect(() => {
         if (isMini || !settings.showDSS) { if (wwtInitialized) { setWwtInitialized(false); wwtControlRef.current = null; } return; }
         let timer: any;
@@ -1297,6 +1300,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         };
         if (!wwtInitialized) timer = setInterval(initWWT, 500); return () => clearInterval(timer);
     }, [wwtInitialized, isMini, settings.showDSS]);
+    */
 
     const selectedObjectData = useMemo(() => {
         if (!selectedObject) return null;
@@ -1309,7 +1313,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
     return (
         <div ref={containerRef} className={`w-full h-full relative overflow-hidden select-none touch-none ${!isMini && settings.showDSS ? 'bg-transparent' : 'bg-[#020617]'}`} style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
-            {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />}
+            {/* {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />} */}
             {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading ({dssTiles.length}/9)...</div>}
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" style={{ background: 'transparent' }} />
             

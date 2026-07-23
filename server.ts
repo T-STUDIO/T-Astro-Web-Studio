@@ -11,6 +11,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const xmlrpc = require('xmlrpc');
 import { registerIndiDriverManager } from './indiDriverManager';
+import { registerDssProxy } from './dssProxyManager';
 
 let Deserializer: any;
 let Serializer: any;
@@ -687,6 +688,8 @@ async function startServer() {
         next();
     });
 
+    registerDssProxy(apiRouter);
+
     apiRouter.get('/proxy/image', async (req, res) => {
         const imageUrl = req.query.url as string;
         if (!imageUrl) return res.status(400).send('Missing url');
@@ -926,6 +929,20 @@ async function startServer() {
             nodeVersion: process.version,
             timestamp: new Date().toISOString()
         });
+    });
+
+    apiRouter.get('/planetarium/stars', async (req, res) => {
+        try {
+            const queryParams = new URLSearchParams(req.query as any).toString();
+            const targetUrl = `http://127.0.0.1:6001/api/planetarium/stars?${queryParams}`;
+            console.log(`[Planetarium Proxy] Fetching from Python server: ${targetUrl}`);
+            const response = await fetch(targetUrl);
+            const data = await response.json();
+            res.json(data);
+        } catch (error: any) {
+            console.error('[Planetarium Proxy] Error:', error);
+            res.status(500).json({ error: 'Failed to proxy to planetarium solver', details: error.message });
+        }
     });
     
     // API 404 Handler (Ensures no HTML fallback for /api/*)

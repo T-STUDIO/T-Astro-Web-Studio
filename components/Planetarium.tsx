@@ -116,6 +116,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const wwtControlRef = useRef<any>(null);
     const [wwtInitialized, setWwtInitialized] = useState(false);
     const [dssTiles, setDssTiles] = useState<{ image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[]>([]);
+    const dssTilesRef = useRef(dssTiles);
+    useEffect(() => {
+        dssTilesRef.current = dssTiles;
+    }, [dssTiles]);
     const [dssLoading, setDssLoading] = useState(false);
     const lastDssParams = useRef({ ra: -1, dec: -1, zoom: -1 });
     const [searchQuery, setSearchQuery] = useState('');
@@ -142,6 +146,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
     const effLocation = location || { latitude: 35.6, longitude: 139.6 };
     const effTime = localTime || new Date();
+
+    const effLocationRef = useRef(effLocation);
+    const effTimeRef = useRef(effTime);
+    effLocationRef.current = effLocation;
+    effTimeRef.current = effTime;
 
     useEffect(() => {
         if (plateSolverType !== 'local') {
@@ -1137,20 +1146,24 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const signal = controller.signal;
 
         if (isMini || !settings.showDSS) {
-            if (dssTiles.length > 0) setDssTiles([]);
+            setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();
         }
         
-        const lst = calculateLST(effLocation.longitude, effTime);
-        const center = azAltToRaDec(viewAz, viewAlt, effLocation.latitude, lst);
+        const currentLoc = effLocationRef.current;
+        const currentTime = effTimeRef.current;
+        const lst = calculateLST(currentLoc.longitude, currentTime);
+        const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
         const fov = 60 / zoom;
         
         // Only update if moved significantly
         const dist = Math.hypot(center.ra - lastDssParams.current.ra, center.dec - lastDssParams.current.dec);
         const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
         
-        if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTiles.length > 0) return () => controller.abort();
+        if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTilesRef.current.length > 0) {
+            return () => controller.abort();
+        }
         
         const updateDss = async () => {
             if (signal.aborted) return;
@@ -1236,7 +1249,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
                         });
                         tileLoaded = true;
-                        // Update UI incrementally
                         setDssTiles([...newTiles]);
                     } catch (e: any) {
                         if (e.name === 'AbortError') return;
@@ -1256,7 +1268,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             clearTimeout(timer);
             controller.abort();
         };
-    }, [viewAz, viewAlt, zoom, settings.showDSS, isMini, dimensions, wwtInitialized, effLocation, effTime]);
+    }, [viewAz, viewAlt, zoom, settings.showDSS, isMini]);
 
     useEffect(() => {
         if (centerRequest && centerRequest > 0 && selectedObject) {

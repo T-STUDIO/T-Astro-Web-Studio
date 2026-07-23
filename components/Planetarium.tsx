@@ -1312,7 +1312,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const stopControlInteraction = (e: React.MouseEvent | React.TouchEvent) => { e.stopPropagation(); };
 
     return (
-        <div ref={containerRef} className={`w-full h-full relative overflow-hidden select-none touch-none ${!isMini && settings.showDSS ? 'bg-transparent' : 'bg-[#020617]'}`} style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
+        <div ref={containerRef} className="w-full h-full relative overflow-hidden select-none touch-none bg-[#020617]" style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
             {/* {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />} */}
             {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading ({dssTiles.length}/9)...</div>}
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" style={{ background: 'transparent' }} />

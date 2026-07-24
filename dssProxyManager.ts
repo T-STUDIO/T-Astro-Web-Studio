@@ -147,7 +147,21 @@ export function registerDssProxy(router: Router) {
                 return;
             }
 
-            const contentType = headers['content-type'] || 'image/jpeg';
+            let contentType = headers['content-type'] || 'image/jpeg';
+            
+            // NASA SkyView and other servers sometimes return text/html even if the payload is a binary image.
+            // We inspect the requested target URL to enforce a correct image MIME type.
+            const lowerUrl = targetUrl.toLowerCase();
+            if (!contentType || contentType.startsWith('text/html') || contentType.startsWith('text/plain')) {
+                if (lowerUrl.includes('return=jpg') || lowerUrl.includes('format=jpg') || lowerUrl.includes('.jpg') || lowerUrl.includes('.jpeg')) {
+                    contentType = 'image/jpeg';
+                } else if (lowerUrl.includes('f=gif') || lowerUrl.includes('mime-type=download-gif') || lowerUrl.includes('.gif')) {
+                    contentType = 'image/gif';
+                } else {
+                    contentType = 'image/jpeg'; // Safe fallback
+                }
+            }
+            
             res.setHeader('Content-Type', contentType);
             res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache tiles for 1 day
 

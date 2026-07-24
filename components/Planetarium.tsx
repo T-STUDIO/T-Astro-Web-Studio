@@ -420,11 +420,15 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         // DSS rendering
         if (!isMini && settings.showDSS && dssTiles.length > 0) {
             ctx.save();
-            ctx.globalAlpha = 1.0;
+            const hasFilter = 'filter' in ctx;
             
             for (const tile of dssTiles) {
                 try {
                     const { alt, az } = raDecToAzAlt(tile.metadata.ra, tile.metadata.dec, effLocation.latitude, lst);
+                    
+                    // 画面外・地平線下判定 (高度が著しく低い、または視野外のタイルのスキップ)
+                    if (alt < -15) continue;
+                    
                     const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                     
                     if (p) {
@@ -432,18 +436,53 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         const pixelsPerDegree = Math.min(width, height) / viewFov;
                         const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree;
                         
+                        // 画面外判定（クリッピング）：タイルの描画範囲が完全に画面外の場合は描画をスキップ
+                        const halfSize = dssSizeInPixels / 2;
+                        if (p.x + halfSize < 0 || p.x - halfSize > width || p.y + halfSize < 0 || p.y - halfSize > height) {
+                            continue;
+                        }
+                        
                         ctx.save();
                         ctx.translate(p.x, p.y);
                         
-                        // Calculate rotation to match North orientation
+                        // 北向き合わせのための回転角算出（極付近や高ズーム時でも安全に処理）
                         const northPoint = raDecToAzAlt(tile.metadata.ra, Math.min(89.9, tile.metadata.dec + 0.1), effLocation.latitude, lst);
                         const pNorth = projectStereographic(northPoint.alt, northPoint.az, width, height, zoom, center, viewAlt, viewAz);
                         if (pNorth) {
-                            const angle = Math.atan2(pNorth.y - p.y, pNorth.x - p.x) + Math.PI/2;
-                            ctx.rotate(angle);
+                            const dx = pNorth.x - p.x;
+                            const dy = pNorth.y - p.y;
+                            if (Math.hypot(dx, dy) > 0.001) {
+                                const angle = Math.atan2(dy, dx) + Math.PI/2;
+                                if (!isNaN(angle)) {
+                                    ctx.rotate(angle);
+                                }
+                            }
                         }
                         
-                        ctx.drawImage(tile.image, -dssSizeInPixels/2, -dssSizeInPixels/2, dssSizeInPixels, dssSizeInPixels);
+                        // 描画コンテキスト制御
+                        // パス1: 暗い背景色との合成を見据えた、透過度の高コントラストベース画像描画
+                        ctx.globalAlpha = 0.65;
+                        ctx.globalCompositeOperation = 'source-over';
+                        if (hasFilter) {
+                            ctx.filter = 'contrast(1.5) brightness(0.7)';
+                        }
+                        ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
+                        
+                        // パス2: オーバーレイ合成を重ねてハイライト・コントラスト・星野ディテールを強調
+                        ctx.globalAlpha = 0.75;
+                        ctx.globalCompositeOperation = 'overlay';
+                        if (hasFilter) {
+                            ctx.filter = 'contrast(1.7) brightness(0.85)';
+                        }
+                        ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
+                        
+                        // コンテキスト状態の確実な復帰
+                        if (hasFilter) {
+                            ctx.filter = 'none';
+                        }
+                        ctx.globalCompositeOperation = 'source-over';
+                        ctx.globalAlpha = 1.0;
+                        
                         ctx.restore();
                     }
                 } catch (e) {
@@ -1176,19 +1215,30 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             // Adjust tile size based on zoom level (max 15 degrees, with dynamic falls to smaller targets)
             const tileFov = viewFov > 10.0 ? 5.0 : viewFov > 5.0 ? 3.0 : viewFov > 2.0 ? 1.5 : 0.75;
             
-            // If view is wider than one tile, fetch a grid
+            // Adjust grid layout based on viewport aspect ratio to fully cover widescreen displays
+            const aspect = (dimensions.width / dimensions.height) || 1.6;
             const offsets = viewFov > tileFov * 0.4 ? [
                 {dra: 0, ddec: 0},
                 {dra: tileFov, ddec: 0}, {dra: -tileFov, ddec: 0},
                 {dra: 0, ddec: tileFov}, {dra: 0, ddec: -tileFov},
                 {dra: tileFov, ddec: tileFov}, {dra: -tileFov, ddec: tileFov},
-                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov}
+                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov},
+                ...(aspect > 1.3 ? [
+                    {dra: 2 * tileFov, ddec: 0}, {dra: -2 * tileFov, ddec: 0},
+                    {dra: 2 * tileFov, ddec: tileFov}, {dra: -2 * tileFov, ddec: tileFov},
+                    {dra: 2 * tileFov, ddec: -tileFov}, {dra: -2 * tileFov, ddec: -tileFov}
+                ] : [])
             ] : [{dra: 0, ddec: 0}];
 
-            const newTiles: { image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[] = [];
+            // Filter out tiles that are too far from the new center to free up memory, but keep close ones for visual continuity
+            setDssTiles(prev => prev.filter(t => {
+                const dist = Math.hypot(t.metadata.ra - ra, t.metadata.dec - dec);
+                return dist < viewFov * 1.5;
+            }));
 
-            for (const offset of offsets) {
+            for (let i = 0; i < offsets.length; i++) {
                 if (signal.aborted) return;
+                const offset = offsets[i];
                 
                 const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
                 const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
@@ -1196,7 +1246,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 
                 const sources = [];
                 
-                // NASA SkyView has no field limit and supports large scales
+                // NASA SkyView is the primary reliable, high-quality DSS provider
                 sources.push({
                     name: 'NASA SkyView',
                     url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
@@ -1218,9 +1268,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     });
                 }
 
-                if (offsets.indexOf(offset) > 0) {
+                if (i > 0) {
                     await new Promise(resolve => {
-                        const t = setTimeout(resolve, 200);
+                        const t = setTimeout(resolve, 80); // Quick sequential delay to prevent network congestion
                         signal.addEventListener('abort', () => clearTimeout(t));
                     });
                 }
@@ -1249,12 +1299,23 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
                         if (signal.aborted) return;
 
-                        newTiles.push({
+                        const tileData = {
                             image: img,
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
+                        };
+
+                        setDssTiles(prev => {
+                            const isSameTile = (t: any) => 
+                                Math.abs(t.metadata.ra - targetRa) < 0.01 && 
+                                Math.abs(t.metadata.dec - targetDec) < 0.01;
+                            
+                            if (prev.some(isSameTile)) {
+                                return prev.map(t => isSameTile(t) ? tileData : t);
+                            }
+                            return [...prev, tileData];
                         });
+
                         tileLoaded = true;
-                        setDssTiles([...newTiles]);
                     } catch (e: any) {
                         if (e.name === 'AbortError') return;
                         console.warn(`[Planetarium] Tile failed from ${source.name}:`, e.message);

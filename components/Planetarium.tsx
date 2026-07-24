@@ -1196,6 +1196,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 
                 const sources = [
                     {
+                        name: 'NASA SkyView',
+                        url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
+                    },
+                    {
                         name: 'STScI DSS',
                         url: `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${targetRa}&d=${targetDec}&e=J2000&h=${Math.min(120, tileFov * 60)}&w=${Math.min(120, tileFov * 60)}&f=gif`
                     },

@@ -1146,7 +1146,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const signal = controller.signal;
         const fov = 60 / zoom;
 
-        if (isMini || !settings.showDSS || fov > 5.0) {
+        if (isMini || !settings.showDSS || fov > 15.0) {
             setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();
@@ -1173,8 +1173,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            // Adjust tile size based on zoom level (max 2 degrees for STScI, max 1 degree for ESO)
-            const tileFov = viewFov > 3.0 ? 1.5 : 0.75;
+            // Adjust tile size based on zoom level (max 15 degrees, with dynamic falls to smaller targets)
+            const tileFov = viewFov > 10.0 ? 5.0 : viewFov > 5.0 ? 3.0 : viewFov > 2.0 ? 1.5 : 0.75;
             
             // If view is wider than one tile, fetch a grid
             const offsets = viewFov > tileFov * 0.4 ? [
@@ -1194,20 +1194,29 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
                 
-                const sources = [
-                    {
-                        name: 'NASA SkyView',
-                        url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
-                    },
-                    {
+                const sources = [];
+                
+                // NASA SkyView has no field limit and supports large scales
+                sources.push({
+                    name: 'NASA SkyView',
+                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
+                });
+
+                // STScI is strictly limited to <= 120 arcminutes (2 degrees)
+                if (tileFov <= 2.0) {
+                    sources.push({
                         name: 'STScI DSS',
-                        url: `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${targetRa}&d=${targetDec}&e=J2000&h=${Math.min(120, tileFov * 60)}&w=${Math.min(120, tileFov * 60)}&f=gif`
-                    },
-                    {
+                        url: `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${targetRa}&d=${targetDec}&e=J2000&h=${Math.min(120, Math.round(tileFov * 60))}&w=${Math.min(120, Math.round(tileFov * 60))}&f=gif`
+                    });
+                }
+
+                // ESO is strictly limited to <= 60 arcminutes (1 degree)
+                if (tileFov <= 1.0) {
+                    sources.push({
                         name: 'ESO DSS',
-                        url: `https://archive.eso.org/dss/dss/image?ra=${targetRa}&dec=${targetDec}&x=${Math.min(60, tileFov * 60)}&y=${Math.min(60, tileFov * 60)}&mime-type=download-gif`
-                    }
-                ];
+                        url: `https://archive.eso.org/dss/dss/image?ra=${targetRa}&dec=${targetDec}&x=${Math.min(60, Math.round(tileFov * 60))}&y=${Math.min(60, Math.round(tileFov * 60))}&mime-type=download-gif`
+                    });
+                }
 
                 if (offsets.indexOf(offset) > 0) {
                     await new Promise(resolve => {

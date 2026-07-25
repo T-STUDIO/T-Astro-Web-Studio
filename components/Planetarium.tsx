@@ -1309,7 +1309,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const signal = controller.signal;
         const fov = 60 / zoom;
 
-        if (isMini || !settings.showDSS) {
+        if (isMini || !settings.showDSS || fov > 25.0) {
             setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();
@@ -1336,9 +1336,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            // KStars同様、表示倍率（viewFov）に合わせて1枚のタイル視野角（tileFov）をダイナミックに算出（0.5度〜30.0度）
+            // KStars同様、表示倍率（viewFov）に合わせて1枚のタイル視野角（tileFov）をダイナミックに算出（0.5度〜12.0度）
             // これにより、ズームレベルを問わず常に最小限のタイル枚数（通常3x3〜5x3）で全画面をシームレスに隙間なくカバー可能にする
-            const tileFov = Math.max(0.5, Math.min(30.0, viewFov * 0.45));
+            const tileFov = Math.max(0.5, Math.min(12.0, viewFov * 0.45));
             const pixels = 512; // 512x512の超高精細・高速サイズで統一
             
             // Adjust grid layout based on viewport aspect ratio to fully cover widescreen displays

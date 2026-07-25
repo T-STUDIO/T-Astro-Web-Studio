@@ -10,7 +10,8 @@ import { URL } from 'url';
 function fetchWithRedirects(
     targetUrl: string,
     baseHeaders: Record<string, string>,
-    maxRedirects: number = 5
+    maxRedirects: number = 5,
+    retries: number = 2
 ): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; stream: http.IncomingMessage; finalUrl: string }> {
     return new Promise((resolve, reject) => {
         try {
@@ -38,7 +39,8 @@ function fetchWithRedirects(
                 path: parsedUrl.pathname + parsedUrl.search,
                 method: 'GET',
                 headers,
-                timeout: 20000 // 20-second timeout
+                timeout: 20000, // 20-second timeout
+                family: 4 // Force IPv4 to prevent hanging on IPv6 DNS resolves in strict Cloud Run and LAN environments
             };
 
             // Skip SSL/TLS Verification completely
@@ -69,10 +71,15 @@ function fetchWithRedirects(
                     const finalRedirectUrl = redirectParsed.toString();
                     console.log(`[DSSProxy] Redirecting from ${targetUrl} to ${finalRedirectUrl}`);
                     
+                    // Clear timeout and remove listeners on the old request before redirecting to avoid leaks and duplicate rejects
+                    req.setTimeout(0);
+                    req.removeAllListeners('timeout');
+                    req.removeAllListeners('error');
+
                     // Consume current response data to release memory/socket
                     res.resume();
                     
-                    resolve(fetchWithRedirects(finalRedirectUrl, baseHeaders, maxRedirects - 1));
+                    resolve(fetchWithRedirects(finalRedirectUrl, baseHeaders, maxRedirects - 1, retries));
                 } else {
                     resolve({ statusCode, headers: res.headers, stream: res, finalUrl: targetUrl });
                 }
@@ -80,11 +87,25 @@ function fetchWithRedirects(
 
             req.on('timeout', () => {
                 req.destroy();
-                reject(new Error('Request timeout'));
+                if (retries > 0) {
+                    console.log(`[DSSProxy] Timeout fetching ${targetUrl}, retrying... (${retries} left)`);
+                    setTimeout(() => {
+                        resolve(fetchWithRedirects(targetUrl, baseHeaders, maxRedirects, retries - 1));
+                    }, 300);
+                } else {
+                    reject(new Error('Request timeout'));
+                }
             });
 
             req.on('error', (err) => {
-                reject(err);
+                if (retries > 0) {
+                    console.log(`[DSSProxy] Error (${err.message}) fetching ${targetUrl}, retrying... (${retries} left)`);
+                    setTimeout(() => {
+                        resolve(fetchWithRedirects(targetUrl, baseHeaders, maxRedirects, retries - 1));
+                    }, 300);
+                } else {
+                    reject(err);
+                }
             });
 
             req.end();

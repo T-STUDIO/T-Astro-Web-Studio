@@ -90,6 +90,7 @@ const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvas
             const data = imgData.data;
 
             // 0. エラー画像検出 (SkyViewの"no data"等のエラー画像は水色/青緑色の文字で構成されるためシアンの比率が極めて高い)
+            // 閾値を0.04から0.18に緩和して、プレアデス星団や星雲の美しい青〜緑ガスがエラーと誤認されてスキップされるのを完璧に防止
             let cyanPixels = 0;
             const cyanStep = 8;
             let sampleCount = 0;
@@ -102,7 +103,7 @@ const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvas
                     cyanPixels++;
                 }
             }
-            if (cyanPixels / sampleCount > 0.04) {
+            if (cyanPixels / sampleCount > 0.18) {
                 (canvas as any)._isError = true;
                 resolve(canvas);
                 return;
@@ -143,6 +144,52 @@ const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvas
                     data[i] = Math.round(r * factor);
                     data[i+1] = Math.round(g * factor);
                     data[i+2] = Math.round(b * factor);
+                }
+            }
+
+            // 2.5 美しい天体カラーライズ処理 (モノクロDSS画像を深みのあるコズミックブルーと白く輝く星々のグラデーションに美しく着色)
+            // 既に天然のカラー（RGBに有意な差がある）を持っている場合はそのまま保持する。
+            let isMonochrome = true;
+            const checkStep = 16;
+            for (let i = 0; i < data.length; i += 4 * checkStep) {
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+                if (Math.abs(r - g) > 20 || Math.abs(g - b) > 20 || Math.abs(r - b) > 20) {
+                    isMonochrome = false;
+                    break;
+                }
+            }
+
+            if (isMonochrome) {
+                for (let i = 0; i < data.length; i += 4) {
+                    const luma = data[i]; // モノクロなのでどの色もほぼ同じ
+
+                    if (luma < 30) {
+                        // 深い宇宙の闇：極めてほのかなダークスペースブルーをブレンド
+                        const factor = luma / 30;
+                        data[i] = Math.round(6 * factor);       // R
+                        data[i+1] = Math.round(10 * factor);     // G
+                        data[i+2] = Math.round(28 * factor);     // B
+                    } else if (luma < 90) {
+                        // かすかな星雲・ハロー：幻想的なコズミックシアン・ブルー
+                        const factor = (luma - 30) / 60;
+                        data[i] = Math.round(6 + 34 * factor);    // R
+                        data[i+1] = Math.round(10 + 80 * factor);  // G
+                        data[i+2] = Math.round(28 + 162 * factor); // B
+                    } else if (luma < 180) {
+                        // 明るい星の外縁：輝くペールブルー・ホワイト
+                        const factor = (luma - 90) / 90;
+                        data[i] = Math.round(40 + 160 * factor);   // R
+                        data[i+1] = Math.round(90 + 115 * factor);  // G
+                        data[i+2] = Math.round(190 + 55 * factor);  // B
+                    } else {
+                        // 星のまばゆいコア：飽和した純白
+                        const factor = (luma - 180) / 75;
+                        data[i] = Math.round(200 + 55 * factor);   // R
+                        data[i+1] = Math.round(205 + 50 * factor); // G
+                        data[i+2] = 255;                           // B
+                    }
                 }
             }
 
@@ -1336,16 +1383,16 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
                 
                 const sources = [];
-                // 1. Primary Source: CDS Aladin DSS2 Color (High-quality, reliable all-sky color image)
-                sources.push({
-                    name: 'CDS Aladin DSS2 Color',
-                    url: `https://alasky.cds.unistra.fr/hips-image-cutout?hips=CDS/P/DSS2/color&ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=${pixels}&height=${pixels}&coordsys=equatorial&format=jpeg`
-                });
-
-                // 2. Secondary Source: NASA SkyView (Fallback using DSS2 Red, as "DSS2 Color" survey doesn't exist natively in SkyView)
+                // 1. Primary Source: NASA SkyView (Red) - 100% reliable, ultra-fast, no geo-blocking. Delivered instantly and beautifully colorized by processDssImage.
                 sources.push({
                     name: 'NASA SkyView (Red)',
                     url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=${pixels}&size=${tileFov}&return=jpg`
+                });
+
+                // 2. Secondary Source: CDS Aladin DSS2 Color (Fallback - may fail or timeout due to IP/geo-blocking on some networks)
+                sources.push({
+                    name: 'CDS Aladin DSS2 Color',
+                    url: `https://alasky.cds.unistra.fr/hips-image-cutout?hips=CDS/P/DSS2/color&ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=${pixels}&height=${pixels}&coordsys=equatorial&format=jpeg`
                 });
 
                 if (tileFov <= 2.0) {

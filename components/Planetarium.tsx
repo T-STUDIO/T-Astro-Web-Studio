@@ -1336,9 +1336,16 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
                 
                 const sources = [];
+                // 1. Primary Source: CDS Aladin DSS2 Color (High-quality, reliable all-sky color image)
                 sources.push({
-                    name: 'NASA SkyView',
-                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Color&position=${targetRa},${targetDec}&pixels=${pixels}&size=${tileFov}&return=jpg`
+                    name: 'CDS Aladin DSS2 Color',
+                    url: `https://alasky.cds.unistra.fr/hips-image-cutout?hips=CDS/P/DSS2/color&ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=${pixels}&height=${pixels}&coordsys=equatorial&format=jpeg`
+                });
+
+                // 2. Secondary Source: NASA SkyView (Fallback using DSS2 Red, as "DSS2 Color" survey doesn't exist natively in SkyView)
+                sources.push({
+                    name: 'NASA SkyView (Red)',
+                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=${pixels}&size=${tileFov}&return=jpg`
                 });
 
                 if (tileFov <= 2.0) {
@@ -1390,9 +1397,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
                         if (signal.aborted) return;
 
-                        // エラー画像は描画およびキャッシュに追加せずスキップ
+                        // エラー画像は描画およびキャッシュに追加せずスキップして次のソースを試す
                         if ((processedCanvas as any)._isError) {
-                            break;
+                            continue;
                         }
 
                         const tileData = {

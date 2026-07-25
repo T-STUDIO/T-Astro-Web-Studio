@@ -72,6 +72,87 @@ const getDistance = (touch1: React.Touch, touch2: React.Touch) => {
     return Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
 };
 
+const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvasElement> => {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 512;
+        canvas.height = img.naturalHeight || 512;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            resolve(canvas);
+            return;
+        }
+
+        ctx.drawImage(img, 0, 0);
+
+        try {
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imgData.data;
+
+            // 1. 白黒ネガティブ判定（四隅のピクセル輝度を調べる）
+            const corners = [
+                0,
+                (canvas.width - 1) * 4,
+                (canvas.height - 1) * canvas.width * 4,
+                ((canvas.height - 1) * canvas.width + (canvas.width - 1)) * 4
+            ];
+            let bgBrightness = 0;
+            for (const offset of corners) {
+                const r = data[offset];
+                const g = data[offset + 1];
+                const b = data[offset + 2];
+                bgBrightness += (r * 299 + g * 587 + b * 114) / 1000;
+            }
+            const avgBg = bgBrightness / 4;
+            const isNegative = avgBg > 110;
+
+            // 2. 必要に応じて反転
+            if (isNegative) {
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = 255 - data[i];
+                    data[i+1] = 255 - data[i+1];
+                    data[i+2] = 255 - data[i+2];
+                }
+            }
+
+            // 暗い背景ノイズを完全にカットして星だけを浮かび上がらせる（夜空との溶け込み向上）
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i]; const g = data[i+1]; const b = data[i+2];
+                const luma = (r * 299 + g * 587 + b * 114) / 1000;
+                if (luma < 45) {
+                    const factor = Math.max(0, (luma - 10) / 35);
+                    data[i] = Math.round(r * factor);
+                    data[i+1] = Math.round(g * factor);
+                    data[i+2] = Math.round(b * factor);
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+
+            // 3. エッジぼかし処理（グラデーションマスクを 'destination-in' で重ねる）
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-in';
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, canvas.width * 0.35,
+                canvas.width / 2, canvas.height / 2, canvas.width * 0.50
+            );
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 1.0)');
+            gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.85)');
+            gradient.addColorStop(0.9, 'rgba(0, 0, 0, 0.3)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            resolve(canvas);
+        } catch (e) {
+            resolve(canvas);
+        }
+    });
+};
+
 export const Planetarium: React.FC<PlanetariumProps> = ({ 
     onSelectObject,
     onShowInfo,
@@ -420,7 +501,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         // DSS rendering
         if (!isMini && settings.showDSS && dssTiles.length > 0) {
             ctx.save();
-            const hasFilter = 'filter' in ctx;
             
             for (const tile of dssTiles) {
                 try {
@@ -456,53 +536,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             }
                         }
                         
-                        // 描画コンテキスト制御
-                        const img = tile.image;
-                        if ((img as any)._isNegative === undefined) {
-                            try {
-                                const tempCanvas = document.createElement('canvas');
-                                tempCanvas.width = 10;
-                                tempCanvas.height = 10;
-                                const tempCtx = tempCanvas.getContext('2d');
-                                if (tempCtx) {
-                                    tempCtx.drawImage(img, 0, 0, 10, 10);
-                                    const imgData = tempCtx.getImageData(0, 0, 10, 10).data;
-                                    let totalBrightness = 0;
-                                    for (let j = 0; j < imgData.length; j += 4) {
-                                        const r = imgData[j];
-                                        const g = imgData[j+1];
-                                        const b = imgData[j+2];
-                                        totalBrightness += (r * 299 + g * 587 + b * 114) / 1000;
-                                    }
-                                    const avgBrightness = totalBrightness / (imgData.length / 4);
-                                    (img as any)._isNegative = avgBrightness > 127;
-                                } else {
-                                    (img as any)._isNegative = false;
-                                }
-                            } catch (e) {
-                                (img as any)._isNegative = false;
-                            }
-                        }
-
-                        ctx.globalAlpha = 0.75;
-                        
-                        if (hasFilter && (img as any)._isNegative) {
-                            ctx.filter = 'invert(1)';
-                            ctx.globalCompositeOperation = 'screen';
-                        } else if ((img as any)._isNegative) {
-                            ctx.globalCompositeOperation = 'multiply';
-                        } else {
-                            ctx.globalCompositeOperation = 'screen';
-                        }
-                        
-                        ctx.drawImage(img, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
-                        
-                        // コンテキスト状態の確実な復帰
-                        if (hasFilter) {
-                            ctx.filter = 'none';
-                        }
-                        ctx.globalCompositeOperation = 'source-over';
-                        ctx.globalAlpha = 1.0;
+                        // 事前処理済みの美しいポジティブ画像を描画
+                        ctx.globalAlpha = 0.85;
+                        ctx.globalCompositeOperation = 'screen'; // 自然に夜空に星を浮かび上がらせる
+                        ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
                         
                         ctx.restore();
                     }
@@ -1238,18 +1275,30 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             
             // Adjust grid layout based on viewport aspect ratio to fully cover widescreen displays
             const aspect = (dimensions.width / dimensions.height) || 1.6;
-            const offsets = viewFov > tileFov * 0.4 ? [
-                {dra: 0, ddec: 0},
-                {dra: tileFov, ddec: 0}, {dra: -tileFov, ddec: 0},
-                {dra: 0, ddec: tileFov}, {dra: 0, ddec: -tileFov},
-                {dra: tileFov, ddec: tileFov}, {dra: -tileFov, ddec: tileFov},
-                {dra: tileFov, ddec: -tileFov}, {dra: -tileFov, ddec: -tileFov},
-                ...(aspect > 1.3 ? [
-                    {dra: 2 * tileFov, ddec: 0}, {dra: -2 * tileFov, ddec: 0},
-                    {dra: 2 * tileFov, ddec: tileFov}, {dra: -2 * tileFov, ddec: tileFov},
-                    {dra: 2 * tileFov, ddec: -tileFov}, {dra: -2 * tileFov, ddec: -tileFov}
-                ] : [])
-            ] : [{dra: 0, ddec: 0}];
+            
+            // ぼかし効果のオーバーラップを考慮した最適なステップサイズ
+            const step = tileFov * 0.82;
+            
+            // 画面の幅と高さの比率に応じて、RAとDEC方向に必要なタイル数を動的に算出する
+            const raTilesCount = aspect > 2.0 ? 5 : aspect > 1.2 ? 3 : 2;
+            const decTilesCount = 3;
+
+            const rawOffsets: { dra: number, ddec: number, dist: number }[] = [];
+            const maxRaOffset = Math.floor(raTilesCount / 2);
+            const maxDecOffset = Math.floor(decTilesCount / 2);
+
+            for (let r = -maxRaOffset; r <= maxRaOffset; r++) {
+                for (let d = -maxDecOffset; d <= maxDecOffset; d++) {
+                    const dra = r * step;
+                    const ddec = d * step;
+                    const dist = Math.hypot(dra, ddec);
+                    rawOffsets.push({ dra, ddec, dist });
+                }
+            }
+            
+            // 画面の中心に近いタイルから順番にダウンロードをトリガー
+            rawOffsets.sort((a, b) => a.dist - b.dist);
+            const offsets = rawOffsets.map(o => ({ dra: o.dra, ddec: o.ddec }));
 
             // Filter out tiles that are too far from the new center to free up memory, but keep close ones for visual continuity
             setDssTiles(prev => prev.filter(t => {
@@ -1257,23 +1306,19 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 return dist < viewFov * 1.5;
             }));
 
-            for (let i = 0; i < offsets.length; i++) {
+            const tilePromises = offsets.map(async (offset, index) => {
                 if (signal.aborted) return;
-                const offset = offsets[i];
                 
                 const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
                 const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
                 
                 const sources = [];
-                
-                // NASA SkyView is the primary reliable, high-quality DSS provider
                 sources.push({
                     name: 'NASA SkyView',
-                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
+                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Color&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
                 });
 
-                // STScI is strictly limited to <= 120 arcminutes (2 degrees)
                 if (tileFov <= 2.0) {
                     sources.push({
                         name: 'STScI DSS',
@@ -1281,7 +1326,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     });
                 }
 
-                // ESO is strictly limited to <= 60 arcminutes (1 degree)
                 if (tileFov <= 1.0) {
                     sources.push({
                         name: 'ESO DSS',
@@ -1289,20 +1333,19 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     });
                 }
 
-                if (i > 0) {
+                // ネットワーク渋滞を回避するための超軽量な staggering ディレイ
+                if (index > 0) {
                     await new Promise(resolve => {
-                        const t = setTimeout(resolve, 80); // Quick sequential delay to prevent network congestion
+                        const t = setTimeout(resolve, index * 20);
                         signal.addEventListener('abort', () => clearTimeout(t));
                     });
                 }
 
                 if (signal.aborted) return;
 
-                let tileLoaded = false;
                 for (const source of sources) {
-                    if (signal.aborted || tileLoaded) break;
+                    if (signal.aborted) break;
                     try {
-                        console.log(`[Planetarium] Fetching DSS tile (${targetRa.toFixed(2)}, ${targetDec.toFixed(2)}) from ${source.name}`);
                         const proxiedUrl = `/api/dss/proxy?url=${encodeURIComponent(source.url)}`;
                         const response = await fetch(proxiedUrl, { signal });
                         if (!response.ok) throw new Error(`Proxy error ${response.status}`);
@@ -1320,8 +1363,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
                         if (signal.aborted) return;
 
+                        // 読み込み完了後に画像を非同期で事前処理（反転＆ぼかし）
+                        const processedCanvas = await processDssImage(img, tileFov);
+
+                        if (signal.aborted) return;
+
                         const tileData = {
-                            image: img,
+                            image: processedCanvas as any,
                             metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
                         };
 
@@ -1336,13 +1384,15 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             return [...prev, tileData];
                         });
 
-                        tileLoaded = true;
+                        break; // 成功したらフォールバックは試さない
                     } catch (e: any) {
                         if (e.name === 'AbortError') return;
                         console.warn(`[Planetarium] Tile failed from ${source.name}:`, e.message);
                     }
                 }
-            }
+            });
+
+            await Promise.all(tilePromises);
 
             if (!signal.aborted) {
                 setDssLoading(false);

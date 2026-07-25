@@ -1309,7 +1309,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const signal = controller.signal;
         const fov = 60 / zoom;
 
-        if (isMini || !settings.showDSS || fov > 25.0) {
+        if (isMini || !settings.showDSS || fov > 15.0) {
             setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();
@@ -1375,8 +1375,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 return dist < viewFov * 2.2;
             }));
 
-            const tilePromises = offsets.map(async (offset, index) => {
+            for (let index = 0; index < offsets.length; index++) {
                 if (signal.aborted) return;
+                const offset = offsets[index];
                 
                 const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
                 const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
@@ -1392,7 +1393,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 // 2. Secondary Source: CDS Aladin DSS2 Color (Fallback - may fail or timeout due to IP/geo-blocking on some networks)
                 sources.push({
                     name: 'CDS Aladin DSS2 Color',
-                    url: `https://alasky.cds.unistra.fr/hips-image-cutout?hips=CDS/P/DSS2/color&ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=${pixels}&height=${pixels}&coordsys=equatorial&format=jpeg`
+                    url: `https://alasky.cds.unistra.fr/hips-image-cutout?hips=CDS/P/DSS2/color&ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=${pixels}&height=${pixels}&coordsys=icrs&format=jpg`
                 });
 
                 if (tileFov <= 2.0) {
@@ -1409,10 +1410,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     });
                 }
 
-                // ネットワーク渋滞を回避するための超軽量な staggering ディレイ
+                // ネットワーク渋滞とサーバー負荷を回避するための直列ディレイ（150ms待機）
                 if (index > 0) {
-                    await new Promise(resolve => {
-                        const t = setTimeout(resolve, index * 20);
+                    await new Promise<void>(resolve => {
+                        const t = setTimeout(resolve, 150);
                         signal.addEventListener('abort', () => clearTimeout(t));
                     });
                 }
@@ -1430,9 +1431,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         if (blob.size < 2000) throw new Error('Invalid image data (too small)');
 
                         const img = new Image();
-                        await new Promise((resolve, reject) => {
-                            img.onload = resolve;
-                            img.onerror = reject;
+                        await new Promise<void>((resolve, reject) => {
+                            img.onload = () => resolve();
+                            img.onerror = () => reject(new Error('Image decode failed'));
                             img.src = URL.createObjectURL(blob);
                             signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
                         });
@@ -1471,9 +1472,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         console.warn(`[Planetarium] Tile failed from ${source.name}:`, e.message);
                     }
                 }
-            });
-
-            await Promise.all(tilePromises);
+            }
 
             if (!signal.aborted) {
                 setDssLoading(false);

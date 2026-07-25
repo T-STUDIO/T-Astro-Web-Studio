@@ -460,26 +460,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         }
                         
                         // 描画コンテキスト制御
-                        // パス1: 暗い背景色との合成を見据えた、透過度の高コントラストベース画像描画
-                        ctx.globalAlpha = 0.65;
+                        // 一部ブラウザ/サンドボックス環境でのCanvasフィルタ（ctx.filter）の描画失敗バグを防ぎ、
+                        // 100%確実な描画を担保するために標準的な source-over と高不透明度（0.85）のみで描画します。
+                        ctx.globalAlpha = 0.85;
                         ctx.globalCompositeOperation = 'source-over';
-                        if (hasFilter) {
-                            ctx.filter = 'contrast(1.5) brightness(0.7)';
-                        }
-                        ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
-                        
-                        // パス2: オーバーレイ合成を重ねてハイライト・コントラスト・星野ディテールを強調
-                        ctx.globalAlpha = 0.75;
-                        ctx.globalCompositeOperation = 'overlay';
-                        if (hasFilter) {
-                            ctx.filter = 'contrast(1.7) brightness(0.85)';
-                        }
                         ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
                         
                         // コンテキスト状態の確実な復帰
-                        if (hasFilter) {
-                            ctx.filter = 'none';
-                        }
                         ctx.globalCompositeOperation = 'source-over';
                         ctx.globalAlpha = 1.0;
                         

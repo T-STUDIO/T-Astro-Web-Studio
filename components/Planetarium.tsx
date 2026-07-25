@@ -89,6 +89,25 @@ const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvas
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imgData.data;
 
+            // 0. エラー画像検出 (SkyViewの"no data"等のエラー画像は水色/青緑色の文字で構成されるためシアンの比率が極めて高い)
+            let cyanPixels = 0;
+            const cyanStep = 8;
+            let sampleCount = 0;
+            for (let i = 0; i < data.length; i += 4 * cyanStep) {
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+                sampleCount++;
+                if (g > 70 && b > 70 && r < g * 0.7 && Math.abs(g - b) < 45) {
+                    cyanPixels++;
+                }
+            }
+            if (cyanPixels / sampleCount > 0.04) {
+                (canvas as any)._isError = true;
+                resolve(canvas);
+                return;
+            }
+
             // 1. 白黒ネガティブ判定（四隅のピクセル輝度を調べる）
             const corners = [
                 0,
@@ -1243,7 +1262,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const signal = controller.signal;
         const fov = 60 / zoom;
 
-        if (isMini || !settings.showDSS || fov > 15.0) {
+        if (isMini || !settings.showDSS) {
             setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();
@@ -1270,8 +1289,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            // Adjust tile size based on zoom level (max 15 degrees, with dynamic falls to smaller targets)
+            // NASA SkyView DSS2 Color has a hard limit of ~5.0 degrees. Limit tile size under 5.0 to prevent error text images.
             const tileFov = viewFov > 10.0 ? 5.0 : viewFov > 5.0 ? 3.0 : viewFov > 2.0 ? 1.5 : 0.75;
+            const pixels = tileFov >= 5.0 ? 256 : 512; // 広視野（ズームアウト）時は256pxに落とし転送量と読み込み速度を劇的に高速化
             
             // Adjust grid layout based on viewport aspect ratio to fully cover widescreen displays
             const aspect = (dimensions.width / dimensions.height) || 1.6;
@@ -1280,8 +1300,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const step = tileFov * 0.82;
             
             // 画面の幅と高さの比率に応じて、RAとDEC方向に必要なタイル数を動的に算出する
-            const raTilesCount = aspect > 2.0 ? 5 : aspect > 1.2 ? 3 : 2;
-            const decTilesCount = 3;
+            // 画面全体を隙間なくカバーしつつ、重なりすぎを防ぐために、画面のFOVに基づいて必要数を計算（最大5x5、通常は3x3）
+            const raTilesCount = Math.min(5, Math.max(3, Math.ceil((viewFov * aspect) / step) | 1));
+            const decTilesCount = Math.min(5, Math.max(3, Math.ceil(viewFov / step) | 1));
 
             const rawOffsets: { dra: number, ddec: number, dist: number }[] = [];
             const maxRaOffset = Math.floor(raTilesCount / 2);
@@ -1316,7 +1337,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const sources = [];
                 sources.push({
                     name: 'NASA SkyView',
-                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Color&position=${targetRa},${targetDec}&pixels=512&size=${tileFov}&return=jpg`
+                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Color&position=${targetRa},${targetDec}&pixels=${pixels}&size=${tileFov}&return=jpg`
                 });
 
                 if (tileFov <= 2.0) {
@@ -1367,6 +1388,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         const processedCanvas = await processDssImage(img, tileFov);
 
                         if (signal.aborted) return;
+
+                        // エラー画像は描画およびキャッシュに追加せずスキップ
+                        if ((processedCanvas as any)._isError) {
+                            break;
+                        }
 
                         const tileData = {
                             image: processedCanvas as any,

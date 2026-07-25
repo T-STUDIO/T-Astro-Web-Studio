@@ -1289,9 +1289,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            // NASA SkyView DSS2 Color has a hard limit of ~5.0 degrees. Limit tile size under 5.0 to prevent error text images.
-            const tileFov = viewFov > 10.0 ? 5.0 : viewFov > 5.0 ? 3.0 : viewFov > 2.0 ? 1.5 : 0.75;
-            const pixels = tileFov >= 5.0 ? 256 : 512; // 広視野（ズームアウト）時は256pxに落とし転送量と読み込み速度を劇的に高速化
+            // KStars同様、表示倍率（viewFov）に合わせて1枚のタイル視野角（tileFov）をダイナミックに算出（0.5度〜30.0度）
+            // これにより、ズームレベルを問わず常に最小限のタイル枚数（通常3x3〜5x3）で全画面をシームレスに隙間なくカバー可能にする
+            const tileFov = Math.max(0.5, Math.min(30.0, viewFov * 0.45));
+            const pixels = 512; // 512x512の超高精細・高速サイズで統一
             
             // Adjust grid layout based on viewport aspect ratio to fully cover widescreen displays
             const aspect = (dimensions.width / dimensions.height) || 1.6;
@@ -1324,7 +1325,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             // Filter out tiles that are too far from the new center to free up memory, but keep close ones for visual continuity
             setDssTiles(prev => prev.filter(t => {
                 const dist = Math.hypot(t.metadata.ra - ra, t.metadata.dec - dec);
-                return dist < viewFov * 1.5;
+                return dist < viewFov * 2.2;
             }));
 
             const tilePromises = offsets.map(async (offset, index) => {

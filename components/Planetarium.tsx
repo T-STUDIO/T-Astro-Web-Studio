@@ -426,9 +426,6 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 try {
                     const { alt, az } = raDecToAzAlt(tile.metadata.ra, tile.metadata.dec, effLocation.latitude, lst);
                     
-                    // 画面外・地平線下判定 (高度が著しく低い、または視野外のタイルのスキップ)
-                    if (alt < -15) continue;
-                    
                     const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                     
                     if (p) {
@@ -460,13 +457,50 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         }
                         
                         // 描画コンテキスト制御
-                        // 一部ブラウザ/サンドボックス環境でのCanvasフィルタ（ctx.filter）の描画失敗バグを防ぎ、
-                        // 100%確実な描画を担保するために標準的な source-over と高不透明度（0.85）のみで描画します。
-                        ctx.globalAlpha = 0.85;
-                        ctx.globalCompositeOperation = 'source-over';
-                        ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
+                        const img = tile.image;
+                        if ((img as any)._isNegative === undefined) {
+                            try {
+                                const tempCanvas = document.createElement('canvas');
+                                tempCanvas.width = 10;
+                                tempCanvas.height = 10;
+                                const tempCtx = tempCanvas.getContext('2d');
+                                if (tempCtx) {
+                                    tempCtx.drawImage(img, 0, 0, 10, 10);
+                                    const imgData = tempCtx.getImageData(0, 0, 10, 10).data;
+                                    let totalBrightness = 0;
+                                    for (let j = 0; j < imgData.length; j += 4) {
+                                        const r = imgData[j];
+                                        const g = imgData[j+1];
+                                        const b = imgData[j+2];
+                                        totalBrightness += (r * 299 + g * 587 + b * 114) / 1000;
+                                    }
+                                    const avgBrightness = totalBrightness / (imgData.length / 4);
+                                    (img as any)._isNegative = avgBrightness > 127;
+                                } else {
+                                    (img as any)._isNegative = false;
+                                }
+                            } catch (e) {
+                                (img as any)._isNegative = false;
+                            }
+                        }
+
+                        ctx.globalAlpha = 0.75;
+                        
+                        if (hasFilter && (img as any)._isNegative) {
+                            ctx.filter = 'invert(1)';
+                            ctx.globalCompositeOperation = 'screen';
+                        } else if ((img as any)._isNegative) {
+                            ctx.globalCompositeOperation = 'multiply';
+                        } else {
+                            ctx.globalCompositeOperation = 'screen';
+                        }
+                        
+                        ctx.drawImage(img, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
                         
                         // コンテキスト状態の確実な復帰
+                        if (hasFilter) {
+                            ctx.filter = 'none';
+                        }
                         ctx.globalCompositeOperation = 'source-over';
                         ctx.globalAlpha = 1.0;
                         

@@ -178,24 +178,31 @@ export function registerDssProxy(router: Router) {
         });
 
         try {
-            const { statusCode, headers, stream } = await fetchWithRedirects(targetUrl, baseHeaders);
-            remoteStream = stream;
+            const abortController = new AbortController();
+            req.on('close', () => {
+                clientAborted = true;
+                abortController.abort();
+            });
 
-            if (clientAborted) {
-                stream.destroy();
-                return;
-            }
+            const response = await fetch(targetUrl, {
+                headers: baseHeaders,
+                signal: abortController.signal
+            });
 
-            if (statusCode >= 400) {
-                console.error(`[DSSProxy] Remote server returned status ${statusCode}`);
-                stream.destroy();
+            if (clientAborted) return;
+
+            if (!response.ok) {
+                console.error(`[DSSProxy] Remote server returned status ${response.status}`);
                 if (!res.headersSent) {
-                    res.status(statusCode).json({ error: `DSS target server returned status ${statusCode}` });
+                    res.status(response.status).json({ error: `DSS target server returned status ${response.status}` });
                 }
                 return;
             }
 
-            let contentType = headers['content-type'] || 'image/jpeg';
+            const arrayBuffer = await response.arrayBuffer();
+            if (clientAborted) return;
+
+            let contentType = response.headers.get('content-type') || 'image/jpeg';
             
             // NASA SkyView and other servers sometimes return text/html even if the payload is a binary image.
             // We inspect the requested target URL to enforce a correct image MIME type.
@@ -213,8 +220,7 @@ export function registerDssProxy(router: Router) {
             res.setHeader('Content-Type', contentType);
             res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache tiles for 1 day
 
-            // Pipe the data chunks directly to the response
-            stream.pipe(res);
+            res.send(Buffer.from(arrayBuffer));
         } catch (error: any) {
             if (clientAborted) return;
             console.error('[DSSProxy] Error proxying tile:', error.message);

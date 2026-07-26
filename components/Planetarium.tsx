@@ -1344,8 +1344,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const halfW = dimensions.width / 2;
             const halfH = dimensions.height / 2;
 
-            const nx = Math.ceil(halfW / stepPixels) + 1;
-            const ny = Math.ceil(halfH / stepPixels) + 1;
+            const maxW = halfW + tilePixels * 1.2;
+            const maxH = halfH + tilePixels * 1.2;
+
+            const nx = Math.ceil(maxW / stepPixels) + 1;
+            const ny = Math.ceil(maxH / stepPixels) + 1;
 
             const offsets: { dx: number, dy: number }[] = [];
             for (let ix = -nx; ix <= nx; ix++) {

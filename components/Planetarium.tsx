@@ -1329,8 +1329,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            const ra = parseFloat(center.ra.toFixed(4));
-            const dec = parseFloat(center.dec.toFixed(4));
+            // 開始時の最新の画面中心高度・方位を取得
+            const curAz = viewAzRef.current;
+            const curAlt = viewAltRef.current;
+            const curCenter = azAltToRaDec(curAz, curAlt, currentLoc.latitude, lst);
+
+            const ra = parseFloat(curCenter.ra.toFixed(4));
+            const dec = parseFloat(curCenter.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
@@ -1373,8 +1378,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const yProj = -offset.dy / finalScale; // 上方向が+yProj
                 
                 const rho = Math.hypot(xProj, yProj);
-                let targetAz = viewAz;
-                let targetAlt = viewAlt;
+                let targetAz = curAz;
+                let targetAlt = curAlt;
 
                 if (rho > 1e-10) {
                     const rad = Math.PI / 180;
@@ -1382,8 +1387,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     const c = 2 * Math.atan2(rho, 2);
                     const sinC = Math.sin(c);
                     const cosC = Math.cos(c);
-                    const phi0 = viewAlt * rad;
-                    const lambda0 = viewAz * rad;
+                    const phi0 = curAlt * rad;
+                    const lambda0 = curAz * rad;
 
                     const sinPhi = cosC * Math.sin(phi0) + (yProj * sinC * Math.cos(phi0) / rho);
                     const phi = Math.asin(Math.max(-1, Math.min(1, sinPhi)));

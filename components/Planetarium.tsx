@@ -1387,26 +1387,26 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 // 1. Primary Source: NASA SkyView (Red) - 100% reliable, ultra-fast, no geo-blocking. Delivered instantly and beautifully colorized by processDssImage.
                 sources.push({
                     name: 'NASA SkyView (Red)',
-                    url: `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${targetRa},${targetDec}&pixels=${pixels}&size=${tileFov}&return=jpg`
+                    key: 'nasa'
                 });
 
                 // 2. Secondary Source: CDS Aladin DSS2 Color (Fallback - may fail or timeout due to IP/geo-blocking on some networks)
                 sources.push({
                     name: 'CDS Aladin DSS2 Color',
-                    url: `https://alasky.cds.unistra.fr/hips-image-cutout?hips=CDS/P/DSS2/color&ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&width=${pixels}&height=${pixels}&coordsys=icrs&format=jpg`
+                    key: 'aladin'
                 });
 
                 if (tileFov <= 2.0) {
                     sources.push({
                         name: 'STScI DSS',
-                        url: `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${targetRa}&d=${targetDec}&e=J2000&h=${Math.min(120, Math.round(tileFov * 60))}&w=${Math.min(120, Math.round(tileFov * 60))}&f=gif`
+                        key: 'stsci'
                     });
                 }
 
                 if (tileFov <= 1.0) {
                     sources.push({
                         name: 'ESO DSS',
-                        url: `https://archive.eso.org/dss/dss/image?ra=${targetRa}&dec=${targetDec}&x=${Math.min(60, Math.round(tileFov * 60))}&y=${Math.min(60, Math.round(tileFov * 60))}&mime-type=download-gif`
+                        key: 'eso'
                     });
                 }
 
@@ -1423,7 +1423,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 for (const source of sources) {
                     if (signal.aborted) break;
                     try {
-                        const proxiedUrl = `/api/dss/proxy?url=${encodeURIComponent(source.url)}`;
+                        const proxiedUrl = `/api/dss/proxy?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&pixels=${pixels}&source=${source.key}`;
                         const response = await fetch(proxiedUrl, { signal });
                         if (!response.ok) throw new Error(`Proxy error ${response.status}`);
                         

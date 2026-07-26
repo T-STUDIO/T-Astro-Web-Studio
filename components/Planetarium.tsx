@@ -562,7 +562,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     if (p) {
                         const baseScale = Math.min(width, height) / 2;
                         const pixelsPerDegree = baseScale * zoom * (Math.PI / 180);
-                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.06 + 4;
+                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.12 + 6;
                         
                         // 画面外判定（クリッピング）：タイルの描画範囲が完全に画面外の場合は描画をスキップ
                         const halfSize = dssSizeInPixels / 2;
@@ -1331,19 +1331,19 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             // 1タイルの視野角（画面短辺FOVの約0.5倍）
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
             const pixels = 512;
-            const step = tileFov * 0.95; // 5%重なりを持たせて隙間を完全に埋める
+            const step = tileFov * 0.88; // 隙間なく確実に重ねる
 
-            // 画面アスペクト比に基づき、横方向(RA)および縦方向(DEC)の全域を100%カバーするグリッドを計算
-            const raTilesCount = Math.max(3, Math.ceil(viewFovX / step) | 1);
-            const decTilesCount = Math.max(3, Math.ceil(viewFov / step) | 1);
+            // 画面の水平（方位角dAz）・垂直（高度dAlt）の表示領域を完璧にカバーするグリッドを計算
+            const azTilesCount = Math.max(3, Math.ceil(viewFovX / step) | 1);
+            const altTilesCount = Math.max(3, Math.ceil(viewFov / step) | 1);
 
-            const maxRaOffset = Math.floor(raTilesCount / 2);
-            const maxDecOffset = Math.floor(decTilesCount / 2);
+            const maxAzOffset = Math.floor(azTilesCount / 2);
+            const maxAltOffset = Math.floor(altTilesCount / 2);
 
-            const offsets: { dra: number, ddec: number }[] = [];
-            for (let r = -maxRaOffset; r <= maxRaOffset; r++) {
-                for (let d = -maxDecOffset; d <= maxDecOffset; d++) {
-                    offsets.push({ dra: r * step, ddec: d * step });
+            const offsets: { daz: number, dalt: number }[] = [];
+            for (let a = -maxAzOffset; a <= maxAzOffset; a++) {
+                for (let l = -maxAltOffset; l <= maxAltOffset; l++) {
+                    offsets.push({ daz: a * step, dalt: l * step });
                 }
             }
 
@@ -1352,12 +1352,17 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             setDssTiles([]);
 
             // 各タイルの取得関数（Aladinを第一優先にして高速化）
-            const fetchTile = async (offset: { dra: number, ddec: number }) => {
+            const fetchTile = async (offset: { daz: number, dalt: number }) => {
                 if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
                 
-                const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
-                const cosDec = Math.max(0.1, Math.cos(targetDec * Math.PI / 180));
-                const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
+                // プラネタリウム画面上の高度(alt)・方位(az)から該当画面位置の正確な赤道座標(RA/DEC)を直接算定
+                const targetAlt = Math.max(-89, Math.min(89, viewAlt + offset.dalt));
+                const cosAlt = Math.max(0.1, Math.cos(targetAlt * Math.PI / 180));
+                const targetAz = (viewAz - (offset.daz / cosAlt) + 360) % 360;
+                
+                const targetRaDec = azAltToRaDec(targetAz, targetAlt, currentLoc.latitude, lst);
+                const targetRa = targetRaDec.ra;
+                const targetDec = targetRaDec.dec;
                 
                 const sources = [
                     { name: 'CDS Aladin DSS2 Color', key: 'aladin' },

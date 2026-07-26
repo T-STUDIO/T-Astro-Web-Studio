@@ -20,7 +20,7 @@ function fetchWithRedirects(
             const transport = isHttps ? https : http;
 
             const headers = { ...baseHeaders };
-            headers['Host'] = parsedUrl.host;
+            headers['Host'] = parsedUrl.hostname;
 
             // Spoof Referer based on hostname
             if (parsedUrl.hostname.includes('nasa.gov')) {
@@ -122,12 +122,39 @@ function fetchWithRedirects(
  */
 export function registerDssProxy(router: Router) {
     router.get('/dss/proxy', async (req: Request, res: Response) => {
-        const targetUrl = req.query.url as string;
+        let targetUrl = req.query.url as string;
         if (!targetUrl) {
-            return res.status(400).json({ error: 'Missing required url parameter' });
+            const ra = req.query.ra as string;
+            const dec = req.query.dec as string;
+            const fov = req.query.fov as string;
+            const pixelsStr = req.query.pixels as string || '512';
+            const source = req.query.source as string || 'nasa';
+
+            if (!ra || !dec || !fov) {
+                return res.status(400).json({ error: 'Missing required parameters: ra, dec, fov (or url)' });
+            }
+
+            const pixels = parseInt(pixelsStr) || 512;
+            const tileFov = parseFloat(fov) || 1.0;
+
+            if (source === 'nasa') {
+                targetUrl = `https://skyview.gsfc.nasa.gov/cgi-bin/images?survey=DSS2%20Red&position=${ra},${dec}&pixels=${pixels}&size=${tileFov}&return=jpg`;
+            } else if (source === 'aladin') {
+                targetUrl = `https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra=${ra}&dec=${dec}&fov=${tileFov}&width=${pixels}&height=${pixels}&coordsys=icrs&format=jpg`;
+            } else if (source === 'stsci') {
+                const h = Math.min(120, Math.round(tileFov * 60));
+                const w = Math.min(120, Math.round(tileFov * 60));
+                targetUrl = `https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r=${ra}&d=${dec}&e=J2000&h=${h}&w=${w}&f=gif`;
+            } else if (source === 'eso') {
+                const x = Math.min(60, Math.round(tileFov * 60));
+                const y = Math.min(60, Math.round(tileFov * 60));
+                targetUrl = `https://archive.eso.org/dss/dss/image?ra=${ra}&dec=${dec}&x=${x}&y=${y}&mime-type=download-gif`;
+            } else {
+                return res.status(400).json({ error: `Unsupported dss source: ${source}` });
+            }
         }
 
-        console.log(`[DSSProxy] Fetching DSS tile: ${targetUrl}`);
+        console.log(`[DSSProxy] Fetching DSS tile using backend configured address: ${targetUrl}`);
 
         // Set permissive CORS headers for the client
         res.setHeader('Access-Control-Allow-Origin', '*');

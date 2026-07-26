@@ -195,23 +195,6 @@ const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvas
 
             ctx.putImageData(imgData, 0, 0);
 
-            // 3. エッジぼかし処理（グラデーションマスクを 'destination-in' で重ねる）
-            ctx.save();
-            ctx.globalCompositeOperation = 'destination-in';
-            const gradient = ctx.createRadialGradient(
-                canvas.width / 2, canvas.height / 2, canvas.width * 0.35,
-                canvas.width / 2, canvas.height / 2, canvas.width * 0.50
-            );
-            gradient.addColorStop(0, 'rgba(0, 0, 0, 1.0)');
-            gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.85)');
-            gradient.addColorStop(0.9, 'rgba(0, 0, 0, 0.3)');
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
-            ctx.fillStyle = gradient;
-            ctx.beginPath();
-            ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-
             resolve(canvas);
         } catch (e) {
             resolve(canvas);
@@ -602,9 +585,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             }
                         }
                         
-                        // 事前処理済みの美しいポジティブ画像を描画
-                        ctx.globalAlpha = 0.85;
-                        ctx.globalCompositeOperation = 'screen'; // 自然に夜空に星を浮かび上がらせる
+                        // 事前処理済みの美しいポジティブ画像を描画（矩形タイルとして画面に自然合成）
+                        ctx.globalAlpha = 1.0;
+                        ctx.globalCompositeOperation = 'source-over';
                         ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
                         
                         ctx.restore();
@@ -1309,7 +1292,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const signal = controller.signal;
         const fov = 60 / zoom;
 
-        if (isMini || !settings.showDSS || fov > 15.0) {
+        if (isMini || !settings.showDSS || fov > 60.0) {
             setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();
@@ -1336,89 +1319,43 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            // KStars同様、表示倍率（viewFov）に合わせて1枚のタイル視野角（tileFov）をダイナミックに算出（0.5度〜12.0度）
-            // これにより、ズームレベルを問わず常に最小限のタイル枚数（通常3x3〜5x3）で全画面をシームレスに隙間なくカバー可能にする
-            const tileFov = Math.max(0.5, Math.min(12.0, viewFov * 0.45));
-            const pixels = 512; // 512x512の超高精細・高速サイズで統一
-            
-            // Adjust grid layout based on viewport aspect ratio to fully cover widescreen displays
-            const aspect = (dimensions.width / dimensions.height) || 1.6;
-            
-            // ぼかし効果のオーバーラップを考慮した最適なステップサイズ
-            const step = tileFov * 0.82;
-            
-            // 画面の幅と高さの比率に応じて、RAとDEC方向に必要なタイル数を動的に算出する
-            // 画面全体を隙間なくカバーしつつ、重なりすぎを防ぐために、画面のFOVに基づいて必要数を計算（最大5x5、通常は3x3）
-            const raTilesCount = Math.min(5, Math.max(3, Math.ceil((viewFov * aspect) / step) | 1));
-            const decTilesCount = Math.min(5, Math.max(3, Math.ceil(viewFov / step) | 1));
+            // タイルの視野角（tileFov）を表示視野角(viewFov)の約1/2にし、3x3の9枚で画面全体をカバー
+            const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
+            const pixels = 512;
+            const step = tileFov; // 重なりなしでぴったり隙間なく並べる
 
-            const rawOffsets: { dra: number, ddec: number, dist: number }[] = [];
-            const maxRaOffset = Math.floor(raTilesCount / 2);
-            const maxDecOffset = Math.floor(decTilesCount / 2);
-
-            for (let r = -maxRaOffset; r <= maxRaOffset; r++) {
-                for (let d = -maxDecOffset; d <= maxDecOffset; d++) {
-                    const dra = r * step;
-                    const ddec = d * step;
-                    const dist = Math.hypot(dra, ddec);
-                    rawOffsets.push({ dra, ddec, dist });
+            const offsets: { dra: number, ddec: number }[] = [];
+            for (let r = -1; r <= 1; r++) {
+                for (let d = -1; d <= 1; d++) {
+                    offsets.push({ dra: r * step, ddec: d * step });
                 }
             }
-            
-            // 画面の中心に近いタイルから順番にダウンロードをトリガー
-            rawOffsets.sort((a, b) => a.dist - b.dist);
-            const offsets = rawOffsets.map(o => ({ dra: o.dra, ddec: o.ddec }));
 
-            // Filter out tiles that are too far from the new center to free up memory, but keep close ones for visual continuity
+            // 古いタイルを削除して画面外のメモリを解放
             setDssTiles(prev => prev.filter(t => {
-                const dist = Math.hypot(t.metadata.ra - ra, t.metadata.dec - dec);
-                return dist < viewFov * 2.2;
+                const d = Math.hypot(t.metadata.ra - ra, t.metadata.dec - dec);
+                return d < viewFov * 2.0;
             }));
 
-            for (let index = 0; index < offsets.length; index++) {
+            // 各タイルの取得関数（Aladinを第一優先にして高速化）
+            const fetchTile = async (offset: { dra: number, ddec: number }) => {
                 if (signal.aborted) return;
-                const offset = offsets[index];
                 
                 const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
                 const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
                 
-                const sources = [];
-                // 1. Primary Source: NASA SkyView (Red) - 100% reliable, ultra-fast, no geo-blocking. Delivered instantly and beautifully colorized by processDssImage.
-                sources.push({
-                    name: 'NASA SkyView (Red)',
-                    key: 'nasa'
-                });
-
-                // 2. Secondary Source: CDS Aladin DSS2 Color (Fallback - may fail or timeout due to IP/geo-blocking on some networks)
-                sources.push({
-                    name: 'CDS Aladin DSS2 Color',
-                    key: 'aladin'
-                });
+                const sources = [
+                    { name: 'CDS Aladin DSS2 Color', key: 'aladin' },
+                    { name: 'NASA SkyView (Red)', key: 'nasa' }
+                ];
 
                 if (tileFov <= 2.0) {
-                    sources.push({
-                        name: 'STScI DSS',
-                        key: 'stsci'
-                    });
+                    sources.push({ name: 'STScI DSS', key: 'stsci' });
                 }
-
                 if (tileFov <= 1.0) {
-                    sources.push({
-                        name: 'ESO DSS',
-                        key: 'eso'
-                    });
+                    sources.push({ name: 'ESO DSS', key: 'eso' });
                 }
-
-                // ネットワーク渋滞とサーバー負荷を回避するための直列ディレイ（150ms待機）
-                if (index > 0) {
-                    await new Promise<void>(resolve => {
-                        const t = setTimeout(resolve, 150);
-                        signal.addEventListener('abort', () => clearTimeout(t));
-                    });
-                }
-
-                if (signal.aborted) return;
 
                 for (const source of sources) {
                     if (signal.aborted) break;
@@ -1428,24 +1365,21 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         if (!response.ok) throw new Error(`Proxy error ${response.status}`);
                         
                         const blob = await response.blob();
-                        if (blob.size < 2000) throw new Error('Invalid image data (too small)');
+                        if (blob.size < 2000) throw new Error('Invalid image data');
 
                         const img = new Image();
                         await new Promise<void>((resolve, reject) => {
                             img.onload = () => resolve();
-                            img.onerror = () => reject(new Error('Image decode failed'));
+                            img.onerror = () => reject(new Error('Decode failed'));
                             img.src = URL.createObjectURL(blob);
                             signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
                         });
 
                         if (signal.aborted) return;
 
-                        // 読み込み完了後に画像を非同期で事前処理（反転＆ぼかし）
                         const processedCanvas = await processDssImage(img, tileFov);
-
                         if (signal.aborted) return;
 
-                        // エラー画像は描画およびキャッシュに追加せずスキップして次のソースを試す
                         if ((processedCanvas as any)._isError) {
                             continue;
                         }
@@ -1457,8 +1391,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
                         setDssTiles(prev => {
                             const isSameTile = (t: any) => 
-                                Math.abs(t.metadata.ra - targetRa) < 0.01 && 
-                                Math.abs(t.metadata.dec - targetDec) < 0.01;
+                                Math.abs(t.metadata.ra - targetRa) < 0.001 && 
+                                Math.abs(t.metadata.dec - targetDec) < 0.001;
                             
                             if (prev.some(isSameTile)) {
                                 return prev.map(t => isSameTile(t) ? tileData : t);
@@ -1466,13 +1400,15 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             return [...prev, tileData];
                         });
 
-                        break; // 成功したらフォールバックは試さない
+                        break; // 成功したら次のソースは試さない
                     } catch (e: any) {
                         if (e.name === 'AbortError') return;
-                        console.warn(`[Planetarium] Tile failed from ${source.name}:`, e.message);
                     }
                 }
-            }
+            };
+
+            // 全9枚のタイルを並列で高速フェッチ
+            await Promise.all(offsets.map(offset => fetchTile(offset)));
 
             if (!signal.aborted) {
                 setDssLoading(false);

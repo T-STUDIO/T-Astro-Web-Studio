@@ -253,6 +253,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     }, [dssTiles]);
     const [dssLoading, setDssLoading] = useState(false);
     const lastDssParams = useRef({ ra: -1, dec: -1, zoom: -1 });
+    const dssRequestIdRef = useRef(0);
     const [searchQuery, setSearchQuery] = useState('');
     const [satellitesList, setSatellitesList] = useState<Satellite[]>([]);
     const [cometsList, setCometsList] = useState<Comet[]>([]);
@@ -561,7 +562,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     if (p) {
                         const baseScale = Math.min(width, height) / 2;
                         const pixelsPerDegree = baseScale * zoom * (Math.PI / 180);
-                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.03 + 2;
+                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.06 + 4;
                         
                         // 画面外判定（クリッピング）：タイルの描画範囲が完全に画面外の場合は描画をスキップ
                         const halfSize = dssSizeInPixels / 2;
@@ -1317,6 +1318,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         
         const updateDss = async () => {
             if (signal.aborted) return;
+            const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
             const ra = parseFloat(center.ra.toFixed(4));
@@ -1351,11 +1353,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
             // 各タイルの取得関数（Aladinを第一優先にして高速化）
             const fetchTile = async (offset: { dra: number, ddec: number }) => {
-                if (signal.aborted) return;
+                if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
                 
-                const cosDec = Math.max(0.1, Math.cos(dec * Math.PI / 180));
-                const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
                 const targetDec = Math.max(-89, Math.min(89, dec + offset.ddec));
+                const cosDec = Math.max(0.1, Math.cos(targetDec * Math.PI / 180));
+                const targetRa = (ra + (offset.dra / cosDec) + 360) % 360;
                 
                 const sources = [
                     { name: 'CDS Aladin DSS2 Color', key: 'aladin' },
@@ -1370,7 +1372,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
 
                 for (const source of sources) {
-                    if (signal.aborted) break;
+                    if (signal.aborted || currentReqId !== dssRequestIdRef.current) break;
                     try {
                         const proxiedUrl = `/api/dss/proxy?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&pixels=${pixels}&source=${source.key}`;
                         const response = await fetch(proxiedUrl, { signal });
@@ -1387,10 +1389,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
                         });
 
-                        if (signal.aborted) return;
+                        if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
 
                         const processedCanvas = await processDssImage(img, tileFov);
-                        if (signal.aborted) return;
+                        if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
 
                         if ((processedCanvas as any)._isError) {
                             continue;
@@ -1402,6 +1404,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         };
 
                         setDssTiles(prev => {
+                            if (currentReqId !== dssRequestIdRef.current) return prev;
                             const isSameTile = (t: any) => 
                                 Math.abs(t.metadata.ra - targetRa) < 0.001 && 
                                 Math.abs(t.metadata.dec - targetDec) < 0.001;

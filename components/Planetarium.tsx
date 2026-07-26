@@ -562,7 +562,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     if (p) {
                         const baseScale = Math.min(width, height) / 2;
                         const pixelsPerDegree = baseScale * zoom * (Math.PI / 180);
-                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.12 + 6;
+                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.05 + 2;
                         
                         // 画面外判定（クリッピング）：タイルの描画範囲が完全に画面外の場合は描画をスキップ
                         const halfSize = dssSizeInPixels / 2;
@@ -1325,25 +1325,24 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            const aspect = (dimensions.width / dimensions.height) || 1.6;
-            const viewFovX = viewFov * aspect;
-
-            // 1タイルの視野角（画面短辺FOVの約0.5倍）
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
             const pixels = 512;
-            const step = tileFov * 0.88; // 隙間なく確実に重ねる
 
-            // 画面の水平（方位角dAz）・垂直（高度dAlt）の表示領域を完璧にカバーするグリッドを計算
-            const azTilesCount = Math.max(3, Math.ceil(viewFovX / step) | 1);
-            const altTilesCount = Math.max(3, Math.ceil(viewFov / step) | 1);
+            const baseScale = Math.min(dimensions.width, dimensions.height) / 2;
+            const finalScale = baseScale * zoom;
+            const tilePixels = tileFov * (Math.PI / 180) * finalScale;
+            const stepPixels = tilePixels * 0.82; // 自然なオーバーラップで隙間を補合
 
-            const maxAzOffset = Math.floor(azTilesCount / 2);
-            const maxAltOffset = Math.floor(altTilesCount / 2);
+            const halfW = dimensions.width / 2;
+            const halfH = dimensions.height / 2;
 
-            const offsets: { daz: number, dalt: number }[] = [];
-            for (let a = -maxAzOffset; a <= maxAzOffset; a++) {
-                for (let l = -maxAltOffset; l <= maxAltOffset; l++) {
-                    offsets.push({ daz: a * step, dalt: l * step });
+            const nx = Math.ceil(halfW / stepPixels);
+            const ny = Math.ceil(halfH / stepPixels);
+
+            const offsets: { dx: number, dy: number }[] = [];
+            for (let ix = -nx; ix <= nx; ix++) {
+                for (let iy = -ny; iy <= ny; iy++) {
+                    offsets.push({ dx: ix * stepPixels, dy: iy * stepPixels });
                 }
             }
 
@@ -1352,13 +1351,36 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             setDssTiles([]);
 
             // 各タイルの取得関数（Aladinを第一優先にして高速化）
-            const fetchTile = async (offset: { daz: number, dalt: number }) => {
+            const fetchTile = async (offset: { dx: number, dy: number }) => {
                 if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
                 
-                // プラネタリウム画面上の高度(alt)・方位(az)から該当画面位置の正確な赤道座標(RA/DEC)を直接算定
-                const targetAlt = Math.max(-89, Math.min(89, viewAlt + offset.dalt));
-                const cosAlt = Math.max(0.1, Math.cos(targetAlt * Math.PI / 180));
-                const targetAz = (viewAz - (offset.daz / cosAlt) + 360) % 360;
+                // 画面ピクセルオフセット (dx, dy) から逆ステレオ投影で正確な高度(alt)・方位(az)を算定
+                const xProj = offset.dx / finalScale;
+                const yProj = -offset.dy / finalScale; // 上方向が+yProj
+                
+                const rho = Math.hypot(xProj, yProj);
+                let targetAz = viewAz;
+                let targetAlt = viewAlt;
+
+                if (rho > 1e-10) {
+                    const rad = Math.PI / 180;
+                    const deg = 180 / Math.PI;
+                    const c = 2 * Math.atan2(rho, 2);
+                    const sinC = Math.sin(c);
+                    const cosC = Math.cos(c);
+                    const phi0 = viewAlt * rad;
+                    const lambda0 = viewAz * rad;
+
+                    const sinPhi = cosC * Math.sin(phi0) + (yProj * sinC * Math.cos(phi0) / rho);
+                    const phi = Math.asin(Math.max(-1, Math.min(1, sinPhi)));
+
+                    const yAtan = xProj * sinC;
+                    const xAtan = rho * Math.cos(phi0) * cosC - yProj * Math.sin(phi0) * sinC;
+                    const lambda = lambda0 + Math.atan2(yAtan, xAtan);
+
+                    targetAlt = phi * deg;
+                    targetAz = (lambda * deg + 360) % 360;
+                }
                 
                 const targetRaDec = azAltToRaDec(targetAz, targetAlt, currentLoc.latitude, lst);
                 const targetRa = targetRaDec.ra;

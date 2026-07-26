@@ -246,6 +246,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const wwtControlRef = useRef<any>(null);
     const [wwtInitialized, setWwtInitialized] = useState(false);
     const [dssTiles, setDssTiles] = useState<{ image: HTMLImageElement, metadata: { ra: number, dec: number, fov: number } }[]>([]);
+    const [totalDssTiles, setTotalDssTiles] = useState(9);
     const dssTilesRef = useRef(dssTiles);
     useEffect(() => {
         dssTilesRef.current = dssTiles;
@@ -558,8 +559,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                     
                     if (p) {
-                        const viewFov = 60 / zoom;
-                        const pixelsPerDegree = Math.min(width, height) / viewFov;
+                        const baseScale = Math.min(width, height) / 2;
+                        const pixelsPerDegree = baseScale * zoom * (Math.PI / 180);
                         const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree;
                         
                         // 画面外判定（クリッピング）：タイルの描画範囲が完全に画面外の場合は描画をスキップ
@@ -1304,10 +1305,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
         
         // Only update if moved significantly
-        const dist = Math.hypot(center.ra - lastDssParams.current.ra, center.dec - lastDssParams.current.dec);
+        let dra = Math.abs(center.ra - lastDssParams.current.ra);
+        if (dra > 180) dra = 360 - dra;
+        const ddec = center.dec - lastDssParams.current.dec;
+        const dist = Math.hypot(dra * Math.cos(center.dec * Math.PI / 180), ddec);
         const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
         
-        if (dist < fov * 0.1 && zoomDiff < 0.1 && dssTilesRef.current.length > 0) {
+        if (dist < fov * 0.08 && zoomDiff < 0.08 && dssTilesRef.current.length > 0) {
             return () => controller.abort();
         }
         
@@ -1319,19 +1323,30 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
-            // タイルの視野角（tileFov）を表示視野角(viewFov)の約1/2にし、3x3の9枚で画面全体をカバー
+            const aspect = (dimensions.width / dimensions.height) || 1.6;
+            const viewFovX = viewFov * aspect;
+
+            // 1タイルの視野角（画面短辺FOVの約0.5倍）
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
             const pixels = 512;
             const step = tileFov; // 重なりなしでぴったり隙間なく並べる
 
+            // 画面アスペクト比に基づき、横方向(RA)および縦方向(DEC)の全域を100%カバーするグリッドを計算
+            const raTilesCount = Math.max(3, Math.ceil(viewFovX / step) | 1);
+            const decTilesCount = Math.max(3, Math.ceil(viewFov / step) | 1);
+
+            const maxRaOffset = Math.floor(raTilesCount / 2);
+            const maxDecOffset = Math.floor(decTilesCount / 2);
+
             const offsets: { dra: number, ddec: number }[] = [];
-            for (let r = -1; r <= 1; r++) {
-                for (let d = -1; d <= 1; d++) {
+            for (let r = -maxRaOffset; r <= maxRaOffset; r++) {
+                for (let d = -maxDecOffset; d <= maxDecOffset; d++) {
                     offsets.push({ dra: r * step, ddec: d * step });
                 }
             }
 
             // 常に現在の画面中心を基点として新しいタイル群で表示を更新するため、古いタイルをクリア
+            setTotalDssTiles(offsets.length);
             setDssTiles([]);
 
             // 各タイルの取得関数（Aladinを第一優先にして高速化）
@@ -1476,7 +1491,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     return (
         <div ref={containerRef} className="w-full h-full relative overflow-hidden select-none touch-none bg-[#020617]" style={{ cursor, touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={(e) => setZoom(prev => Math.max(0.5, Math.min(10, prev * (1 - e.deltaY * 0.001))))} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
             {/* {!isMini && settings.showDSS && <div id="wwt-canvas" className="absolute inset-0 w-full h-full" style={{ zIndex: 0, pointerEvents: 'none' }} />} */}
-            {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading ({dssTiles.length}/9)...</div>}
+            {dssLoading && <div className="absolute top-4 right-4 z-50 bg-black/50 px-2 py-1 rounded text-[10px] text-white animate-pulse">DSS Loading ({dssTiles.length}/{totalDssTiles})...</div>}
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" style={{ background: 'transparent' }} />
             
             {!isMini && (

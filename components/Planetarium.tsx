@@ -560,9 +560,17 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                     
                     if (p) {
+                        const rad = Math.PI / 180;
+                        const lambda = az * rad;
+                        const phi = alt * rad;
+                        const lambda0 = viewAz * rad;
+                        const phi0 = viewAlt * rad;
+                        const cosC = Math.max(0.1, Math.sin(phi0) * Math.sin(phi) + Math.cos(phi0) * Math.cos(phi) * Math.cos(lambda - lambda0));
+                        const kTile = 2 / (1 + cosC);
+
                         const baseScale = Math.min(width, height) / 2;
                         const pixelsPerDegree = baseScale * zoom * (Math.PI / 180);
-                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.05 + 2;
+                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * kTile * 1.02 + 2;
                         
                         // 画面外判定（クリッピング）：タイルの描画範囲が完全に画面外の場合は描画をスキップ
                         const halfSize = dssSizeInPixels / 2;
@@ -587,7 +595,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                             }
                         }
                         
-                        // 事前処理済みの美しいポジティブ画像を描画（矩形タイルとして画面に自然合成）
+                        // 事前処理済みの画像を描画（矩形タイルとして画面に自然合成）
                         ctx.globalAlpha = 1.0;
                         ctx.globalCompositeOperation = 'source-over';
                         ctx.drawImage(tile.image, -halfSize, -halfSize, dssSizeInPixels, dssSizeInPixels);
@@ -1336,8 +1344,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const halfW = dimensions.width / 2;
             const halfH = dimensions.height / 2;
 
-            const nx = Math.ceil(halfW / stepPixels);
-            const ny = Math.ceil(halfH / stepPixels);
+            const nx = Math.ceil(halfW / stepPixels) + 1;
+            const ny = Math.ceil(halfH / stepPixels) + 1;
 
             const offsets: { dx: number, dy: number }[] = [];
             for (let ix = -nx; ix <= nx; ix++) {

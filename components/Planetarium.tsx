@@ -1329,13 +1329,14 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            // 最新の画面中心方位(viewAzRef)・高度(viewAltRef)から中心座標を正確に計算
+            // 画面中心の正確な方位・高度、観測地点（緯度・経度）、現在の観測日時からLSTおよび中心赤経・赤緯を算出
             const curAz = viewAzRef.current;
             const curAlt = viewAltRef.current;
-            const curCenter = azAltToRaDec(curAz, curAlt, currentLoc.latitude, lst);
+            const curLst = calculateLST(currentLoc.longitude, effTimeRef.current);
+            const curCenter = azAltToRaDec(curAz, curAlt, currentLoc.latitude, curLst);
 
-            const ra = parseFloat(curCenter.ra.toFixed(4));
-            const dec = parseFloat(curCenter.dec.toFixed(4));
+            const ra = parseFloat(curCenter.ra.toFixed(6));
+            const dec = parseFloat(curCenter.dec.toFixed(6));
             
             const viewFov = 60 / zoom;
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
@@ -1344,7 +1345,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const baseScale = Math.min(dimensions.width, dimensions.height) / 2;
             const finalScale = baseScale * zoom;
             const tilePixels = tileFov * (Math.PI / 180) * finalScale;
-            const stepPixels = tilePixels * 0.82; // 自然なオーバーラップで隙間を補合
+            const stepPixels = tilePixels * 0.82; // オーバーラップ調整
 
             const halfW = dimensions.width / 2;
             const halfH = dimensions.height / 2;
@@ -1362,7 +1363,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
 
-            // 画面中心 (dx=0, dy=0) から近い順（昇順）にソートして、必ず中心からタイルを取得・描画開始する
+            // 算出された中心座標を起点にグリッドを展開
             offsets.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
 
             // 常に現在の画面中心を基点として新しいタイル群で表示を更新するため、古いタイルをクリア
@@ -1468,19 +1469,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             };
 
-            // まず画面正中心のタイル（dx=0, dy=0）を最優先で必ず取得・描画開始
-            if (offsets.length > 0) {
-                await fetchTile(offsets[0]);
-            }
-
-            // 残りの周辺タイルを中心からの距離順にグループ化して順次取得し、正確な中心起点の描画を保証
-            const restOffsets = offsets.slice(1);
-            const batchSize = 4;
-            for (let i = 0; i < restOffsets.length; i += batchSize) {
-                if (signal.aborted || currentReqId !== dssRequestIdRef.current) break;
-                const batch = restOffsets.slice(i, i + batchSize);
-                await Promise.all(batch.map(offset => fetchTile(offset)));
-            }
+            // 全タイルを中心からの距離順に並列取得し、完了したものから順次即座に描画
+            await Promise.all(offsets.map(offset => fetchTile(offset)));
 
             if (!signal.aborted) {
                 setDssLoading(false);

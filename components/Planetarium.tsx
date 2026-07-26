@@ -1301,7 +1301,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         
         const currentLoc = effLocationRef.current;
         const currentTime = effTimeRef.current;
-        const lst = calculateLST(currentTime, currentLoc.longitude);
+        const lst = calculateLST(currentLoc.longitude, currentTime);
         const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
         
         // Only update if moved significantly

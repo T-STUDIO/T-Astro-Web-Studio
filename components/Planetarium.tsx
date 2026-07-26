@@ -1329,32 +1329,37 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            // 画面中心の正確な方位・高度、観測地点（緯度・経度）、現在の観測日時からLSTおよび中心赤経・赤緯を算出
-            const curAz = viewAzRef.current;
-            const curAlt = viewAltRef.current;
-            const curLst = calculateLST(currentLoc.longitude, effTimeRef.current);
-            const curCenter = azAltToRaDec(curAz, curAlt, currentLoc.latitude, curLst);
+            // 画面中心の正確な方位・高度、観測地点（緯度・経度）、現在の観測日時からLSTおよび中心赤経・赤緯を正確に算出
+            const curAz = viewAz;
+            const curAlt = viewAlt;
+            const curLoc = effLocationRef.current;
+            const curTime = effTimeRef.current;
+            const curLst = calculateLST(curLoc.longitude, curTime);
+            const curCenter = azAltToRaDec(curAz, curAlt, curLoc.latitude, curLst);
 
-            const ra = parseFloat(curCenter.ra.toFixed(6));
-            const dec = parseFloat(curCenter.dec.toFixed(6));
+            const ra = curCenter.ra;
+            const dec = curCenter.dec;
             
             const viewFov = 60 / zoom;
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
             const pixels = 512;
 
-            const baseScale = Math.min(dimensions.width, dimensions.height) / 2;
+            const width = dimensions.width || (typeof window !== 'undefined' ? window.innerWidth : 1000);
+            const height = dimensions.height || (typeof window !== 'undefined' ? window.innerHeight : 800);
+
+            const baseScale = Math.min(width, height) / 2;
             const finalScale = baseScale * zoom;
             const tilePixels = tileFov * (Math.PI / 180) * finalScale;
-            const stepPixels = tilePixels * 0.82; // オーバーラップ調整
+            const stepPixels = Math.max(10, tilePixels * 0.82); // オーバーラップ調整と0除算防護
 
-            const halfW = dimensions.width / 2;
-            const halfH = dimensions.height / 2;
+            const halfW = width / 2;
+            const halfH = height / 2;
 
             const maxW = halfW + tilePixels * 1.2;
             const maxH = halfH + tilePixels * 1.2;
 
-            const nx = Math.ceil(maxW / stepPixels) + 1;
-            const ny = Math.ceil(maxH / stepPixels) + 1;
+            const nx = Math.min(3, Math.max(1, Math.ceil(maxW / stepPixels)));
+            const ny = Math.min(3, Math.max(1, Math.ceil(maxH / stepPixels)));
 
             const offsets: { dx: number, dy: number }[] = [];
             for (let ix = -nx; ix <= nx; ix++) {
@@ -1402,7 +1407,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     targetAz = (lambda * deg + 360) % 360;
                 }
                 
-                const targetRaDec = azAltToRaDec(targetAz, targetAlt, currentLoc.latitude, lst);
+                const targetRaDec = azAltToRaDec(targetAz, targetAlt, curLoc.latitude, curLst);
                 const targetRa = targetRaDec.ra;
                 const targetDec = targetRaDec.dec;
                 

@@ -1329,12 +1329,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            // 画面中心の高度(viewAlt)・方位(viewAz)と赤道座標(center)を使用
-            const curAz = viewAz;
-            const curAlt = viewAlt;
+            // 最新の画面中心方位(viewAzRef)・高度(viewAltRef)から中心座標を正確に計算
+            const curAz = viewAzRef.current;
+            const curAlt = viewAltRef.current;
+            const curCenter = azAltToRaDec(curAz, curAlt, currentLoc.latitude, lst);
 
-            const ra = parseFloat(center.ra.toFixed(4));
-            const dec = parseFloat(center.dec.toFixed(4));
+            const ra = parseFloat(curCenter.ra.toFixed(4));
+            const dec = parseFloat(curCenter.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
@@ -1467,8 +1468,19 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             };
 
-            // 全9枚のタイルを並列で高速フェッチ
-            await Promise.all(offsets.map(offset => fetchTile(offset)));
+            // まず画面正中心のタイル（dx=0, dy=0）を最優先で必ず取得・描画開始
+            if (offsets.length > 0) {
+                await fetchTile(offsets[0]);
+            }
+
+            // 残りの周辺タイルを中心からの距離順にグループ化して順次取得し、正確な中心起点の描画を保証
+            const restOffsets = offsets.slice(1);
+            const batchSize = 4;
+            for (let i = 0; i < restOffsets.length; i += batchSize) {
+                if (signal.aborted || currentReqId !== dssRequestIdRef.current) break;
+                const batch = restOffsets.slice(i, i + batchSize);
+                await Promise.all(batch.map(offset => fetchTile(offset)));
+            }
 
             if (!signal.aborted) {
                 setDssLoading(false);

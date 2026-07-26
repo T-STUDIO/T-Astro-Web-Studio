@@ -1329,13 +1329,12 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            // 開始時の最新の画面中心高度・方位を取得
-            const curAz = viewAzRef.current;
-            const curAlt = viewAltRef.current;
-            const curCenter = azAltToRaDec(curAz, curAlt, currentLoc.latitude, lst);
+            // 画面中心の高度(viewAlt)・方位(viewAz)と赤道座標(center)を使用
+            const curAz = viewAz;
+            const curAlt = viewAlt;
 
-            const ra = parseFloat(curCenter.ra.toFixed(4));
-            const dec = parseFloat(curCenter.dec.toFixed(4));
+            const ra = parseFloat(center.ra.toFixed(4));
+            const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));

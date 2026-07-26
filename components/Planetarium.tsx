@@ -1357,6 +1357,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
 
+            // 画面中心 (dx=0, dy=0) から近い順（昇順）にソートして、必ず中心からタイルを取得・描画開始する
+            offsets.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
+
             // 常に現在の画面中心を基点として新しいタイル群で表示を更新するため、古いタイルをクリア
             setTotalDssTiles(offsets.length);
             setDssTiles([]);

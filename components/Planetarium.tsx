@@ -1331,11 +1331,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
 
-            // 古いタイルを削除して画面外のメモリを解放
-            setDssTiles(prev => prev.filter(t => {
-                const d = Math.hypot(t.metadata.ra - ra, t.metadata.dec - dec);
-                return d < viewFov * 2.0;
-            }));
+            // 常に現在の画面中心を基点として新しいタイル群で表示を更新するため、古いタイルをクリア
+            setDssTiles([]);
 
             // 各タイルの取得関数（Aladinを第一優先にして高速化）
             const fetchTile = async (offset: { dra: number, ddec: number }) => {

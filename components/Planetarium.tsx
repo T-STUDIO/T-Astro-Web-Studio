@@ -561,7 +561,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     if (p) {
                         const baseScale = Math.min(width, height) / 2;
                         const pixelsPerDegree = baseScale * zoom * (Math.PI / 180);
-                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree;
+                        const dssSizeInPixels = tile.metadata.fov * pixelsPerDegree * 1.03 + 2;
                         
                         // 画面外判定（クリッピング）：タイルの描画範囲が完全に画面外の場合は描画をスキップ
                         const halfSize = dssSizeInPixels / 2;
@@ -1301,7 +1301,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         
         const currentLoc = effLocationRef.current;
         const currentTime = effTimeRef.current;
-        const lst = calculateLST(currentLoc.longitude, currentTime);
+        const lst = calculateLST(currentTime, currentLoc.longitude);
         const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
         
         // Only update if moved significantly
@@ -1329,7 +1329,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             // 1タイルの視野角（画面短辺FOVの約0.5倍）
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
             const pixels = 512;
-            const step = tileFov; // 重なりなしでぴったり隙間なく並べる
+            const step = tileFov * 0.95; // 5%重なりを持たせて隙間を完全に埋める
 
             // 画面アスペクト比に基づき、横方向(RA)および縦方向(DEC)の全域を100%カバーするグリッドを計算
             const raTilesCount = Math.max(3, Math.ceil(viewFovX / step) | 1);

@@ -223,29 +223,14 @@ class GlobalDssService {
   }
 
   /**
-   * Preload all global sky grid tiles iteratively, optionally prioritizing center coordinate
+   * Preload all global sky grid tiles iteratively
    */
-  public preloadGlobalMap(centerRa?: number, centerDec?: number): void {
-    const tiles: Array<{ ra: number; dec: number; dist: number }> = [];
+  public preloadGlobalMap(): void {
     for (let dec = -80; dec <= 80; dec += this.gridDecStep) {
       for (let ra = 0; ra < 360; ra += this.gridRaStep) {
-        let dist = 0;
-        if (centerRa !== undefined && centerDec !== undefined) {
-          let dra = Math.abs(ra - centerRa);
-          if (dra > 180) dra = 360 - dra;
-          const ddec = dec - centerDec;
-          dist = Math.hypot(dra * Math.cos(centerDec * Math.PI / 180), ddec);
-        }
-        tiles.push({ ra, dec, dist });
+        this.preloadTile(ra, dec);
       }
     }
-
-    if (centerRa !== undefined && centerDec !== undefined) {
-      // Sort so tiles closest to current center are loaded first
-      tiles.sort((a, b) => a.dist - b.dist);
-    }
-
-    tiles.forEach(t => this.preloadTile(t.ra, t.dec));
   }
 
   /**

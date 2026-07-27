@@ -248,7 +248,7 @@ export const ja = {
     azAltGrid: '方位/高度線',
     raDecGrid: '赤経/赤緯線',
     showHorizon: '地平線を表示',
-    showDSS: 'DSSを表示 (Beta)',
+    showDSS: 'DSSを表示',
     showMilkyWay: '天の川を表示',
     milkyWayBrightness: '天の川の明度', 
     visibilityLimits: '表示制限',

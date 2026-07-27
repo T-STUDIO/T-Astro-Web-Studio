@@ -219,7 +219,7 @@ export const en = {
     azAltGrid: 'Az/Alt Grid',
     raDecGrid: 'RA/Dec Grid',
     showHorizon: 'Show Horizon',
-    showDSS: 'Show DSS (Beta)',
+    showDSS: 'Show DSS',
     showMilkyWay: 'Show Milky Way',
     milkyWayBrightness: 'Milky Way Brightness', 
     visibilityLimits: 'Visibility Limits',

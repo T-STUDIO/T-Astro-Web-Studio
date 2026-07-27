@@ -15,6 +15,7 @@ import { loadSettings } from '../services/SettingsService';
 import { satelliteService, Satellite } from '../services/satelliteService';
 import { cometService, Comet } from '../services/cometService';
 import { solarSystemService } from '../services/solarSystemService';
+import { globalDssService } from '../services/GlobalDssService';
 import { useTranslation } from '../contexts/LanguageContext';
 import { getRealStarCatalog } from '../utils/starCatalog';
 import { BACKGROUND_STARS } from '../utils/starGenerator';
@@ -549,6 +550,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             }
         }
 
+        // Global DSS Base Map rendering
+        if (!isMini && settings.showDSS) {
+            globalDssService.renderGlobalMap(ctx, width, height, zoom, viewAz, viewAlt, effLocation.latitude, lst);
+        }
+
         // DSS rendering
         if (!isMini && settings.showDSS && dssTiles.length > 0) {
             ctx.save();
@@ -610,14 +616,21 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         }
 
         // DSS Status Indicator
-        if (!isMini && settings.showDSS && (dssLoading || dssTiles.length === 0)) {
+        if (!isMini && settings.showDSS) {
+            const currentFov = 60 / zoom;
             ctx.save();
             ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(10, height - 30, 150, 20);
+            ctx.fillRect(10, height - 30, 160, 20);
             ctx.fillStyle = '#fff';
             ctx.font = '10px sans-serif';
             ctx.textAlign = 'left';
-            ctx.fillText(dssLoading ? `DSS: Loading Tiles (${dssTiles.length})...` : 'DSS: No Data (Zoom in)', 15, height - 16);
+            if (currentFov > 60.0) {
+                ctx.fillText('DSS: Start', 15, height - 16);
+            } else if (dssLoading) {
+                ctx.fillText(`DSS: Loading Tiles (${dssTiles.length})...`, 15, height - 16);
+            } else {
+                ctx.fillText(`DSS: Active (${dssTiles.length} Tiles)`, 15, height - 16);
+            }
             ctx.restore();
         }
 
@@ -1297,12 +1310,31 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     const handleZoomOut = () => setZoom(prev => Math.max(0.5, prev * 0.7));
     const handleReset = () => { setViewAz(0); setViewAlt(30); setZoom(60/70); };
 
+    // Global DSS Base Map Trigger
+    useEffect(() => {
+        if (!isMini && settings.showDSS) {
+            const currentLoc = effLocationRef.current;
+            const currentTime = effTimeRef.current;
+            const lst = calculateLST(currentLoc.longitude, currentTime);
+            const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
+            globalDssService.preloadGlobalMap(center.ra, center.dec);
+        } else {
+            globalDssService.clearCache();
+        }
+    }, [settings.showDSS, isMini, viewAz, viewAlt]);
+
     useEffect(() => {
         const controller = new AbortController();
         const signal = controller.signal;
         const fov = 60 / zoom;
 
-        if (isMini || !settings.showDSS || fov > 60.0) {
+        if (isMini || !settings.showDSS) {
+            setDssTiles(prev => prev.length > 0 ? [] : prev);
+            setDssLoading(false);
+            return () => controller.abort();
+        }
+
+        if (fov > 60.0) {
             setDssTiles(prev => prev.length > 0 ? [] : prev);
             setDssLoading(false);
             return () => controller.abort();

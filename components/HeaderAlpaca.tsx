@@ -29,7 +29,7 @@ export const HeaderAlpaca: React.FC<HeaderProps> = ({ currentDriver, onToggleHel
               title={t('tooltips.apiKey') || 'Set Gemini API Key'}
               className="px-3 py-1.5 rounded-md text-xs font-black tracking-tighter bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white transition-all"
           >
-              APIキー
+              API KEY
           </button>
         )}
         {onToggleHelp && (

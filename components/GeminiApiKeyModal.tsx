@@ -10,14 +10,12 @@ interface GeminiApiKeyModalProps {
 
 export const GeminiApiKeyModal: React.FC<GeminiApiKeyModalProps> = ({ isOpen, onClose, onRegister }) => {
   const [apiKey, setApiKey] = useState('');
-  const [isReconfigMode, setIsReconfigMode] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       const savedKey = localStorage.getItem('gemini_api_key') || '';
       setApiKey(savedKey);
-      setIsReconfigMode(!!savedKey);
       setErrorMsg('');
     }
   }, [isOpen]);
@@ -61,14 +59,10 @@ export const GeminiApiKeyModal: React.FC<GeminiApiKeyModalProps> = ({ isOpen, on
 
         <div className="p-6 space-y-4">
           <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
-            {isReconfigMode ? (
-              `登録されているGemini APIキーの変更を行います。新しいAPIキーを入力して『登録』ボタンを押してください。`
-            ) : (
-              `本アプリのAI機能（天体情報やおすすめ解説）を使用するには、お客様ご自身のAPIキーの登録が必要です。
+            {`本アプリのAI機能（天体情報やお勧め解説）を使用するには、お客様ご自身のAPIキーの登録が必要です。
 既にAPIキーを所有されている方は入力欄に半角英数キーで入力後”登録”ボタンを押してください。
 APIキーを所有していない方は”API取得”ボタンを押し、指示に従いAPIキーを取得後、入力欄に半角英数キーで入力後”登録”ボタンを押してください。
-キーはお使いのブラウザ内にのみ厳重に保護され、第三者や開発者のサーバーへ送信されることは一切ありません。`
-            )}
+キーはお使いのブラウザ内にのみ厳重に保護され、第三者や開発者のサーバーへ送信されることは一切ありません。`}
           </p>
 
           <div className="space-y-2">
@@ -88,14 +82,12 @@ APIキーを所有していない方は”API取得”ボタンを押し、指�
           </div>
 
           <div className="flex gap-3 justify-end pt-2">
-            {!isReconfigMode && (
-              <button
-                onClick={handleGetApiKey}
-                className="px-4 py-2 text-xs font-semibold rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 active:scale-95 transition-all"
-              >
-                API取得
-              </button>
-            )}
+            <button
+              onClick={handleGetApiKey}
+              className="px-4 py-2 text-xs font-semibold rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 active:scale-95 transition-all"
+            >
+              API取得
+            </button>
             <button
               onClick={handleRegister}
               className="px-4 py-2 text-xs font-semibold rounded bg-red-700 hover:bg-red-600 text-white active:scale-95 transition-all shadow-md shadow-red-900/50"

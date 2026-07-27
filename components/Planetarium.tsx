@@ -1329,37 +1329,26 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            // 画面中心の正確な方位・高度、観測地点（緯度・経度）、現在の観測日時からLSTおよび中心赤経・赤緯を正確に算出
-            const curAz = viewAz;
-            const curAlt = viewAlt;
-            const curLoc = effLocationRef.current;
-            const curTime = effTimeRef.current;
-            const curLst = calculateLST(curLoc.longitude, curTime);
-            const curCenter = azAltToRaDec(curAz, curAlt, curLoc.latitude, curLst);
-
-            const ra = curCenter.ra;
-            const dec = curCenter.dec;
+            const ra = parseFloat(center.ra.toFixed(4));
+            const dec = parseFloat(center.dec.toFixed(4));
             
             const viewFov = 60 / zoom;
             const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
             const pixels = 512;
 
-            const width = dimensions.width || (typeof window !== 'undefined' ? window.innerWidth : 1000);
-            const height = dimensions.height || (typeof window !== 'undefined' ? window.innerHeight : 800);
-
-            const baseScale = Math.min(width, height) / 2;
+            const baseScale = Math.min(dimensions.width, dimensions.height) / 2;
             const finalScale = baseScale * zoom;
             const tilePixels = tileFov * (Math.PI / 180) * finalScale;
-            const stepPixels = Math.max(10, tilePixels * 0.82); // オーバーラップ調整と0除算防護
+            const stepPixels = tilePixels * 0.82; // 自然なオーバーラップで隙間を補合
 
-            const halfW = width / 2;
-            const halfH = height / 2;
+            const halfW = dimensions.width / 2;
+            const halfH = dimensions.height / 2;
 
             const maxW = halfW + tilePixels * 1.2;
             const maxH = halfH + tilePixels * 1.2;
 
-            const nx = Math.min(3, Math.max(1, Math.ceil(maxW / stepPixels)));
-            const ny = Math.min(3, Math.max(1, Math.ceil(maxH / stepPixels)));
+            const nx = Math.ceil(maxW / stepPixels) + 1;
+            const ny = Math.ceil(maxH / stepPixels) + 1;
 
             const offsets: { dx: number, dy: number }[] = [];
             for (let ix = -nx; ix <= nx; ix++) {
@@ -1368,7 +1357,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
 
-            // 算出された中心座標を起点にグリッドを展開
+            // 画面中心 (dx=0, dy=0) から近い順（昇順）にソートして、必ず中心からタイルを取得・描画開始する
             offsets.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
 
             // 常に現在の画面中心を基点として新しいタイル群で表示を更新するため、古いタイルをクリア
@@ -1384,8 +1373,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const yProj = -offset.dy / finalScale; // 上方向が+yProj
                 
                 const rho = Math.hypot(xProj, yProj);
-                let targetAz = curAz;
-                let targetAlt = curAlt;
+                let targetAz = viewAz;
+                let targetAlt = viewAlt;
 
                 if (rho > 1e-10) {
                     const rad = Math.PI / 180;
@@ -1393,8 +1382,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     const c = 2 * Math.atan2(rho, 2);
                     const sinC = Math.sin(c);
                     const cosC = Math.cos(c);
-                    const phi0 = curAlt * rad;
-                    const lambda0 = curAz * rad;
+                    const phi0 = viewAlt * rad;
+                    const lambda0 = viewAz * rad;
 
                     const sinPhi = cosC * Math.sin(phi0) + (yProj * sinC * Math.cos(phi0) / rho);
                     const phi = Math.asin(Math.max(-1, Math.min(1, sinPhi)));
@@ -1407,7 +1396,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                     targetAz = (lambda * deg + 360) % 360;
                 }
                 
-                const targetRaDec = azAltToRaDec(targetAz, targetAlt, curLoc.latitude, curLst);
+                const targetRaDec = azAltToRaDec(targetAz, targetAlt, currentLoc.latitude, lst);
                 const targetRa = targetRaDec.ra;
                 const targetDec = targetRaDec.dec;
                 
@@ -1474,7 +1463,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             };
 
-            // 全タイルを中心からの距離順に並列取得し、完了したものから順次即座に描画
+            // 全9枚のタイルを並列で高速フェッチ
             await Promise.all(offsets.map(offset => fetchTile(offset)));
 
             if (!signal.aborted) {

@@ -1313,15 +1313,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
     // Global DSS Base Map Trigger
     useEffect(() => {
         if (!isMini && settings.showDSS) {
-            const currentLoc = effLocationRef.current;
-            const currentTime = effTimeRef.current;
-            const lst = calculateLST(currentLoc.longitude, currentTime);
-            const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
-            globalDssService.preloadGlobalMap(center.ra, center.dec);
+            globalDssService.preloadGlobalMap();
         } else {
             globalDssService.clearCache();
         }
-    }, [settings.showDSS, isMini, viewAz, viewAlt]);
+    }, [settings.showDSS, isMini]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -1345,14 +1341,18 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const lst = calculateLST(currentLoc.longitude, currentTime);
         const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
         
+        // 全域マップのナンバー座標（20度刻みグリッド）にスナップ
+        const gridRa = (Math.round(center.ra / 20) * 20 + 360) % 360;
+        const gridDec = Math.max(-80, Math.min(80, Math.round(center.dec / 20) * 20));
+
         // Only update if moved significantly
-        let dra = Math.abs(center.ra - lastDssParams.current.ra);
+        let dra = Math.abs(gridRa - lastDssParams.current.ra);
         if (dra > 180) dra = 360 - dra;
-        const ddec = center.dec - lastDssParams.current.dec;
-        const dist = Math.hypot(dra * Math.cos(center.dec * Math.PI / 180), ddec);
+        const ddec = gridDec - lastDssParams.current.dec;
+        const dist = Math.hypot(dra * Math.cos(gridDec * Math.PI / 180), ddec);
         const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
         
-        if (dist < fov * 0.08 && zoomDiff < 0.08 && dssTilesRef.current.length > 0) {
+        if (dist < 1.0 && zoomDiff < 0.08 && dssTilesRef.current.length > 0) {
             return () => controller.abort();
         }
         
@@ -1361,88 +1361,52 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            const ra = parseFloat(center.ra.toFixed(4));
-            const dec = parseFloat(center.dec.toFixed(4));
+            const ra = gridRa;
+            const dec = gridDec;
             
             const viewFov = 60 / zoom;
-            const tileFov = Math.max(0.1, Math.min(20.0, viewFov * 0.5));
             const pixels = 512;
+            // ズーム倍率に応じて画角(tileFov)とステップ幅を動的に設定し、ズーム時も画面全域を高精細にカバー
+            const tileFov = Math.max(0.5, Math.min(20.0, viewFov * 0.8));
+            const stepDeg = Math.max(1, Math.min(20, Math.floor(tileFov * 0.9)));
 
-            const baseScale = Math.min(dimensions.width, dimensions.height) / 2;
-            const finalScale = baseScale * zoom;
-            const tilePixels = tileFov * (Math.PI / 180) * finalScale;
-            const stepPixels = tilePixels * 0.82; // 自然なオーバーラップで隙間を補合
+            // 画面内に収まる赤緯・赤経のナンバリンググリッド範囲を算定
+            const decMin = Math.max(-80, Math.floor((center.dec - viewFov) / stepDeg) * stepDeg);
+            const decMax = Math.min(80, Math.ceil((center.dec + viewFov) / stepDeg) * stepDeg);
 
-            const halfW = dimensions.width / 2;
-            const halfH = dimensions.height / 2;
+            const cosDec = Math.max(0.1, Math.cos(Math.abs(center.dec) * Math.PI / 180));
+            const halfRaSpan = viewFov / cosDec;
+            const raMin = Math.floor((center.ra - halfRaSpan) / stepDeg) * stepDeg;
+            const raMax = Math.ceil((center.ra + halfRaSpan) / stepDeg) * stepDeg;
 
-            const maxW = halfW + tilePixels * 1.2;
-            const maxH = halfH + tilePixels * 1.2;
-
-            const nx = Math.ceil(maxW / stepPixels) + 1;
-            const ny = Math.ceil(maxH / stepPixels) + 1;
-
-            const offsets: { dx: number, dy: number }[] = [];
-            for (let ix = -nx; ix <= nx; ix++) {
-                for (let iy = -ny; iy <= ny; iy++) {
-                    offsets.push({ dx: ix * stepPixels, dy: iy * stepPixels });
+            const gridTiles: { ra: number, dec: number, dist: number }[] = [];
+            for (let d = decMin; d <= decMax; d += stepDeg) {
+                for (let r = raMin; r <= raMax; r += stepDeg) {
+                    const normRa = (r % 360 + 360) % 360;
+                    let dra = Math.abs(normRa - center.ra);
+                    if (dra > 180) dra = 360 - dra;
+                    const ddec = d - center.dec;
+                    const dist = Math.hypot(dra * Math.cos(center.dec * Math.PI / 180), ddec);
+                    gridTiles.push({ ra: normRa, dec: d, dist });
                 }
             }
 
-            // 画面中心 (dx=0, dy=0) から近い順（昇順）にソートして、必ず中心からタイルを取得・描画開始する
-            offsets.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
+            // 中心に近い順にソート
+            gridTiles.sort((a, b) => a.dist - b.dist);
 
-            // 常に現在の画面中心を基点として新しいタイル群で表示を更新するため、古いタイルをクリア
-            setTotalDssTiles(offsets.length);
+            setTotalDssTiles(gridTiles.length);
             setDssTiles([]);
 
-            // 各タイルの取得関数（Aladinを第一優先にして高速化）
-            const fetchTile = async (offset: { dx: number, dy: number }) => {
+            const fetchTile = async (tile: { ra: number, dec: number }) => {
                 if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
                 
-                // 画面ピクセルオフセット (dx, dy) から逆ステレオ投影で正確な高度(alt)・方位(az)を算定
-                const xProj = offset.dx / finalScale;
-                const yProj = -offset.dy / finalScale; // 上方向が+yProj
-                
-                const rho = Math.hypot(xProj, yProj);
-                let targetAz = viewAz;
-                let targetAlt = viewAlt;
-
-                if (rho > 1e-10) {
-                    const rad = Math.PI / 180;
-                    const deg = 180 / Math.PI;
-                    const c = 2 * Math.atan2(rho, 2);
-                    const sinC = Math.sin(c);
-                    const cosC = Math.cos(c);
-                    const phi0 = viewAlt * rad;
-                    const lambda0 = viewAz * rad;
-
-                    const sinPhi = cosC * Math.sin(phi0) + (yProj * sinC * Math.cos(phi0) / rho);
-                    const phi = Math.asin(Math.max(-1, Math.min(1, sinPhi)));
-
-                    const yAtan = xProj * sinC;
-                    const xAtan = rho * Math.cos(phi0) * cosC - yProj * Math.sin(phi0) * sinC;
-                    const lambda = lambda0 + Math.atan2(yAtan, xAtan);
-
-                    targetAlt = phi * deg;
-                    targetAz = (lambda * deg + 360) % 360;
-                }
-                
-                const targetRaDec = azAltToRaDec(targetAz, targetAlt, currentLoc.latitude, lst);
-                const targetRa = targetRaDec.ra;
-                const targetDec = targetRaDec.dec;
+                const targetRa = tile.ra;
+                const targetDec = tile.dec;
                 
                 const sources = [
                     { name: 'CDS Aladin DSS2 Color', key: 'aladin' },
                     { name: 'NASA SkyView (Red)', key: 'nasa' }
                 ];
-
-                if (tileFov <= 2.0) {
-                    sources.push({ name: 'STScI DSS', key: 'stsci' });
-                }
-                if (tileFov <= 1.0) {
-                    sources.push({ name: 'ESO DSS', key: 'eso' });
-                }
 
                 for (const source of sources) {
                     if (signal.aborted || currentReqId !== dssRequestIdRef.current) break;
@@ -1495,8 +1459,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             };
 
-            // 全9枚のタイルを並列で高速フェッチ
-            await Promise.all(offsets.map(offset => fetchTile(offset)));
+            // 実績のある4件ずつの同時並列バッチ処理で高速に画像を取得
+            const BATCH_SIZE = 4;
+            for (let i = 0; i < gridTiles.length; i += BATCH_SIZE) {
+                if (signal.aborted || currentReqId !== dssRequestIdRef.current) break;
+                const batch = gridTiles.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(tile => fetchTile(tile)));
+            }
 
             if (!signal.aborted) {
                 setDssLoading(false);

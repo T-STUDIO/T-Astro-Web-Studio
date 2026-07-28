@@ -1346,12 +1346,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const viewFov = 60 / zoom;
 
         // --- 4つのタイル分類に基づく絶対座標ズーム描画アルゴリズム ---
-        // 1. プラネタリウム画面内に描画されている天体のうち、画面中心（視線中心）に最も近い天体を抽出して表示エリアの中心（アンカー）を決定
+        // 1. 画面内に描画されている天体の中から「画面中心付近の天体」と「それから最も離れた天体」を取得して表示領域を計算
         const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
-        let closestObjRa = center.ra;
-        let closestObjDec = center.dec;
+        let closestObj: { ra: number; dec: number } | null = null;
         let minCenterDist = Infinity;
-        let visibleCount = 0;
+        const visibleObjects: { ra: number; dec: number }[] = [];
 
         for (const obj of allObjects) {
             let raDeg = obj.ra;
@@ -1363,24 +1362,43 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const { alt, az } = raDecToAzAlt(raDeg, decDeg, currentLoc.latitude, lst);
                 const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                 if (p && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
-                    visibleCount++;
+                    const normObj = { ra: (raDeg + 360) % 360, dec: Math.max(-80, Math.min(80, decDeg)) };
+                    visibleObjects.push(normObj);
                     const distToCenter = Math.hypot(p.x - width / 2, p.y - height / 2);
                     if (distToCenter < minCenterDist) {
                         minCenterDist = distToCenter;
-                        closestObjRa = raDeg;
-                        closestObjDec = decDeg;
+                        closestObj = normObj;
                     }
                 }
             }
         }
 
-        // 画面中心に最も近い天体の絶対座標を表示エリアタイルの基準中心（アンカー）に設定
-        const anchorRa = (closestObjRa + 360) % 360;
-        const anchorDec = Math.max(-80, Math.min(80, closestObjDec));
+        // 画面中心付近の天体（見つからなければ画面中心位置）を表示エリアの中心とする
+        const anchorRa = closestObj ? closestObj.ra : center.ra;
+        const anchorDec = closestObj ? closestObj.dec : center.dec;
 
-        // 表示エリア（画面視野）の寸法
-        const raSpan = viewFov;
-        const decSpan = viewFov;
+        // 画面中心付近の天体から最も離れた天体の座標を取得
+        let maxDist = 0;
+        let maxDra = 0;
+        let maxDdec = 0;
+
+        if (closestObj && visibleObjects.length > 1) {
+            for (const obj of visibleObjects) {
+                let dra = Math.abs(obj.ra - closestObj.ra);
+                if (dra > 180) dra = 360 - dra;
+                const ddec = Math.abs(obj.dec - closestObj.dec);
+                const dist = Math.hypot(dra, ddec);
+                if (dist > maxDist) {
+                    maxDist = dist;
+                    maxDra = dra;
+                    maxDdec = ddec;
+                }
+            }
+        }
+
+        // 中心天体から最も離れた天体までの距離を基準に表示エリアのスパン（広さ）を算出
+        const raSpan = maxDra > 0 ? Math.max(viewFov, maxDra * 2) : viewFov;
+        const decSpan = maxDdec > 0 ? Math.max(viewFov, maxDdec * 2) : viewFov;
 
         // 2. 表示エリアタイルの中心座標
         const numberTileRa = anchorRa;
@@ -1405,14 +1423,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const pixels = 512;
             
             // 3. 表示エリア（anchorRa, anchorDec）を中心に、表示エリア寸法の3×3倍（±1.5倍幅）のズーム描画エリアを確定
-            const cosDec = Math.max(0.1, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
+            const cosDec = Math.max(0.2, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
             
-            const areaHalfRa = (raSpan * 1.5) / cosDec;
-            const areaHalfDec = decSpan * 1.5;
+            const areaHalfRa = Math.min(180, (raSpan * 1.5) / cosDec);
+            const areaHalfDec = Math.min(80, decSpan * 1.5);
 
             // 4. ズーム倍率に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
-            // 画面視野角（viewFov）に比例させることで、ズーム倍率にかかわらず常に適正なタイル枚数で3×3描画エリアをカバー
-            const zoomTileFov = Math.max(0.25, Math.min(10.0, viewFov * 0.45));
+            const zoomTileFov = Math.max(0.3, Math.min(10.0, viewFov * 0.5));
             const zoomStepDeg = zoomTileFov * 0.85;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];

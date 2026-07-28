@@ -1413,9 +1413,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const areaHalfRa = Math.min(180, (raSpan * 1.5) / cosDec);
             const areaHalfDec = Math.min(80, decSpan * 1.5);
 
-            // 4. ズーム倍率に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
-            const zoomTileFov = Math.max(0.15, Math.min(8.0, viewFov * 0.35));
-            const zoomStepDeg = zoomTileFov * 0.82;
+            // 4. ズーム倍率（zoom）に応じて高解像度タイルの画角（zoomTileFov）とステップを可変設定
+            // ズームインするほど高精細な画像データを取得し、ズーム倍率に応じてタイル枚数・解像度が可変変化
+            const zoomTileFov = Math.max(0.05, Math.min(6.0, 2.0 / Math.pow(zoom, 0.55)));
+            const zoomStepDeg = zoomTileFov * 0.85;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];
             const tileKeySet = new Set<string>();

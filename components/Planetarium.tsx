@@ -1341,18 +1341,53 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const lst = calculateLST(currentLoc.longitude, currentTime);
         const center = azAltToRaDec(viewAz, viewAlt, currentLoc.latitude, lst);
         
-        // 全域マップのナンバー座標（20度刻みグリッド）にスナップ
-        const gridRa = (Math.round(center.ra / 20) * 20 + 360) % 360;
-        const gridDec = Math.max(-80, Math.min(80, Math.round(center.dec / 20) * 20));
+        const width = dimensions.width || 800;
+        const height = dimensions.height || 600;
+        const viewFov = 60 / zoom;
 
-        // 最後のパラメータとの差分をチェック
-        let dra = Math.abs(gridRa - lastDssParams.current.ra);
+        // 1. プラネタリウム画面内に描画されている天体を抽出して画面内表示エリアを計算
+        const visibleCelestialCoords: { ra: number; dec: number }[] = [];
+        
+        // カタログ天体 (CELESTIAL_OBJECTS & EXTENDED_DSO_CATALOG)
+        const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
+        for (const obj of allObjects) {
+            let raDeg = obj.ra;
+            let decDeg = obj.dec;
+            if (raDeg === undefined && obj.raHms) raDeg = hmsToDegrees(obj.raHms.hours, obj.raHms.minutes, obj.raHms.seconds);
+            if (decDeg === undefined && obj.decDms) decDeg = dmsToDegrees(obj.decDms.sign, obj.decDms.degrees, obj.decDms.minutes, obj.decDms.seconds);
+            
+            if (raDeg !== undefined && decDeg !== undefined) {
+                const { alt, az } = raDecToAzAlt(raDeg, decDeg, currentLoc.latitude, lst);
+                const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                if (p && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
+                    visibleCelestialCoords.push({ ra: raDeg, dec: decDeg });
+                }
+            }
+        }
+
+        // 画面内に天体が存在する場合はその中心天体領域(重心)をアンカーとし、無ければ計算中心を使用
+        let anchorRa = center.ra;
+        let anchorDec = center.dec;
+
+        if (visibleCelestialCoords.length > 0) {
+            let sumRa = 0;
+            let sumDec = 0;
+            for (const c of visibleCelestialCoords) {
+                sumRa += c.ra;
+                sumDec += c.dec;
+            }
+            anchorRa = (sumRa / visibleCelestialCoords.length + 360) % 360;
+            anchorDec = Math.max(-80, Math.min(80, sumDec / visibleCelestialCoords.length));
+        }
+
+        // 最後のアンカーパラメータとの差分をチェック
+        let dra = Math.abs(anchorRa - lastDssParams.current.ra);
         if (dra > 180) dra = 360 - dra;
-        const ddec = gridDec - lastDssParams.current.dec;
-        const dist = Math.hypot(dra * Math.cos(gridDec * Math.PI / 180), ddec);
+        const ddec = anchorDec - lastDssParams.current.dec;
+        const dist = Math.hypot(dra * Math.cos(anchorDec * Math.PI / 180), ddec);
         const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
         
-        if (dist < 1.0 && zoomDiff < 0.08 && dssTilesRef.current.length > 0) {
+        if (dist < viewFov * 0.15 && zoomDiff < 0.08 && dssTilesRef.current.length > 0) {
             return () => controller.abort();
         }
         
@@ -1361,39 +1396,30 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const currentReqId = ++dssRequestIdRef.current;
             setDssLoading(true);
             
-            const ra = gridRa;
-            const dec = gridDec;
-            
-            const viewFov = 60 / zoom;
             const pixels = 512;
             
             // ズーム（拡大率）に応じた1タイルの画角（tileFov）およびステップ幅
-            const tileFov = Math.max(0.5, Math.min(20.0, viewFov * 0.8));
-            const stepDeg = Math.max(1, Math.min(20, Math.floor(tileFov * 0.9)));
+            const tileFov = Math.max(0.5, Math.min(20.0, viewFov * 0.85));
+            const stepDeg = Math.max(0.3, tileFov * 0.85);
 
-            // ユーザー指定通り、計算領域の3倍範囲を確実にカバーする広域スパン設定（spanFov = viewFov * 3）
-            const spanFov = viewFov * 3.0;
-            const decMin = Math.max(-80, Math.floor((center.dec - spanFov) / stepDeg) * stepDeg);
-            const decMax = Math.min(80, Math.ceil((center.dec + spanFov) / stepDeg) * stepDeg);
-
-            const cosDec = Math.max(0.1, Math.cos(Math.abs(center.dec) * Math.PI / 180));
-            const halfRaSpan = spanFov / cosDec;
-            const raMin = Math.floor((center.ra - halfRaSpan) / stepDeg) * stepDeg;
-            const raMax = Math.ceil((center.ra + halfRaSpan) / stepDeg) * stepDeg;
+            // 画面内天体エリアを中心に設定し、その周りを取り囲む3×3（計9枚）の絶対タイル領域を確実に生成
+            const cosDec = Math.max(0.1, Math.cos(Math.abs(anchorDec) * Math.PI / 180));
+            const raStep = stepDeg / cosDec;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];
-            for (let d = decMin; d <= decMax; d += stepDeg) {
-                for (let r = raMin; r <= raMax; r += stepDeg) {
-                    const normRa = (r % 360 + 360) % 360;
-                    let diffRa = Math.abs(normRa - center.ra);
-                    if (diffRa > 180) diffRa = 360 - diffRa;
-                    const diffDec = d - center.dec;
-                    const tileDist = Math.hypot(diffRa * Math.cos(center.dec * Math.PI / 180), diffDec);
-                    gridTiles.push({ ra: normRa, dec: d, dist: tileDist });
+            
+            // 3×3の格子（-1, 0, +1）
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const tileDec = Math.max(-80, Math.min(80, anchorDec + dy * stepDeg));
+                    const tileRa = (anchorRa + dx * raStep + 360) % 360;
+                    
+                    const distToAnchor = Math.hypot(dx * stepDeg, dy * stepDeg);
+                    gridTiles.push({ ra: tileRa, dec: tileDec, dist: distToAnchor });
                 }
             }
 
-            // 中心に近い順にソート
+            // 中心（0,0）から近い順に処理
             gridTiles.sort((a, b) => a.dist - b.dist);
 
             setTotalDssTiles(gridTiles.length);
@@ -1471,7 +1497,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
             if (!signal.aborted) {
                 setDssLoading(false);
-                lastDssParams.current = { ra, dec, zoom };
+                lastDssParams.current = { ra: anchorRa, dec: anchorDec, zoom };
             }
         };
 

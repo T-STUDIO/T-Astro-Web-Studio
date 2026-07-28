@@ -1345,7 +1345,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const gridRa = (Math.round(center.ra / 20) * 20 + 360) % 360;
         const gridDec = Math.max(-80, Math.min(80, Math.round(center.dec / 20) * 20));
 
-        // Only update if moved significantly
+        // 最後のパラメータとの差分をチェック
         let dra = Math.abs(gridRa - lastDssParams.current.ra);
         if (dra > 180) dra = 360 - dra;
         const ddec = gridDec - lastDssParams.current.dec;
@@ -1366,16 +1366,18 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             
             const viewFov = 60 / zoom;
             const pixels = 512;
-            // ズーム倍率に応じて画角(tileFov)とステップ幅を動的に設定し、ズーム時も画面全域を高精細にカバー
+            
+            // ズーム（拡大率）に応じた1タイルの画角（tileFov）およびステップ幅
             const tileFov = Math.max(0.5, Math.min(20.0, viewFov * 0.8));
             const stepDeg = Math.max(1, Math.min(20, Math.floor(tileFov * 0.9)));
 
-            // 画面内に収まる赤緯・赤経のナンバリンググリッド範囲を算定
-            const decMin = Math.max(-80, Math.floor((center.dec - viewFov) / stepDeg) * stepDeg);
-            const decMax = Math.min(80, Math.ceil((center.dec + viewFov) / stepDeg) * stepDeg);
+            // ユーザー指定通り、計算領域の3倍範囲を確実にカバーする広域スパン設定（spanFov = viewFov * 3）
+            const spanFov = viewFov * 3.0;
+            const decMin = Math.max(-80, Math.floor((center.dec - spanFov) / stepDeg) * stepDeg);
+            const decMax = Math.min(80, Math.ceil((center.dec + spanFov) / stepDeg) * stepDeg);
 
             const cosDec = Math.max(0.1, Math.cos(Math.abs(center.dec) * Math.PI / 180));
-            const halfRaSpan = viewFov / cosDec;
+            const halfRaSpan = spanFov / cosDec;
             const raMin = Math.floor((center.ra - halfRaSpan) / stepDeg) * stepDeg;
             const raMax = Math.ceil((center.ra + halfRaSpan) / stepDeg) * stepDeg;
 
@@ -1383,11 +1385,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             for (let d = decMin; d <= decMax; d += stepDeg) {
                 for (let r = raMin; r <= raMax; r += stepDeg) {
                     const normRa = (r % 360 + 360) % 360;
-                    let dra = Math.abs(normRa - center.ra);
-                    if (dra > 180) dra = 360 - dra;
-                    const ddec = d - center.dec;
-                    const dist = Math.hypot(dra * Math.cos(center.dec * Math.PI / 180), ddec);
-                    gridTiles.push({ ra: normRa, dec: d, dist });
+                    let diffRa = Math.abs(normRa - center.ra);
+                    if (diffRa > 180) diffRa = 360 - diffRa;
+                    const diffDec = d - center.dec;
+                    const tileDist = Math.hypot(diffRa * Math.cos(center.dec * Math.PI / 180), diffDec);
+                    gridTiles.push({ ra: normRa, dec: d, dist: tileDist });
                 }
             }
 

@@ -155,9 +155,16 @@ const patchSampLibrary = () => {
     // 3. Completely override XmlRpcClient prototype execute
     const patchExecute = function(this: any, methodName: string, params: any[], success: any, error: any) {
         // Determine the URL to use. Force use of the instance's endpoint if set.
-        const url = this.endpoint || this.url || this.hubUrl || (window as any).XmlRpcClient_defaultUrl || "http://localhost:21012/";
+        const rawUrl = this.endpoint || this.url || this.hubUrl || (window as any).XmlRpcClient_defaultUrl || "http://127.0.0.1:21012/xmlrpc";
         
-        console.log(`[SAMP Patch] Executing ${methodName} -> ${url}`);
+        let url = rawUrl;
+        if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+            if (!rawUrl.includes(window.location.host) && !rawUrl.startsWith('/')) {
+                url = `${window.location.origin}/api/samp/proxy?target=${encodeURIComponent(rawUrl)}`;
+            }
+        }
+        
+        console.log(`[SAMP Patch] Executing ${methodName} -> ${rawUrl} (via ${url})`);
         
         try {
             const req = new (MyRequest as any)(methodName, params);

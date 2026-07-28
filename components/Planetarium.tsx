@@ -1418,22 +1418,29 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const areaHalfRa = (raSpan * 1.5) / cosDec;
             const areaHalfDec = decSpan * 1.5;
 
-            // 4. 3×3ズーム描画エリア内を、ズーム倍率に応じた解像度のズームタイルで隙間なく網羅
-            const zoomTileFov = Math.max(0.1, Math.min(10.0, viewFov * 0.35));
-            const zoomStepDeg = Math.max(0.08, zoomTileFov * 0.85);
+            // 4. ズーム倍率（zoom）に応じて高解像度タイルの画角（zoomTileFov）とステップを可変設定
+            // ズームインするほどきめ細やかな高詳細タイルを取得（画角を縮小）
+            const zoomTileFov = Math.max(0.08, Math.min(8.0, 1.2 / Math.sqrt(zoom / 2.0)));
+            const zoomStepDeg = zoomTileFov * 0.85;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];
+            const tileKeySet = new Set<string>();
 
-            // 表示エリアを中心に上下左右3×3描画エリア全域を高画質ズームタイルで網羅
+            // 表示エリアを中心に上下左右3×3描画エリア全域を高画質ズームタイルで網羅（重複座標の排除）
             for (let dec = numberTileDec - areaHalfDec; dec <= numberTileDec + areaHalfDec + 0.0001; dec += zoomStepDeg) {
+                const clampedDec = Math.max(-80, Math.min(80, dec));
                 for (let raOffset = -areaHalfRa; raOffset <= areaHalfRa + 0.0001; raOffset += (zoomStepDeg / cosDec)) {
                     const tileRa = (numberTileRa + raOffset + 360) % 360;
-                    const tileDec = Math.max(-80, Math.min(80, dec));
                     
-                    let diffRa = Math.abs(tileRa - numberTileRa);
-                    if (diffRa > 180) diffRa = 360 - diffRa;
-                    const tileDist = Math.hypot(diffRa * cosDec, tileDec - numberTileDec);
-                    gridTiles.push({ ra: tileRa, dec: tileDec, dist: tileDist });
+                    // 座標を一意に判別するためのキー
+                    const key = `${tileRa.toFixed(4)}_${clampedDec.toFixed(4)}`;
+                    if (!tileKeySet.has(key)) {
+                        tileKeySet.add(key);
+                        let diffRa = Math.abs(tileRa - numberTileRa);
+                        if (diffRa > 180) diffRa = 360 - diffRa;
+                        const tileDist = Math.hypot(diffRa * cosDec, clampedDec - numberTileDec);
+                        gridTiles.push({ ra: tileRa, dec: clampedDec, dist: tileDist });
+                    }
                 }
             }
 

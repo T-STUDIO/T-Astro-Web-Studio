@@ -1345,11 +1345,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const height = dimensions.height || 600;
         const viewFov = 60 / zoom;
 
-        // 1. プラネタリウム画面内に描画されている天体を抽出して画面内表示エリアを計算
-        const visibleCelestialCoords: { ra: number; dec: number }[] = [];
-        
-        // カタログ天体 (CELESTIAL_OBJECTS & EXTENDED_DSO_CATALOG)
+        // --- 4つのタイル分類に基づく絶対座標ズーム描画アルゴリズム ---
+        // 1. プラネタリウム画面内に描画されている天体の中から外郭天体を検出し、表示エリア範囲・中心を算出
         const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
+        let minRa = Infinity, maxRa = -Infinity;
+        let minDec = Infinity, maxDec = -Infinity;
+        let visibleCount = 0;
+
         for (const obj of allObjects) {
             let raDeg = obj.ra;
             let decDeg = obj.dec;
@@ -1360,34 +1362,46 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const { alt, az } = raDecToAzAlt(raDeg, decDeg, currentLoc.latitude, lst);
                 const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                 if (p && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
-                    visibleCelestialCoords.push({ ra: raDeg, dec: decDeg });
+                    visibleCount++;
+                    if (raDeg < minRa) minRa = raDeg;
+                    if (raDeg > maxRa) maxRa = raDeg;
+                    if (decDeg < minDec) minDec = decDeg;
+                    if (decDeg > maxDec) maxDec = decDeg;
                 }
             }
         }
 
-        // 画面内に天体が存在する場合はその中心天体領域(重心)をアンカーとし、無ければ計算中心を使用
+        // 表示エリアの中心およびスパン幅の計算
         let anchorRa = center.ra;
         let anchorDec = center.dec;
+        let raSpan = viewFov;
+        let decSpan = viewFov;
 
-        if (visibleCelestialCoords.length > 0) {
-            let sumRa = 0;
-            let sumDec = 0;
-            for (const c of visibleCelestialCoords) {
-                sumRa += c.ra;
-                sumDec += c.dec;
+        if (visibleCount > 0 && minRa !== Infinity && maxRa !== Infinity) {
+            // 経度（RA）跨ぎの考慮
+            if (maxRa - minRa > 180) {
+                anchorRa = center.ra;
+                raSpan = Math.max(viewFov, 360 - (maxRa - minRa));
+            } else {
+                anchorRa = (minRa + maxRa) / 2;
+                raSpan = Math.max(viewFov * 0.5, maxRa - minRa);
             }
-            anchorRa = (sumRa / visibleCelestialCoords.length + 360) % 360;
-            anchorDec = Math.max(-80, Math.min(80, sumDec / visibleCelestialCoords.length));
+            anchorDec = (minDec + maxDec) / 2;
+            decSpan = Math.max(viewFov * 0.5, maxDec - minDec);
         }
 
-        // 最後のアンカーパラメータとの差分をチェック
-        let dra = Math.abs(anchorRa - lastDssParams.current.ra);
+        // 2. 表示エリアタイルの中心座標
+        const numberTileRa = (anchorRa + 360) % 360;
+        const numberTileDec = Math.max(-80, Math.min(80, anchorDec));
+
+        // 最後の更新位置との比較
+        let dra = Math.abs(numberTileRa - lastDssParams.current.ra);
         if (dra > 180) dra = 360 - dra;
-        const ddec = anchorDec - lastDssParams.current.dec;
-        const dist = Math.hypot(dra * Math.cos(anchorDec * Math.PI / 180), ddec);
+        const ddec = numberTileDec - lastDssParams.current.dec;
+        const dist = Math.hypot(dra * Math.cos(numberTileDec * Math.PI / 180), ddec);
         const zoomDiff = Math.abs(zoom - lastDssParams.current.zoom) / zoom;
         
-        if (dist < viewFov * 0.15 && zoomDiff < 0.08 && dssTilesRef.current.length > 0) {
+        if (dist < viewFov * 0.1 && zoomDiff < 0.08 && dssTilesRef.current.length > 0) {
             return () => controller.abort();
         }
         
@@ -1398,28 +1412,32 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             
             const pixels = 512;
             
-            // ズーム（拡大率）に応じた1タイルの画角（tileFov）およびステップ幅
-            const tileFov = Math.max(0.5, Math.min(20.0, viewFov * 0.85));
-            const stepDeg = Math.max(0.3, tileFov * 0.85);
+            // 3. 表示エリア（anchorRa, anchorDec）を中心に、表示エリア寸法の3×3倍（±1.5倍幅）のズーム描画エリアを確定
+            const cosDec = Math.max(0.1, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
+            
+            const areaHalfRa = (raSpan * 1.5) / cosDec;
+            const areaHalfDec = decSpan * 1.5;
 
-            // 画面内天体エリアを中心に設定し、その周りを取り囲む3×3（計9枚）の絶対タイル領域を確実に生成
-            const cosDec = Math.max(0.1, Math.cos(Math.abs(anchorDec) * Math.PI / 180));
-            const raStep = stepDeg / cosDec;
+            // 4. 3×3ズーム描画エリア内を、ズーム倍率に応じた解像度のズームタイルで隙間なく網羅
+            const zoomTileFov = Math.max(0.1, Math.min(10.0, viewFov * 0.35));
+            const zoomStepDeg = Math.max(0.08, zoomTileFov * 0.85);
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];
-            
-            // 3×3の格子（-1, 0, +1）
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    const tileDec = Math.max(-80, Math.min(80, anchorDec + dy * stepDeg));
-                    const tileRa = (anchorRa + dx * raStep + 360) % 360;
+
+            // 表示エリアを中心に上下左右3×3描画エリア全域を高画質ズームタイルで網羅
+            for (let dec = numberTileDec - areaHalfDec; dec <= numberTileDec + areaHalfDec + 0.0001; dec += zoomStepDeg) {
+                for (let raOffset = -areaHalfRa; raOffset <= areaHalfRa + 0.0001; raOffset += (zoomStepDeg / cosDec)) {
+                    const tileRa = (numberTileRa + raOffset + 360) % 360;
+                    const tileDec = Math.max(-80, Math.min(80, dec));
                     
-                    const distToAnchor = Math.hypot(dx * stepDeg, dy * stepDeg);
-                    gridTiles.push({ ra: tileRa, dec: tileDec, dist: distToAnchor });
+                    let diffRa = Math.abs(tileRa - numberTileRa);
+                    if (diffRa > 180) diffRa = 360 - diffRa;
+                    const tileDist = Math.hypot(diffRa * cosDec, tileDec - numberTileDec);
+                    gridTiles.push({ ra: tileRa, dec: tileDec, dist: tileDist });
                 }
             }
 
-            // 中心（0,0）から近い順に処理
+            // 表示エリアタイルの中心に近い順に読み込み優先度をソート
             gridTiles.sort((a, b) => a.dist - b.dist);
 
             setTotalDssTiles(gridTiles.length);
@@ -1439,7 +1457,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 for (const source of sources) {
                     if (signal.aborted || currentReqId !== dssRequestIdRef.current) break;
                     try {
-                        const proxiedUrl = `/api/dss/proxy?ra=${targetRa}&dec=${targetDec}&fov=${tileFov}&pixels=${pixels}&source=${source.key}`;
+                        const proxiedUrl = `/api/dss/proxy?ra=${targetRa}&dec=${targetDec}&fov=${zoomTileFov}&pixels=${pixels}&source=${source.key}`;
                         const response = await fetch(proxiedUrl, { signal });
                         if (!response.ok) throw new Error(`Proxy error ${response.status}`);
                         
@@ -1456,7 +1474,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
                         if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
 
-                        const processedCanvas = await processDssImage(img, tileFov);
+                        const processedCanvas = await processDssImage(img, zoomTileFov);
                         if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
 
                         if ((processedCanvas as any)._isError) {
@@ -1465,7 +1483,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
                         const tileData = {
                             image: processedCanvas as any,
-                            metadata: { ra: targetRa, dec: targetDec, fov: tileFov }
+                            metadata: { ra: targetRa, dec: targetDec, fov: zoomTileFov }
                         };
 
                         setDssTiles(prev => {
@@ -1497,7 +1515,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
             if (!signal.aborted) {
                 setDssLoading(false);
-                lastDssParams.current = { ra: anchorRa, dec: anchorDec, zoom };
+                lastDssParams.current = { ra: numberTileRa, dec: numberTileDec, zoom };
             }
         };
 

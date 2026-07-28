@@ -1352,6 +1352,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         let minCenterDist = Infinity;
         const visibleObjects: { ra: number; dec: number }[] = [];
 
+        // 画面中央判定の閾値（画面半幅/高の1/2以内）
+        const centerThreshold = Math.min(width, height) / 3;
+
         for (const obj of allObjects) {
             let raDeg = obj.ra;
             let decDeg = obj.dec;
@@ -1373,32 +1376,14 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             }
         }
 
-        // 画面中心付近の天体（見つからなければ画面中心位置）を表示エリアの中心とする
-        const anchorRa = closestObj ? closestObj.ra : center.ra;
-        const anchorDec = closestObj ? closestObj.dec : center.dec;
+        // 画面中心付近に天体が存在すればその座標、見つからなければ視線中心（center）をアンカー座標とする
+        const anchorObj = (closestObj && minCenterDist <= centerThreshold) ? closestObj : { ra: center.ra, dec: center.dec };
+        const anchorRa = (anchorObj.ra + 360) % 360;
+        const anchorDec = Math.max(-80, Math.min(80, anchorObj.dec));
 
-        // 画面中心付近の天体から最も離れた天体の座標を取得
-        let maxDist = 0;
-        let maxDra = 0;
-        let maxDdec = 0;
-
-        if (closestObj && visibleObjects.length > 1) {
-            for (const obj of visibleObjects) {
-                let dra = Math.abs(obj.ra - closestObj.ra);
-                if (dra > 180) dra = 360 - dra;
-                const ddec = Math.abs(obj.dec - closestObj.dec);
-                const dist = Math.hypot(dra, ddec);
-                if (dist > maxDist) {
-                    maxDist = dist;
-                    maxDra = dra;
-                    maxDdec = ddec;
-                }
-            }
-        }
-
-        // 中心天体から最も離れた天体までの距離を基準に表示エリアのスパン（広さ）を算出
-        const raSpan = maxDra > 0 ? Math.max(viewFov, maxDra * 2) : viewFov;
-        const decSpan = maxDdec > 0 ? Math.max(viewFov, maxDdec * 2) : viewFov;
+        // 表示エリアのスパン（幅・高さ）を視野角（viewFov）に直接基づいて決定
+        const raSpan = viewFov;
+        const decSpan = viewFov;
 
         // 2. 表示エリアタイルの中心座標
         const numberTileRa = anchorRa;
@@ -1429,8 +1414,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const areaHalfDec = Math.min(80, decSpan * 1.5);
 
             // 4. ズーム倍率に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
-            const zoomTileFov = Math.max(0.3, Math.min(10.0, viewFov * 0.5));
-            const zoomStepDeg = zoomTileFov * 0.85;
+            const zoomTileFov = Math.max(0.15, Math.min(8.0, viewFov * 0.35));
+            const zoomStepDeg = zoomTileFov * 0.82;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];
             const tileKeySet = new Set<string>();

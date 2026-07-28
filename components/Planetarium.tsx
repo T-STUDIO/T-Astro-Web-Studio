@@ -1346,10 +1346,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const viewFov = 60 / zoom;
 
         // --- 4つのタイル分類に基づく絶対座標ズーム描画アルゴリズム ---
-        // 1. プラネタリウム画面内に描画されている天体の中から外郭天体を検出し、表示エリア範囲・中心を算出
+        // 1. プラネタリウム画面内に描画されている天体のうち、画面中心（視線中心）に最も近い天体を抽出して表示エリアの中心（アンカー）を決定
         const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
-        let minRa = Infinity, maxRa = -Infinity;
-        let minDec = Infinity, maxDec = -Infinity;
+        let closestObjRa = center.ra;
+        let closestObjDec = center.dec;
+        let minCenterDist = Infinity;
         let visibleCount = 0;
 
         for (const obj of allObjects) {
@@ -1363,36 +1364,27 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                 if (p && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
                     visibleCount++;
-                    if (raDeg < minRa) minRa = raDeg;
-                    if (raDeg > maxRa) maxRa = raDeg;
-                    if (decDeg < minDec) minDec = decDeg;
-                    if (decDeg > maxDec) maxDec = decDeg;
+                    const distToCenter = Math.hypot(p.x - width / 2, p.y - height / 2);
+                    if (distToCenter < minCenterDist) {
+                        minCenterDist = distToCenter;
+                        closestObjRa = raDeg;
+                        closestObjDec = decDeg;
+                    }
                 }
             }
         }
 
-        // 表示エリアの中心およびスパン幅の計算
-        let anchorRa = center.ra;
-        let anchorDec = center.dec;
-        let raSpan = viewFov;
-        let decSpan = viewFov;
+        // 画面中心に最も近い天体の絶対座標を表示エリアタイルの基準中心（アンカー）に設定
+        const anchorRa = (closestObjRa + 360) % 360;
+        const anchorDec = Math.max(-80, Math.min(80, closestObjDec));
 
-        if (visibleCount > 0 && minRa !== Infinity && maxRa !== Infinity) {
-            // 経度（RA）跨ぎの考慮
-            if (maxRa - minRa > 180) {
-                anchorRa = center.ra;
-                raSpan = Math.max(viewFov, 360 - (maxRa - minRa));
-            } else {
-                anchorRa = (minRa + maxRa) / 2;
-                raSpan = Math.max(viewFov * 0.5, maxRa - minRa);
-            }
-            anchorDec = (minDec + maxDec) / 2;
-            decSpan = Math.max(viewFov * 0.5, maxDec - minDec);
-        }
+        // 表示エリア（画面視野）の寸法
+        const raSpan = viewFov;
+        const decSpan = viewFov;
 
         // 2. 表示エリアタイルの中心座標
-        const numberTileRa = (anchorRa + 360) % 360;
-        const numberTileDec = Math.max(-80, Math.min(80, anchorDec));
+        const numberTileRa = anchorRa;
+        const numberTileDec = anchorDec;
 
         // 最後の更新位置との比較
         let dra = Math.abs(numberTileRa - lastDssParams.current.ra);
@@ -1418,9 +1410,9 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const areaHalfRa = (raSpan * 1.5) / cosDec;
             const areaHalfDec = decSpan * 1.5;
 
-            // 4. ズーム倍率（zoom）に応じて高解像度タイルの画角（zoomTileFov）とステップを可変設定
-            // ズームインするほどきめ細やかな高詳細タイルを取得（画角を縮小）
-            const zoomTileFov = Math.max(0.08, Math.min(8.0, 1.2 / Math.sqrt(zoom / 2.0)));
+            // 4. ズーム倍率に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
+            // 画面視野角（viewFov）に比例させることで、ズーム倍率にかかわらず常に適正なタイル枚数で3×3描画エリアをカバー
+            const zoomTileFov = Math.max(0.25, Math.min(10.0, viewFov * 0.45));
             const zoomStepDeg = zoomTileFov * 0.85;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];

@@ -1407,6 +1407,18 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             numberTileDec = Math.max(-80, Math.min(80, numberTileDec));
         }
 
+        // --- 追加要素1: 全体描画ナンバーの選出 ---
+        // グリッド間隔に基づく絶対ナンバリングから全体描画ナンバーを選出し、その絶対座標に確定
+        const gridStepRa = Math.max(0.5, raSpan);
+        const gridStepDec = Math.max(0.5, decSpan);
+        const numberTileIndexRa = Math.floor(numberTileRa / gridStepRa);
+        const numberTileIndexDec = Math.floor((numberTileDec + 90) / gridStepDec);
+        const globalTileNumber = numberTileIndexDec * 1000 + numberTileIndexRa; // 全体描画ナンバー
+
+        // 選出された全体描画ナンバーの絶対座標を中心として再設定
+        numberTileRa = ((numberTileIndexRa + 0.5) * gridStepRa + 360) % 360;
+        numberTileDec = Math.max(-80, Math.min(80, (numberTileIndexDec + 0.5) * gridStepDec - 90));
+
         // 最後の更新位置との比較
         let dra = Math.abs(numberTileRa - lastDssParams.current.ra);
         if (dra > 180) dra = 360 - dra;
@@ -1425,21 +1437,21 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             
             const pixels = 512;
             
-            // 3. 表示エリア（anchorRa, anchorDec）を中心に、表示エリア寸法の3×3倍（±1.5倍幅）のズーム描画エリアを確定
+            // --- 追加要素2: 絶対座標に基づく描画エリア再設定と詳細タイルの描画 ---
+            // 選出された全体描画ナンバーの絶対中心座標（numberTileRa, numberTileDec）を基準にして3×3描画エリアを再設定
             const cosDec = Math.max(0.15, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
             
             const areaHalfRa = Math.min(180, (raSpan * 1.5) / cosDec);
             const areaHalfDec = Math.min(80, decSpan * 1.5);
 
-            // 4. 画面視野角（viewFov）に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
-            // ズームイン時にも適正な重ね合わせ率（オーバーラップ）を維持し、3×3描画エリア全域を隙間なくカバー
+            // 画面視野角（viewFov）に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
             const zoomTileFov = Math.max(0.1, Math.min(8.0, viewFov * 0.33));
             const zoomStepDeg = zoomTileFov * 0.8;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];
             const tileKeySet = new Set<string>();
 
-            // 表示エリアを中心に上下左右3×3描画エリア全域を高画質ズームタイルで網羅（重複座標の排除）
+            // 絶対座標に基づく3×3描画エリア全域の詳細タイルを描画生成
             for (let dec = numberTileDec - areaHalfDec; dec <= numberTileDec + areaHalfDec + 0.0001; dec += zoomStepDeg) {
                 const clampedDec = Math.max(-80, Math.min(80, dec));
                 for (let raOffset = -areaHalfRa; raOffset <= areaHalfRa + 0.0001; raOffset += (zoomStepDeg / cosDec)) {

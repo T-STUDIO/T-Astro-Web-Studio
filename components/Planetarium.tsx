@@ -1457,13 +1457,14 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const areaHalfDec = Math.min(80, decSpan * 1.5);
 
             // 画面視野角（viewFov）に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
-            const zoomTileFov = Math.max(0.1, Math.min(8.0, viewFov * 0.33));
-            const zoomStepDeg = zoomTileFov * 0.8;
+            const zoomTileFov = Math.max(0.08, Math.min(6.0, viewFov * 0.25));
+            const zoomStepDeg = zoomTileFov * 0.85;
 
-            const gridTiles: { ra: number, dec: number, dist: number }[] = [];
+            // 表示エリア（raSpan, decSpan）を中心として網羅する詳細タイル群の算出
+            let gridTiles: { ra: number, dec: number, dist: number }[] = [];
             const tileKeySet = new Set<string>();
 
-            // 絶対座標に基づく3×3描画エリア全域の詳細タイルを描画生成
+            // 絶対座標に基づく表示エリア周辺の詳細タイルを描画生成
             for (let dec = numberTileDec - areaHalfDec; dec <= numberTileDec + areaHalfDec + 0.0001; dec += zoomStepDeg) {
                 const clampedDec = Math.max(-80, Math.min(80, dec));
                 for (let raOffset = -areaHalfRa; raOffset <= areaHalfRa + 0.0001; raOffset += (zoomStepDeg / cosDec)) {
@@ -1481,8 +1482,11 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
 
-            // 表示エリアタイルの中心に近い順に読み込み優先度をソート
+            // 表示エリアタイルの中心に近い順に読み込み優先度をソートし、最大200枚に制限
             gridTiles.sort((a, b) => a.dist - b.dist);
+            if (gridTiles.length > 200) {
+                gridTiles = gridTiles.slice(0, 200);
+            }
 
             setTotalDssTiles(gridTiles.length);
             setDssTiles([]);

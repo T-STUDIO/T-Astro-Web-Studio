@@ -1345,49 +1345,67 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const height = dimensions.height || 600;
         const viewFov = 60 / zoom;
 
-        // --- 4つのタイル分類に基づく絶対座標ズーム描画アルゴリズム ---
-        // 1. 画面内に描画されている天体の中から「画面中心付近の天体」と「それから最も離れた天体」を取得して表示領域を計算
+        // --- 表示エリア計算と全画面内天体の収容調整 ---
+        // 1. 表示エリアのサイズ（幅・高さ）を視野角に基づき固定値として算出
+        const raSpan = viewFov;
+        const decSpan = viewFov;
+
+        // 2. 表示エリア（画面内）に含まれる天体の座標をすべて取得
         const allObjects = [...CELESTIAL_OBJECTS, ...EXTENDED_DSO_CATALOG];
-        let closestObj: { ra: number; dec: number } | null = null;
-        let minCenterDist = Infinity;
         const visibleObjects: { ra: number; dec: number }[] = [];
 
-        // 画面中央判定の閾値（画面半幅/高の1/2以内）
-        const centerThreshold = Math.min(width, height) / 3;
-
         for (const obj of allObjects) {
-            let raDeg = obj.ra;
-            let decDeg = obj.dec;
-            if (raDeg === undefined && obj.raHms) raDeg = hmsToDegrees(obj.raHms.hours, obj.raHms.minutes, obj.raHms.seconds);
-            if (decDeg === undefined && obj.decDms) decDeg = dmsToDegrees(obj.decDms.sign, obj.decDms.degrees, obj.decDms.minutes, obj.decDms.seconds);
+            let raDeg: number | undefined;
+            let decDeg: number | undefined;
+
+            if (typeof obj.ra === 'number') raDeg = obj.ra;
+            else if (typeof obj.ra === 'string') raDeg = hmsToDegrees(obj.ra);
+            else if (obj.raHms) raDeg = hmsToDegrees(obj.raHms.hours, obj.raHms.minutes, obj.raHms.seconds);
+
+            if (typeof obj.dec === 'number') decDeg = obj.dec;
+            else if (typeof obj.dec === 'string') decDeg = dmsToDegrees(obj.dec);
+            else if (obj.decDms) decDeg = dmsToDegrees(obj.decDms.sign, obj.decDms.degrees, obj.decDms.minutes, obj.decDms.seconds);
             
-            if (raDeg !== undefined && decDeg !== undefined) {
+            if (raDeg !== undefined && decDeg !== undefined && !isNaN(raDeg) && !isNaN(decDeg)) {
                 const { alt, az } = raDecToAzAlt(raDeg, decDeg, currentLoc.latitude, lst);
                 const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
                 if (p && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
-                    const normObj = { ra: (raDeg + 360) % 360, dec: Math.max(-80, Math.min(80, decDeg)) };
-                    visibleObjects.push(normObj);
-                    const distToCenter = Math.hypot(p.x - width / 2, p.y - height / 2);
-                    if (distToCenter < minCenterDist) {
-                        minCenterDist = distToCenter;
-                        closestObj = normObj;
-                    }
+                    visibleObjects.push({ ra: (raDeg + 360) % 360, dec: Math.max(-80, Math.min(80, decDeg)) });
                 }
             }
         }
 
-        // 画面中心付近に天体が存在すればその座標、見つからなければ視線中心（center）をアンカー座標とする
-        const anchorObj = (closestObj && minCenterDist <= centerThreshold) ? closestObj : { ra: center.ra, dec: center.dec };
-        const anchorRa = (anchorObj.ra + 360) % 360;
-        const anchorDec = Math.max(-80, Math.min(80, anchorObj.dec));
+        // 3. 表示エリアの寸法（raSpan, decSpan）は変更せず、画面内の天体群に合わせた位置調整のみ実施
+        let numberTileRa = lastDssParams.current.ra >= 0 ? lastDssParams.current.ra : 0;
+        let numberTileDec = lastDssParams.current.dec >= -90 ? lastDssParams.current.dec : 0;
 
-        // 表示エリアのスパン（幅・高さ）を視野角（viewFov）に直接基づいて決定
-        const raSpan = viewFov;
-        const decSpan = viewFov;
+        if (visibleObjects.length > 0) {
+            numberTileRa = (center.ra + 360) % 360;
+            numberTileDec = Math.max(-80, Math.min(80, center.dec));
 
-        // 2. 表示エリアタイルの中心座標
-        const numberTileRa = anchorRa;
-        const numberTileDec = anchorDec;
+            for (const obj of visibleObjects) {
+                let diffRa = obj.ra - numberTileRa;
+                if (diffRa > 180) diffRa -= 360;
+                if (diffRa < -180) diffRa += 360;
+
+                const halfRa = raSpan * 0.5;
+                if (diffRa > halfRa) {
+                    numberTileRa += (diffRa - halfRa);
+                } else if (diffRa < -halfRa) {
+                    numberTileRa += (diffRa + halfRa);
+                }
+
+                const diffDec = obj.dec - numberTileDec;
+                const halfDec = decSpan * 0.5;
+                if (diffDec > halfDec) {
+                    numberTileDec += (diffDec - halfDec);
+                } else if (diffDec < -halfDec) {
+                    numberTileDec += (diffDec + halfDec);
+                }
+            }
+            numberTileRa = (numberTileRa + 360) % 360;
+            numberTileDec = Math.max(-80, Math.min(80, numberTileDec));
+        }
 
         // 最後の更新位置との比較
         let dra = Math.abs(numberTileRa - lastDssParams.current.ra);
@@ -1408,15 +1426,15 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const pixels = 512;
             
             // 3. 表示エリア（anchorRa, anchorDec）を中心に、表示エリア寸法の3×3倍（±1.5倍幅）のズーム描画エリアを確定
-            const cosDec = Math.max(0.2, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
+            const cosDec = Math.max(0.15, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
             
             const areaHalfRa = Math.min(180, (raSpan * 1.5) / cosDec);
             const areaHalfDec = Math.min(80, decSpan * 1.5);
 
-            // 4. ズーム倍率（zoom）に応じて高解像度タイルの画角（zoomTileFov）とステップを可変設定
-            // ズームインするほど高精細な画像データを取得し、ズーム倍率に応じてタイル枚数・解像度が可変変化
-            const zoomTileFov = Math.max(0.05, Math.min(6.0, 2.0 / Math.pow(zoom, 0.55)));
-            const zoomStepDeg = zoomTileFov * 0.85;
+            // 4. 画面視野角（viewFov）に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
+            // ズームイン時にも適正な重ね合わせ率（オーバーラップ）を維持し、3×3描画エリア全域を隙間なくカバー
+            const zoomTileFov = Math.max(0.1, Math.min(8.0, viewFov * 0.33));
+            const zoomStepDeg = zoomTileFov * 0.8;
 
             const gridTiles: { ra: number, dec: number, dist: number }[] = [];
             const tileKeySet = new Set<string>();
@@ -1466,41 +1484,56 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                         const blob = await response.blob();
                         if (blob.size < 2000) throw new Error('Invalid image data');
 
+                        const objectUrl = URL.createObjectURL(blob);
                         const img = new Image();
-                        await new Promise<void>((resolve, reject) => {
-                            img.onload = () => resolve();
-                            img.onerror = () => reject(new Error('Decode failed'));
-                            img.src = URL.createObjectURL(blob);
-                            signal.addEventListener('abort', () => { img.src = ''; reject(new Error('Aborted')); });
-                        });
+                        try {
+                            await new Promise<void>((resolve, reject) => {
+                                const onAbort = () => {
+                                    img.src = '';
+                                    reject(new Error('Aborted'));
+                                };
+                                img.onload = () => {
+                                    signal.removeEventListener('abort', onAbort);
+                                    resolve();
+                                };
+                                img.onerror = () => {
+                                    signal.removeEventListener('abort', onAbort);
+                                    reject(new Error('Decode failed'));
+                                };
+                                signal.addEventListener('abort', onAbort, { once: true });
+                                img.src = objectUrl;
+                            });
 
-                        if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
+                            if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
 
-                        const processedCanvas = await processDssImage(img, zoomTileFov);
-                        if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
+                            const processedCanvas = await processDssImage(img, zoomTileFov);
+                            if (signal.aborted || currentReqId !== dssRequestIdRef.current) return;
 
-                        if ((processedCanvas as any)._isError) {
-                            continue;
-                        }
-
-                        const tileData = {
-                            image: processedCanvas as any,
-                            metadata: { ra: targetRa, dec: targetDec, fov: zoomTileFov }
-                        };
-
-                        setDssTiles(prev => {
-                            if (currentReqId !== dssRequestIdRef.current) return prev;
-                            const isSameTile = (t: any) => 
-                                Math.abs(t.metadata.ra - targetRa) < 0.001 && 
-                                Math.abs(t.metadata.dec - targetDec) < 0.001;
-                            
-                            if (prev.some(isSameTile)) {
-                                return prev.map(t => isSameTile(t) ? tileData : t);
+                            if ((processedCanvas as any)._isError) {
+                                continue;
                             }
-                            return [...prev, tileData];
-                        });
 
-                        break; // 成功したら次のソースは試さない
+                            const tileData = {
+                                image: processedCanvas as any,
+                                metadata: { ra: targetRa, dec: targetDec, fov: zoomTileFov }
+                            };
+
+                            setDssTiles(prev => {
+                                if (currentReqId !== dssRequestIdRef.current) return prev;
+                                const isSameTile = (t: any) => 
+                                    Math.abs(t.metadata.ra - targetRa) < 0.001 && 
+                                    Math.abs(t.metadata.dec - targetDec) < 0.001;
+                                
+                                if (prev.some(isSameTile)) {
+                                    return prev.map(t => isSameTile(t) ? tileData : t);
+                                }
+                                return [...prev, tileData];
+                            });
+
+                            break; // 成功したら次のソースは試さない
+                        } finally {
+                            URL.revokeObjectURL(objectUrl);
+                        }
                     } catch (e: any) {
                         if (e.name === 'AbortError') return;
                     }

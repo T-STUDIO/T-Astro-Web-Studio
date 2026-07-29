@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Loader2 } from 'lucide-react';
 import { BroadcastService } from './BroadcastService';
 
 const ObservationViewer: React.FC = () => {
@@ -109,7 +110,19 @@ const ObservationViewer: React.FC = () => {
     return (
         <div 
             ref={containerRef}
-            className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden touch-none select-none"
+            style={{
+                position: 'fixed',
+                inset: 0,
+                width: '100vw',
+                height: '100vh',
+                backgroundColor: '#000000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                touchAction: 'none',
+                userSelect: 'none'
+            }}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -131,29 +144,82 @@ const ObservationViewer: React.FC = () => {
                         ref={imageRef}
                         src={imageUrl} 
                         alt="Observation" 
-                        className="max-w-none pointer-events-none"
+                        style={{
+                            maxWidth: 'none',
+                            maxHeight: 'none',
+                            pointerEvents: 'none'
+                        }}
                         referrerPolicy="no-referrer"
                     />
                     {metadata && (
-                        <div className="absolute top-4 left-4 bg-black/50 text-white p-2 text-xs rounded pointer-events-none">
-                            {metadata.objectName && <div>Target: {metadata.objectName}</div>}
-                            {metadata.exposure && <div>Exp: {metadata.exposure}s</div>}
+                        <div style={{
+                            position: 'fixed',
+                            bottom: '16px',
+                            left: '16px',
+                            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                            backdropFilter: 'blur(4px)',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            color: '#e2e8f0',
+                            padding: '10px 14px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            pointerEvents: 'none',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                            zIndex: 1000
+                        }}>
+                            {metadata.objectName && <div style={{ fontWeight: 600, color: '#f8fafc', marginBottom: '2px' }}>Target: {metadata.objectName}</div>}
+                            {metadata.exposure && <div style={{ color: '#94a3b8' }}>Exp: {metadata.exposure}s</div>}
                         </div>
                     )}
                 </div>
             ) : (
-                <div className="text-slate-500 text-sm animate-pulse">
-                    Waiting for image...
+                <div 
+                    style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '12px',
+                        color: '#94a3b8',
+                        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
+                    }}
+                >
+                    <Loader2 className="animate-spin" style={{ width: '32px', height: '32px', color: '#ef4444' }} />
+                    <span style={{ fontSize: '14px', fontWeight: 500, letterSpacing: '0.03em', color: '#cbd5e1' }}>
+                        Waiting for image...
+                    </span>
                 </div>
             )}
 
             {/* Close Button */}
             <button 
                 onClick={handleClose}
-                className="absolute top-4 right-4 w-10 h-10 bg-red-900/50 hover:bg-red-800/80 text-white rounded-full flex items-center justify-center transition-colors z-50"
+                style={{
+                    position: 'fixed',
+                    top: '20px',
+                    right: '20px',
+                    width: '44px',
+                    height: '44px',
+                    backgroundColor: 'rgba(185, 28, 28, 0.85)',
+                    color: '#ffffff',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.6)',
+                    cursor: 'pointer',
+                    zIndex: 99999,
+                    outline: 'none',
+                    padding: 0
+                }}
                 aria-label="Close"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <X style={{ width: '24px', height: '24px', strokeWidth: 2.5 }} />
             </button>
         </div>
     );

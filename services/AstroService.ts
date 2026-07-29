@@ -90,6 +90,18 @@ export const startCapture = (exp: number, gain: number, offset: number, colorBal
 export const stopCapture = () => getService().stopCapture();
 export const startLoop = (exp: number, gain: number, offset: number) => (getService() as any).startLoop(exp, gain, offset);
 export const stopLoop = () => (getService() as any).stopLoop();
+export const startLiveStacking = (exp: number, gain: number, offset: number) => {
+    const s = getService();
+    if ('startLiveStacking' in s) (s as any).startLiveStacking(exp, gain, offset);
+    else if ('startLoop' in s) (s as any).startLoop(exp, gain, offset);
+    else s.capturePreview(exp, gain, offset, true);
+};
+export const stopLiveStacking = () => {
+    const s = getService();
+    if ('stopLiveStacking' in s) (s as any).stopLiveStacking();
+    else if ('stopLoop' in s) (s as any).stopLoop();
+    else s.stopCapture();
+};
 export const stopAllImaging = () => {
     const s = getService();
     if ('stopAllImaging' in s) (s as any).stopAllImaging();

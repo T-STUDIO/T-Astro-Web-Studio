@@ -185,7 +185,7 @@ export const CelestialObjectHUD: React.FC<CelestialObjectHUDProps> = ({ object, 
             
             {isConnected && MountController && (
                 <div className="pointer-events-auto w-full opacity-95">
-                    <MountController isConnected={isConnected} compact={true} />
+                    <MountController isConnected={isConnected} compact={true} selectedObject={object} />
                 </div>
             )}
         </div>

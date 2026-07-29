@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Button } from './Button';
 import { StopIcon } from './icons/StopIcon';
 import { useTranslation } from '../contexts/LanguageContext';
-import { MountSpeed } from '../types';
+import { MountSpeed, CelestialObject } from '../types';
 import * as AstroService from '../services/AstroServiceSimulator';
 
 interface MountControllerProps {
     isConnected: boolean;
     compact?: boolean; 
+    selectedObject?: CelestialObject | null;
 }
 
 const DirectionButton: React.FC<{ 
@@ -46,24 +47,20 @@ const DirectionButton: React.FC<{
     );
 };
 
-export const MountControllerSimulator: React.FC<MountControllerProps> = ({ isConnected, compact }) => {
+export const MountControllerSimulator: React.FC<MountControllerProps> = ({ isConnected, compact, selectedObject }) => {
     const { t } = useTranslation();
     const [speed, setSpeed] = useState<MountSpeed>('Slew');
     const [tracking, setTracking] = useState(false);
-    const [parked, setParked] = useState(false);
 
     useEffect(() => {
         if (!isConnected) {
             setTracking(false);
-            setParked(false);
             return;
         }
 
         const updateState = () => {
             const trk = AstroService.getSwitchValue('Simulator Mount', 'TELESCOPE_TRACK_STATE', 'TRACK_ON');
-            const prk = AstroService.getSwitchValue('Simulator Mount', 'TELESCOPE_PARK', 'PARK');
             setTracking(trk);
-            setParked(prk);
         };
 
         updateState();
@@ -79,12 +76,10 @@ export const MountControllerSimulator: React.FC<MountControllerProps> = ({ isCon
         });
     };
 
-    const togglePark = () => {
-        const newState = !parked;
-        AstroService.updateDeviceSetting('Simulator Mount', 'TELESCOPE_PARK', {
-            PARK: newState,
-            UNPARK: !newState
-        });
+    const handleSync = () => {
+        if (isConnected && selectedObject) {
+            AstroService.syncTo(selectedObject);
+        }
     };
 
     const handleStop = () => {
@@ -107,9 +102,9 @@ export const MountControllerSimulator: React.FC<MountControllerProps> = ({ isCon
              {compact ? <h3 className={titleClass}>Mount</h3> : <h3 className={titleClass}>{t('mountController.title')}</h3>}
              
              <div className="flex flex-col items-center gap-0.5 mb-1.5">
-                <DirectionButton label="N" direction="N" speed={speed} disabled={!isConnected || parked} compact={compact} />
+                <DirectionButton label="N" direction="N" speed={speed} disabled={!isConnected} compact={compact} />
                 <div className="flex gap-0.5">
-                    <DirectionButton label="E" direction="E" speed={speed} disabled={!isConnected || parked} compact={compact} />
+                    <DirectionButton label="E" direction="E" speed={speed} disabled={!isConnected} compact={compact} />
                     <button 
                         onClick={handleStop}
                         disabled={!isConnected}
@@ -117,9 +112,9 @@ export const MountControllerSimulator: React.FC<MountControllerProps> = ({ isCon
                     >
                         <StopIcon className={iconSize} />
                     </button>
-                    <DirectionButton label="W" direction="W" speed={speed} disabled={!isConnected || parked} compact={compact} />
+                    <DirectionButton label="W" direction="W" speed={speed} disabled={!isConnected} compact={compact} />
                 </div>
-                <DirectionButton label="S" direction="S" speed={speed} disabled={!isConnected || parked} compact={compact} />
+                <DirectionButton label="S" direction="S" speed={speed} disabled={!isConnected} compact={compact} />
              </div>
 
              <div className="flex justify-between bg-slate-800/80 rounded p-0.5 mb-1.5 border border-slate-700">
@@ -142,10 +137,12 @@ export const MountControllerSimulator: React.FC<MountControllerProps> = ({ isCon
                      TRK:{tracking ? 'ON' : 'OFF'}
                  </button>
                  <button 
-                    onClick={togglePark}
-                    className={`text-[8px] font-black py-1 rounded border transition-colors ${parked ? 'bg-red-900 border-red-600 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+                    onClick={handleSync}
+                    disabled={!isConnected || !selectedObject}
+                    title={selectedObject ? `Sync to ${selectedObject.name}` : 'Select a target first'}
+                    className={`text-[8px] font-black py-1 rounded border transition-colors ${selectedObject ? 'bg-blue-900/80 border-blue-600 text-blue-300 hover:bg-blue-800 hover:text-white cursor-pointer' : 'bg-slate-800 border-slate-700 text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed'}`}
                 >
-                     {parked ? 'UNPARK' : 'PARK'}
+                     SYNC
                  </button>
              </div>
         </div>

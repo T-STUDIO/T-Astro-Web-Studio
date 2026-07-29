@@ -577,7 +577,7 @@ const EquipmentPanel = memo((props: any) => {
                         </div>
                     </div>
                     <div className="pt-2">
-                        <MountControllerSimulator isConnected={isConnected} />
+                        <MountControllerSimulator isConnected={isConnected} selectedObject={props.selectedObject} />
                     </div>
                 </div>
             )}

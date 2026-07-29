@@ -1407,17 +1407,29 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             numberTileDec = Math.max(-80, Math.min(80, numberTileDec));
         }
 
-        // --- 追加要素1: 全体描画ナンバーの選出 ---
-        // グリッド間隔に基づく絶対ナンバリングから全体描画ナンバーを選出し、その絶対座標に確定
+        // --- 追加要素1: 3×3描画エリアをすべて含む全体描画ナンバーの選出 ---
+        // 3×3描画エリア全体の座標範囲から、該当エリアをすべて網羅・包含する全体描画ナンバー群を選出
         const gridStepRa = Math.max(0.5, raSpan);
         const gridStepDec = Math.max(0.5, decSpan);
-        const numberTileIndexRa = Math.floor(numberTileRa / gridStepRa);
-        const numberTileIndexDec = Math.floor((numberTileDec + 90) / gridStepDec);
-        const globalTileNumber = numberTileIndexDec * 1000 + numberTileIndexRa; // 全体描画ナンバー
+        const cosDecForGrid = Math.max(0.15, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
+        
+        const areaHalfRaGrid = (raSpan * 1.5) / cosDecForGrid;
+        const areaHalfDecGrid = decSpan * 1.5;
+        
+        const minTileIdxRa = Math.floor((numberTileRa - areaHalfRaGrid) / gridStepRa);
+        const maxTileIdxRa = Math.floor((numberTileRa + areaHalfRaGrid) / gridStepRa);
+        const minTileIdxDec = Math.floor((numberTileDec - areaHalfDecGrid + 90) / gridStepDec);
+        const maxTileIdxDec = Math.floor((numberTileDec + areaHalfDecGrid + 90) / gridStepDec);
 
-        // 選出された全体描画ナンバーの絶対座標を中心として再設定
-        numberTileRa = ((numberTileIndexRa + 0.5) * gridStepRa + 360) % 360;
-        numberTileDec = Math.max(-80, Math.min(80, (numberTileIndexDec + 0.5) * gridStepDec - 90));
+        const globalTileNumbers: number[] = [];
+        for (let dIdx = minTileIdxDec; dIdx <= maxTileIdxDec; dIdx++) {
+            for (let rIdx = minTileIdxRa; rIdx <= maxTileIdxRa; rIdx++) {
+                const normRIdx = ((rIdx % Math.floor(360 / gridStepRa)) + Math.floor(360 / gridStepRa)) % Math.floor(360 / gridStepRa);
+                const tileNum = dIdx * 1000 + normRIdx;
+                globalTileNumbers.push(tileNum);
+            }
+        }
+        const primaryGlobalTileNumber = globalTileNumbers[0] || 0; // 代表全体描画ナンバー
 
         // 最後の更新位置との比較
         let dra = Math.abs(numberTileRa - lastDssParams.current.ra);
@@ -1438,7 +1450,7 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             const pixels = 512;
             
             // --- 追加要素2: 絶対座標に基づく描画エリア再設定と詳細タイルの描画 ---
-            // 選出された全体描画ナンバーの絶対中心座標（numberTileRa, numberTileDec）を基準にして3×3描画エリアを再設定
+            // 確定された表示エリア中心座標（numberTileRa, numberTileDec）を基準にして3×3描画エリアを再設定
             const cosDec = Math.max(0.15, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
             
             const areaHalfRa = Math.min(180, (raSpan * 1.5) / cosDec);

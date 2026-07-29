@@ -14,4 +14,8 @@ const startViewer = () => {
   );
 };
 
-window.addEventListener('load', startViewer);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startViewer);
+} else {
+  startViewer();
+}

@@ -263,7 +263,7 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
                 </div>
 
                 <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-red-900 bg-slate-900/40">
-                    {['CCDs', 'Telescopes', 'Focusers', 'Domes', 'Filter Wheels', 'Others'].map(group => {
+                    {['CCDs', 'Telescopes', 'Focusers', 'Domes', 'Filter Wheels', 'Auxiliary', 'Others'].map(group => {
                         const groupDrivers = availableDrivers.filter(d => {
                             const dGroup = (d.group || '').toLowerCase();
                             if (group === 'CCDs') {
@@ -281,8 +281,11 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
                             if (group === 'Filter Wheels') {
                                 return dGroup === 'filter wheels' || dGroup === 'filter wheel' || dGroup === 'filter_wheels' || dGroup === 'asi_wheel';
                             }
+                            if (group === 'Auxiliary') {
+                                return dGroup === 'auxiliary' || dGroup === 'aux' || dGroup === 'power' || dGroup === 'weather' || dGroup === 'switch';
+                            }
                             if (group === 'Others') {
-                                const isMajor = ['ccds','ccd','telescopes','telescope','mounts','mount','focusers','focuser','domes','dome','filter wheels','filter wheel','filter_wheels','asi_wheel'].includes(dGroup);
+                                const isMajor = ['ccds','ccd','telescopes','telescope','mounts','mount','focusers','focuser','domes','dome','filter wheels','filter wheel','filter_wheels','asi_wheel','auxiliary','aux','power','weather','switch'].includes(dGroup);
                                 return !isMajor;
                             }
                             return false;

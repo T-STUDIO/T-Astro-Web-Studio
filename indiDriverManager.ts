@@ -22,7 +22,11 @@ const FALLBACK_DRIVERS = [
     { name: 'MyFocuserPro2', bin: 'indi_myfocuserpro2', group: 'Focusers' },
     { name: 'MoonLite Focuser', bin: 'indi_moonlite', group: 'Focusers' },
     { name: 'INDI Rolldome', bin: 'indi_roll_dome', group: 'Domes' },
-    { name: 'Filter Wheel (ASI)', bin: 'indi_asi_wheel', group: 'Filter Wheels' }
+    { name: 'Filter Wheel (ASI)', bin: 'indi_asi_wheel', group: 'Filter Wheels' },
+    { name: 'Arduino Switcher', bin: 'indi_arduino_switcher', group: 'Auxiliary' },
+    { name: 'GPS Simulator', bin: 'indi_simulator_gps', group: 'Auxiliary' },
+    { name: 'SQM Weather', bin: 'indi_sqm_weather', group: 'Auxiliary' },
+    { name: 'GPIO Switch', bin: 'indi_rpi_gpio', group: 'Auxiliary' }
 ];
 
 interface DriverInfo {

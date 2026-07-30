@@ -17,6 +17,7 @@ export const en = {
     close: 'Close',
     loading: 'Loading...',
     none: '---',
+    switchCamera: 'Switch Camera',
   },
   tooltips: {
     // Equipment

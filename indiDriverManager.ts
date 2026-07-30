@@ -202,6 +202,11 @@ export class IndiDriverManager {
             console.error('[IndiDriverManager] Error scanning /usr/share/indi:', e);
         }
 
+        if (driversList.length === 0) {
+            console.log('[IndiDriverManager] No XML drivers found in /usr/share/indi, using FALLBACK_DRIVERS');
+            driversList.push(...FALLBACK_DRIVERS);
+        }
+
         const cachePath = path.join(process.cwd(), 'available_drivers_cache.json');
         try {
             fs.writeFileSync(cachePath, JSON.stringify(driversList, null, 2), 'utf-8');

@@ -97,7 +97,7 @@ export interface ObjectRealtimeData {
 
 export type MountSpeed = 'Guide' | 'Center' | 'Find' | 'Slew';
 
-export type DeviceType = 'Camera' | 'GuideCamera' | 'Mount' | 'Telescope' | 'Focuser' | 'FilterWheel' | 'Dome' | 'Rotator' | 'Heater';
+export type DeviceType = 'Camera' | 'GuideCamera' | 'Mount' | 'Telescope' | 'Focuser' | 'FilterWheel' | 'Dome' | 'Rotator' | 'Heater' | 'Auxiliary' | 'Weather';
 
 export interface DeviceConfig {
     type: DeviceType;

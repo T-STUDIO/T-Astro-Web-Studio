@@ -886,7 +886,9 @@ const detectDevice = (device: INDIDevice, prop: string) => {
     }
     if (!device.type) {
         const nameLower = device.name.toLowerCase();
-        if (nameLower.includes('switch') || nameLower.includes('arduino') || nameLower.includes('gpio') || nameLower.includes('power') || nameLower.includes('heater')) {
+        if (nameLower.includes('switch') || nameLower.includes('arduino') || nameLower.includes('gpio') || nameLower.includes('power') || nameLower.includes('aux')) {
+            device.type = 'Auxiliary';
+        } else if (nameLower.includes('heater')) {
             device.type = 'Heater';
         } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
             device.type = 'FilterWheel';

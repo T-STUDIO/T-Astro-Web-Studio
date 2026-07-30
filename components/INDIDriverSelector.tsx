@@ -122,6 +122,11 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
 
     const handleProfileChange = (profileName: string) => {
         setSelectedProfileName(profileName);
+        if (profileName) {
+            localStorage.setItem('t-astro-indi-last-profile', profileName);
+        } else {
+            localStorage.removeItem('t-astro-indi-last-profile');
+        }
         if (!profileName) {
             setSelectedDrivers([]);
             return;
@@ -129,6 +134,7 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
         const prof = profiles.find(p => p.name === profileName);
         if (prof) {
             setSelectedDrivers(prof.drivers);
+            localStorage.setItem('t-astro-indi-last-drivers', JSON.stringify(prof.drivers));
         }
     };
 
@@ -141,6 +147,8 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
         
         setProfiles(updated);
         localStorage.setItem('t-astro-indi-profiles', JSON.stringify(updated));
+        localStorage.setItem('t-astro-indi-last-profile', trimmed);
+        localStorage.setItem('t-astro-indi-last-drivers', JSON.stringify(selectedDrivers));
         setSelectedProfileName(trimmed);
         setNewProfileName('');
     };
@@ -150,6 +158,7 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
         const updated = profiles.filter(p => p.name !== selectedProfileName);
         setProfiles(updated);
         localStorage.setItem('t-astro-indi-profiles', JSON.stringify(updated));
+        localStorage.removeItem('t-astro-indi-last-profile');
         setSelectedProfileName('');
         setSelectedDrivers([]);
     };

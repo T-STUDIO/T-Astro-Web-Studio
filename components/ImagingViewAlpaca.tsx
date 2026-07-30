@@ -701,9 +701,10 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
       onTouchMove: (e: React.TouchEvent) => e.stopPropagation(),
   };
 
+  const devices = AstroService.getDevices() || [];
+  const cameras = devices.filter((d: any) => d.type === 'Camera' || (d.name && (d.name.toLowerCase().includes('camera') || d.name.toLowerCase().includes('ccd') || d.name.toLowerCase().includes('cam') || d.name.toLowerCase().includes('webcam'))));
+
   const handleCameraSwitch = useCallback(() => {
-      const devices = AstroService.getDevices() || [];
-      const cameras = devices.filter((d: any) => d.type === 'Camera' || (d.name && d.name.toLowerCase().includes('camera')));
       const activeCam = AstroService.getActiveCamera();
       if (cameras.length > 1) {
           const nextCam = cameras.find((c: any) => c.name !== activeCam) || cameras[0];
@@ -711,7 +712,7 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
       } else if (cameras.length === 1) {
           AstroService.setActiveCamera(cameras[0].name);
       }
-  }, []);
+  }, [cameras]);
 
   return (
     <div className="relative w-full h-full bg-black overflow-hidden flex flex-col select-none">
@@ -719,15 +720,15 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
            <CelestialObjectHUD object={selectedObject} data={selectedObjectData} isConnected={!!isLiveViewActive || isCapturing} onClose={() => setIsHudOpen(false)} localSolverSettings={localSolverSettings} />
        )}
        <div className="relative w-full h-full bg-[#020617] active:cursor-grabbing overflow-hidden touch-none" style={{ cursor, touchAction: 'none' }} ref={containerRef} onWheel={(e) => setZoom(prev => Math.max(0.01, Math.min(20, prev * (1 - e.deltaY * 0.001))))} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp}>
-        {!isMini && (
+        {!isMini && cameras.length > 1 && (
             <div className="absolute top-3 left-3 z-40 pointer-events-auto" {...stopProp}>
                 <button
                     onClick={handleCameraSwitch}
                     className="px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-red-500 rounded-md shadow-lg text-xs font-bold flex items-center gap-1.5 backdrop-blur-md transition-all active:scale-95"
-                    title="カメラ切り替え"
+                    title={t('common.switchCamera') || 'カメラ切替'}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/><path d="m18 22-3-3 3-3"/><path d="m6 2 3 3-3 3"/></svg>
-                    <span>カメラ切り替え</span>
+                    <span>{t('common.switchCamera') || 'カメラ切替'}</span>
                 </button>
             </div>
         )}

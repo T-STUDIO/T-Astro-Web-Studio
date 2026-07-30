@@ -864,43 +864,77 @@ const parseIndiPacket = (packet: string) => {
 };
 
 const detectDevice = (device: INDIDevice, prop: string) => {
-    if (prop === 'EQUATORIAL_EOD_COORD' || prop === 'EQUATORIAL_COORD' || prop === 'HORIZONTAL_COORD' || prop.startsWith('TELESCOPE_MOTION_')) {
-        if (device.type !== 'Mount') {
-            const nameLower = device.name.toLowerCase();
-            if (!nameLower.includes('webcam') && !nameLower.includes('qhy') && !nameLower.includes('zwo') && !nameLower.includes('canon') && !nameLower.includes('nikon')) {
-                device.type = 'Mount';
-                if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
-            }
+    const propUpper = prop.toUpperCase();
+    const nameLower = device.name.toLowerCase();
+
+    // 1. Mount / Telescope detection (takes precedence)
+    if (propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_') || propUpper.includes('MOUNT_')) {
+        if (!nameLower.includes('webcam') && !nameLower.includes('qhy') && !nameLower.includes('zwo') && !nameLower.includes('canon') && !nameLower.includes('nikon')) {
+            device.type = 'Mount';
+            if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
+            return;
         }
     }
-    if (prop.includes('CCD_EXPOSURE')) {
-        if (device.type !== 'Camera') device.type = 'Camera';
+
+    // 2. Camera detection
+    if (propUpper.includes('CCD_EXPOSURE') || propUpper.includes('CCD_FRAME') || propUpper.includes('CCD_IMAGE')) {
+        device.type = 'Camera';
         if (!activeCameraDevice) {
             activeCameraDevice = device.name; log(`[INDI] Active Camera detected: ${device.name}`);
             sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
         }
+        return;
     }
-    if (prop === 'ABS_FOCUS_POSITION') {
-        if (device.type !== 'Focuser') device.type = 'Focuser';
+
+    // 3. Focuser detection
+    if (propUpper.includes('FOCUS_POSITION') || propUpper.includes('FOCUS_SPEED') || propUpper.includes('FOCUS_MOTION')) {
+        device.type = 'Focuser';
         if (!activeFocuserDevice) activeFocuserDevice = device.name;
+        return;
     }
-    if (!device.type) {
-        const nameLower = device.name.toLowerCase();
-        if (nameLower.includes('switch') || nameLower.includes('arduino') || nameLower.includes('gpio') || nameLower.includes('power') || nameLower.includes('aux')) {
-            device.type = 'Auxiliary';
-        } else if (nameLower.includes('heater')) {
-            device.type = 'Heater';
-        } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
-            device.type = 'FilterWheel';
-        } else if (nameLower.includes('dome') || nameLower.includes('roof')) {
-            device.type = 'Dome';
-        } else if (nameLower.includes('rotator')) {
-            device.type = 'Rotator';
-        } else if (nameLower.includes('sqm') || nameLower.includes('weather')) {
-            device.type = 'Weather';
-        } else {
-            device.type = 'Auxiliary';
-        }
+
+    // 4. FilterWheel detection
+    if (propUpper.includes('FILTER_SLOT') || propUpper.includes('FILTER_NAME')) {
+        device.type = 'FilterWheel';
+        return;
+    }
+
+    // 5. Dome detection
+    if (propUpper.includes('DOME_SHUTTER') || propUpper.includes('DOME_PARK')) {
+        device.type = 'Dome';
+        return;
+    }
+
+    // 6. Rotator detection
+    if (propUpper.includes('ROTATOR_ANGLE')) {
+        device.type = 'Rotator';
+        return;
+    }
+
+    // If type is already definitively set, keep it
+    if (device.type && device.type !== 'Auxiliary') {
+        return;
+    }
+
+    // 7. Infer from device name if not definitively identified by property
+    if (nameLower.includes('telescope') || nameLower.includes('mount') || nameLower.includes('skywatcher') || nameLower.includes('celestron') || nameLower.includes('ioptron') || nameLower.includes('eqmod') || nameLower.includes('alt-az') || nameLower.includes('lx200')) {
+        device.type = 'Mount';
+    } else if (nameLower.includes('camera') || nameLower.includes('ccd') || nameLower.includes('qhy') || nameLower.includes('zwo') || nameLower.includes('asi') || nameLower.includes('webcam') || nameLower.includes('video') || nameLower.includes('cam')) {
+        device.type = 'Camera';
+    } else if (nameLower.includes('focuser') || nameLower.includes('focus') || nameLower.includes('eaf')) {
+        device.type = 'Focuser';
+    } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
+        device.type = 'FilterWheel';
+    } else if (nameLower.includes('dome') || nameLower.includes('roof')) {
+        device.type = 'Dome';
+    } else if (nameLower.includes('rotator')) {
+        device.type = 'Rotator';
+    } else if (nameLower.includes('sqm') || nameLower.includes('weather')) {
+        device.type = 'Weather';
+    } else if (nameLower.includes('heater')) {
+        device.type = 'Heater';
+    } else {
+        device.type = 'Auxiliary';
     }
 };
 

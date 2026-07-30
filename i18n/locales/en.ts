@@ -111,7 +111,9 @@ export const en = {
     FilterWheel: 'Filter Wheel',
     Dome: 'Dome',
     Rotator: 'Rotator',
-    Heater: 'Heater'
+    Heater: 'Heater',
+    Auxiliary: 'Auxiliary',
+    Weather: 'Weather Station'
   },
   deviceSettings: {
       coolerTemp: 'Cooler Temp (°C)',

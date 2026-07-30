@@ -111,7 +111,9 @@ export const ja = {
     FilterWheel: 'フィルターホイール',
     Dome: 'ドーム',
     Rotator: 'ローテーター',
-    Heater: 'ヒーター'
+    Heater: 'ヒーター',
+    Auxiliary: '補助機器',
+    Weather: '気象センサー'
   },
   deviceSettings: {
       coolerTemp: '冷却温度 (°C)',

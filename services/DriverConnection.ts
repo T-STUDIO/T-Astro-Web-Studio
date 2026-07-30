@@ -884,6 +884,18 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         if (device.type !== 'Focuser') device.type = 'Focuser';
         if (!activeFocuserDevice) activeFocuserDevice = device.name;
     }
+    if (!device.type) {
+        const nameLower = device.name.toLowerCase();
+        if (nameLower.includes('switch') || nameLower.includes('arduino') || nameLower.includes('gpio') || nameLower.includes('power') || nameLower.includes('aux')) {
+            device.type = 'Heater'; // Auxiliary/Switch mapped
+        } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
+            device.type = 'FilterWheel';
+        } else if (nameLower.includes('dome') || nameLower.includes('roof')) {
+            device.type = 'Dome';
+        } else if (nameLower.includes('rotator')) {
+            device.type = 'Rotator';
+        }
+    }
 };
 
 const scheduleUpdate = () => {

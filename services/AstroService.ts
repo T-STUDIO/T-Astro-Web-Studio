@@ -121,7 +121,15 @@ export const setVideoStream = (enabled: boolean) => getService().setVideoStream(
 export const abortSlew = () => getService().abortSlew();
 export const sendLocation = (loc: LocationData, time: Date) => getService().sendLocation(loc, time);
 export const getActiveCamera = () => getService().getActiveCamera();
+export const setActiveCamera = (devName: string) => {
+    const s = getService();
+    if ('setActiveCamera' in s) (s as any).setActiveCamera(devName);
+};
 export const getActiveFocuser = () => getService().getActiveFocuser();
+export const setActiveFocuser = (devName: string) => {
+    const s = getService();
+    if ('setActiveFocuser' in s) (s as any).setActiveFocuser(devName);
+};
 export const getDeviceProperties = (device: string) => getService().getDeviceProperties(device);
 export const getNumericValue = (device: string, prop: string, elem: string) => getService().getNumericValue(device, prop, elem);
 export const connectDevice = (name: string) => (getService() as any).connectDevice(name);

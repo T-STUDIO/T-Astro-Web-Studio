@@ -49,7 +49,7 @@ export {
     diagnoseConnection, 
     setLogCallback, getDebugLogs,
     setImageReceivedCallback, setIndiDeviceCallback, setIndiMessageCountCallback, setFocuserUpdateCallback, setMountLocationCallback, setMountTimeCallback,
-    updateDeviceSetting, getActiveCamera, getActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice as connectDevice, connectIndiDevice, disconnectIndiDevice as disconnectDevice, disconnectIndiDevice, refreshIndiDevices as refreshDevices, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
+    updateDeviceSetting, getActiveCamera, setActiveCamera, getActiveFocuser, setActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice as connectDevice, connectIndiDevice, disconnectIndiDevice as disconnectDevice, disconnectIndiDevice, refreshIndiDevices as refreshDevices, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
     getIndiDevices as getDevices, getIndiDevices,
     sendRaw
 } from './DriverConnection';

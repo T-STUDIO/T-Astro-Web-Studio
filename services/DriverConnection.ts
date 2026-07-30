@@ -112,7 +112,18 @@ export const getSimulatorMock = () => {
 
 export const getActiveMount = () => activeMountDevice;
 export const getActiveCamera = () => activeCameraDevice;
+export const setActiveCamera = (devName: string) => {
+    activeCameraDevice = devName;
+    if (devName && discoveredIndiDevices.has(devName)) {
+        sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
+    }
+    scheduleUpdate();
+};
 export const getActiveFocuser = () => activeFocuserDevice;
+export const setActiveFocuser = (devName: string) => {
+    activeFocuserDevice = devName;
+    scheduleUpdate();
+};
 export const getIndiDevices = () => Array.from(discoveredIndiDevices.values());
 export const getActiveCameraParams = () => activeCameraParams;
 

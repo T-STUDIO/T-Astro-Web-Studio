@@ -254,8 +254,13 @@ export const updateDeviceSetting = (device: string, prop: string, values: any) =
     AstroSimulatorService.setSimulatorSettings(settings);
 };
 
-export const getActiveCamera = () => 'Simulator Camera';
-export const getActiveFocuser = () => 'Simulator Focuser';
+let activeCameraNameSimulator: string | null = null;
+let activeFocuserNameSimulator: string | null = null;
+
+export const getActiveCamera = () => activeCameraNameSimulator || 'Simulator Camera';
+export const setActiveCamera = (name: string) => { activeCameraNameSimulator = name; };
+export const getActiveFocuser = () => activeFocuserNameSimulator || 'Simulator Focuser';
+export const setActiveFocuser = (name: string) => { activeFocuserNameSimulator = name; };
 
 export const getDeviceProperties = (device: string): INDIVector[] => {
     const state = AstroSimulatorService.getState();

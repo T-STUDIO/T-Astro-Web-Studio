@@ -699,9 +699,14 @@ export const sendLocation = async (loc: LocationData, time: Date) => {
     await alpacaClient.putCommand('Telescope', getDeviceNumber('Telescope'), 'SiteLongitude', { SiteLongitude: loc.longitude });
 };
 
+let activeCameraNameAlpaca: string | null = null;
+let activeFocuserNameAlpaca: string | null = null;
+
 // Mock other functions for compatibility
-export const getActiveCamera = () => 'Alpaca Camera';
-export const getActiveFocuser = () => 'Alpaca Focuser';
+export const getActiveCamera = () => activeCameraNameAlpaca || 'Alpaca Camera';
+export const setActiveCamera = (name: string) => { activeCameraNameAlpaca = name; };
+export const getActiveFocuser = () => activeFocuserNameAlpaca || 'Alpaca Focuser';
+export const setActiveFocuser = (name: string) => { activeFocuserNameAlpaca = name; };
 export const getDeviceProperties = (device: string): any[] => {
     const devices = alpacaClient.getDevices();
     const dev = devices.find(d => d.deviceName === device);

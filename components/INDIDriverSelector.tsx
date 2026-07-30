@@ -59,12 +59,28 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
 
         // Load profiles from localStorage
         const stored = localStorage.getItem('t-astro-indi-profiles');
+        const lastProfile = localStorage.getItem('t-astro-indi-last-profile');
+        const lastDrivers = localStorage.getItem('t-astro-indi-last-drivers');
+
         if (stored) {
             try {
                 const parsed = JSON.parse(stored);
                 setProfiles(parsed);
-                // Pre-select first profile if exists
-                if (parsed.length > 0) {
+                if (lastProfile && parsed.some((p: any) => p.name === lastProfile)) {
+                    setSelectedProfileName(lastProfile);
+                    const prof = parsed.find((p: any) => p.name === lastProfile);
+                    if (prof) setSelectedDrivers(prof.drivers);
+                } else if (lastDrivers) {
+                    try {
+                        setSelectedDrivers(JSON.parse(lastDrivers));
+                        setSelectedProfileName('');
+                    } catch (e) {
+                        if (parsed.length > 0) {
+                            setSelectedProfileName(parsed[0].name);
+                            setSelectedDrivers(parsed[0].drivers);
+                        }
+                    }
+                } else if (parsed.length > 0) {
                     const firstProfile = parsed[0];
                     setSelectedProfileName(firstProfile.name);
                     setSelectedDrivers(firstProfile.drivers);
@@ -140,6 +156,12 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
 
     const handleStartAndConnect = async () => {
         setIsStartingDrivers(true);
+        if (selectedProfileName) {
+            localStorage.setItem('t-astro-indi-last-profile', selectedProfileName);
+        } else {
+            localStorage.removeItem('t-astro-indi-last-profile');
+        }
+        localStorage.setItem('t-astro-indi-last-drivers', JSON.stringify(selectedDrivers));
         try {
             const res = await fetch('/api/indi/start', {
                 method: 'POST',

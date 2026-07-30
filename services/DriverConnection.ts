@@ -886,14 +886,18 @@ const detectDevice = (device: INDIDevice, prop: string) => {
     }
     if (!device.type) {
         const nameLower = device.name.toLowerCase();
-        if (nameLower.includes('switch') || nameLower.includes('arduino') || nameLower.includes('gpio') || nameLower.includes('power') || nameLower.includes('aux')) {
-            device.type = 'Heater'; // Auxiliary/Switch mapped
+        if (nameLower.includes('switch') || nameLower.includes('arduino') || nameLower.includes('gpio') || nameLower.includes('power') || nameLower.includes('heater')) {
+            device.type = 'Heater';
         } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
             device.type = 'FilterWheel';
         } else if (nameLower.includes('dome') || nameLower.includes('roof')) {
             device.type = 'Dome';
         } else if (nameLower.includes('rotator')) {
             device.type = 'Rotator';
+        } else if (nameLower.includes('sqm') || nameLower.includes('weather')) {
+            device.type = 'Weather';
+        } else {
+            device.type = 'Auxiliary';
         }
     }
 };

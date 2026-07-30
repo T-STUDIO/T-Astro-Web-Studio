@@ -103,15 +103,19 @@ export const loadSettings = (): AppSettings => {
         if (saved) {
             const parsed = JSON.parse(saved);
 
-            // Sync bundled values back to active localStorage keys if they exist in the saved file
+            // Sync bundled values back to active localStorage keys ONLY if active keys do not exist yet
             if (parsed.indiProfiles !== undefined) {
                 try {
-                    localStorage.setItem('t-astro-indi-profiles', JSON.stringify(parsed.indiProfiles));
+                    if (!localStorage.getItem('t-astro-indi-profiles')) {
+                        localStorage.setItem('t-astro-indi-profiles', JSON.stringify(parsed.indiProfiles));
+                    }
                 } catch (_) {}
             }
             if (parsed.geminiApiKey !== undefined) {
                 try {
-                    localStorage.setItem('gemini_api_key', parsed.geminiApiKey);
+                    if (!localStorage.getItem('gemini_api_key')) {
+                        localStorage.setItem('gemini_api_key', parsed.geminiApiKey);
+                    }
                 } catch (_) {}
             }
 
@@ -149,17 +153,15 @@ export const saveSettings = (settings: AppSettings) => {
         let currentGeminiKey = null;
         try { currentGeminiKey = localStorage.getItem('gemini_api_key'); } catch (_) {}
 
+        const activeProfiles = currentProfilesStr ? JSON.parse(currentProfilesStr) : settings.indiProfiles;
+
         const toSave = { 
             ...settings, 
-            indiProfiles: settings.indiProfiles !== undefined ? settings.indiProfiles : (currentProfilesStr ? JSON.parse(currentProfilesStr) : undefined),
+            indiProfiles: activeProfiles,
             geminiApiKey: settings.geminiApiKey !== undefined ? settings.geminiApiKey : (currentGeminiKey || undefined),
             lastSaveTimestamp: new Date().toISOString() 
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-
-        if (settings.indiProfiles !== undefined) {
-            try { localStorage.setItem('t-astro-indi-profiles', JSON.stringify(settings.indiProfiles)); } catch (_) {}
-        }
         if (settings.geminiApiKey !== undefined) {
             try { localStorage.setItem('gemini_api_key', settings.geminiApiKey); } catch (_) {}
         }

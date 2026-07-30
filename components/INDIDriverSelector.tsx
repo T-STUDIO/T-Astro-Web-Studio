@@ -282,10 +282,15 @@ export const INDIDriverSelector: React.FC<INDIDriverSelectorProps> = ({
                                 return dGroup === 'filter wheels' || dGroup === 'filter wheel' || dGroup === 'filter_wheels' || dGroup === 'asi_wheel';
                             }
                             if (group === 'Auxiliary') {
-                                return dGroup === 'auxiliary' || dGroup === 'aux' || dGroup === 'power' || dGroup === 'weather' || dGroup === 'switch';
+                                const dBin = (d.bin || '').toLowerCase();
+                                const dName = (d.name || '').toLowerCase();
+                                return dGroup === 'auxiliary' || dGroup === 'aux' || dGroup === 'power' || dGroup === 'weather' || dGroup === 'switch' || dBin.includes('arduino') || dBin.includes('switch') || dName.includes('arduino') || dName.includes('switcher');
                             }
                             if (group === 'Others') {
-                                const isMajor = ['ccds','ccd','telescopes','telescope','mounts','mount','focusers','focuser','domes','dome','filter wheels','filter wheel','filter_wheels','asi_wheel','auxiliary','aux','power','weather','switch'].includes(dGroup);
+                                const dBin = (d.bin || '').toLowerCase();
+                                const dName = (d.name || '').toLowerCase();
+                                const isAux = dGroup === 'auxiliary' || dGroup === 'aux' || dGroup === 'power' || dGroup === 'weather' || dGroup === 'switch' || dBin.includes('arduino') || dBin.includes('switch') || dName.includes('arduino') || dName.includes('switcher');
+                                const isMajor = isAux || ['ccds','ccd','telescopes','telescope','mounts','mount','focusers','focuser','domes','dome','filter wheels','filter wheel','filter_wheels','asi_wheel'].includes(dGroup);
                                 return !isMajor;
                             }
                             return false;

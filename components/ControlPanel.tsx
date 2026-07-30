@@ -573,7 +573,7 @@ const EquipmentPanel = memo((props: any) => {
     const isINDI = connectionSettings?.driver === 'INDI';
     const isAlpaca = connectionSettings?.driver === 'Alpaca';
     const useDynamicDeviceList = isINDI || isAlpaca;
-    const deviceTypes: DeviceType[] = ['Mount', 'Camera', 'GuideCamera', 'Focuser', 'FilterWheel', 'Dome', 'Rotator', 'Heater'];
+    const deviceTypes: DeviceType[] = ['Mount', 'Camera', 'GuideCamera', 'Focuser', 'FilterWheel', 'Dome', 'Rotator', 'Heater', 'Auxiliary', 'Weather'];
     
     const equipmentStatusLabels = {
         Disconnected: t('status.disconnected'), Connecting: t('status.connecting'), Connected: t('status.connected'), Error: t('status.error')
@@ -818,7 +818,11 @@ const EquipmentPanel = memo((props: any) => {
                                         )}
                                         <div className={`w-2 h-2 rounded-full shrink-0 ${dev.connected ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-slate-600'}`}></div>
                                         <span className="text-sm text-slate-200 font-mono truncate" title={dev.name}>{dev.name}</span>
-                                        {dev.type && (<span className="text-[10px] text-slate-500 bg-slate-800 px-1 rounded shrink-0">{t(`deviceType.${dev.type}`)}</span>)}
+                                        {dev.type && (
+                                            <span className="text-[10px] text-slate-500 bg-slate-800 px-1 rounded shrink-0">
+                                                {t(`deviceType.${dev.type}`)?.startsWith('deviceType.') ? dev.type : t(`deviceType.${dev.type}`)}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                         <button onClick={() => dev.connected ? AstroService.disconnectIndiDevice(dev.name) : AstroService.connectIndiDevice(dev.name)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${dev.connected ? 'bg-green-600' : 'bg-slate-600'}`} title={dev.connected ? t('controlPanel.disconnect') : t('controlPanel.connect')}><span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ease-in-out ${dev.connected ? 'translate-x-5' : 'translate-x-1'}`} /></button>

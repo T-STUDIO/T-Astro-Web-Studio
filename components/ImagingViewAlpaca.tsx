@@ -455,13 +455,14 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
           ch0 = new Float32Array(len);
           ch1 = new Float32Array(len);
           ch2 = new Float32Array(len);
+          const scaleFactor = maxVal / 255;
           for (let i = 0; i < len; i++) {
               const srcR = swapRB ? data[i * 4 + 2] : data[i * 4];
               const srcG = data[i * 4 + 1];
               const srcB = swapRB ? data[i * 4] : data[i * 4 + 2];
-              ch0[i] = srcR;
-              ch1[i] = srcG;
-              ch2[i] = srcB;
+              ch0[i] = srcR * scaleFactor;
+              ch1[i] = srcG * scaleFactor;
+              ch2[i] = srcB * scaleFactor;
           }
       }
 

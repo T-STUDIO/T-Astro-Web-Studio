@@ -125,9 +125,10 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
   const hasFitImageRef = useRef<{w: number, h: number} | null>(null);
   const [showHistogram, setShowHistogram] = useState(false);
   const [histogramData, setHistogramData] = useState<HistogramStats | null>(null);
+  const [bitDepth, setBitDepth] = useState(8);
   const [blackPoint, setBlackPoint] = useState(0);
   const [midPoint, setMidPoint] = useState(1.0);
-  const [whitePoint, setWhitePoint] = useState(65535);
+  const [whitePoint, setWhitePoint] = useState(255);
   const [debayerPattern, setDebayerPattern] = useState<string>('Auto');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(true); 
   const [isHudOpen, setIsHudOpen] = useState(false);
@@ -136,6 +137,8 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
   const [imageTick, setImageTick] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastDrawableRef = useRef<CanvasImageSource | null>(null);
+  const lastRawFrameRef = useRef<{ sourceBuffer: Uint8ClampedArray; width: number; height: number } | null>(null);
   const solveAbortControllerRef = useRef<AbortController | null>(null);
 
   const isSolveSuccessRef = useRef(false);
@@ -207,6 +210,24 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
   const lastProcessedFitsRef = useRef<any>(null);
   useEffect(() => {
       const rawFitsData = localFitsHeaders?.rawFitsData || externalMetadata?.rawFitsData;
+      let bpp = 8;
+      if (rawFitsData && rawFitsData.bpp) {
+          bpp = rawFitsData.bpp;
+      } else if (localFitsHeaders && (localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix)) {
+          const bp = Math.abs(parseInt(localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix, 10));
+          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+      } else if (externalMetadata && (externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp)) {
+          const bp = Math.abs(parseInt(externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp, 10));
+          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+      } else if (loadedImageName) {
+          const ext = loadedImageName.split('.').pop()?.toLowerCase();
+          if (ext === 'fits' || ext === 'fit' || ext === 'fts' || ext === 'tiff' || ext === 'tif') {
+              bpp = 16;
+          }
+      }
+      setBitDepth(bpp);
+      const maxVal = bpp <= 8 ? 255 : 65535;
+
       if (rawFitsData && rawFitsData !== lastProcessedFitsRef.current) {
           lastProcessedFitsRef.current = rawFitsData;
           if (rawFitsData.ch0) {
@@ -219,13 +240,16 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
               }
               samples.sort((a, b) => a - b);
               const p01 = samples[Math.floor(samples.length * 0.01)] || 0;
-              const p99 = samples[Math.floor(samples.length * 0.99)] || 65535;
+              const p99 = samples[Math.floor(samples.length * 0.99)] || maxVal;
               setBlackPoint(Math.max(0, Math.floor(p01)));
-              setWhitePoint(Math.min(65535, Math.ceil(p99)));
+              setWhitePoint(Math.min(maxVal, Math.ceil(p99)));
               setMidPoint(1.0);
           }
+      } else {
+          setBlackPoint(prev => Math.min(prev, maxVal));
+          setWhitePoint(prev => (prev === 0 || prev === 65535 || prev === 255) ? maxVal : Math.min(prev, maxVal));
       }
-  }, [localFitsHeaders, externalMetadata]);
+  }, [localFitsHeaders, externalMetadata, loadedImageName]);
 
   const fitImageToScreen = useCallback((imgW: number, imgH: number) => {
       if (containerRef.current) {
@@ -361,8 +385,23 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       
       const len = imageData.width * imageData.height;
 
-      // rawFitsData が存在しサイズが一致している場合はそれを使用し、
-      // そうでない（8ビット画像等）場合は ImageData から16ビット擬似データをその場で生成する
+      let bpp = 8;
+      if (overrideRawFits && overrideRawFits.bpp) {
+          bpp = overrideRawFits.bpp;
+      } else if (localFitsHeaders && (localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix)) {
+          const bp = Math.abs(parseInt(localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix, 10));
+          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+      } else if (externalMetadata && (externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp)) {
+          const bp = Math.abs(parseInt(externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp, 10));
+          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+      } else if (loadedImageName) {
+          const ext = loadedImageName.split('.').pop()?.toLowerCase();
+          if (ext === 'fits' || ext === 'fit' || ext === 'fts' || ext === 'tiff' || ext === 'tif') {
+              bpp = 16;
+          }
+      }
+      const maxVal = bpp <= 8 ? 255 : 65535;
+
       let ch0: Float32Array;
       let ch1: Float32Array | null = null;
       let ch2: Float32Array | null = null;
@@ -379,9 +418,9 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
               const srcR = swapRB ? data[i * 4 + 2] : data[i * 4];
               const srcG = data[i * 4 + 1];
               const srcB = swapRB ? data[i * 4] : data[i * 4 + 2];
-              ch0[i] = srcR * 257;
-              ch1[i] = srcG * 257;
-              ch2[i] = srcB * 257;
+              ch0[i] = srcR;
+              ch1[i] = srcG;
+              ch2[i] = srcB;
           }
       }
 
@@ -389,26 +428,34 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       const invRange = 1.0 / range;
       const invMid = 1.0 / midPoint;
 
-      const histR = new Array(65536).fill(0);
-      const histG = new Array(65536).fill(0);
-      const histB = new Array(65536).fill(0);
-      const histStep = len > 1000000 ? 16 : 4;
-      for (let i = 0; i < len; i += histStep) {
-          const rv = ch0[i] * rMult;
-          const gv = (ch1 ? ch1[i] : ch0[i]) * gMult;
-          const bv = (ch2 ? ch2[i] : ch0[i]) * bMult;
-          const biR = Math.min(65535, Math.max(0, rv | 0));
-          const biG = Math.min(65535, Math.max(0, gv | 0));
-          const biB = Math.min(65535, Math.max(0, bv | 0));
-          histR[biR]++; histG[biG]++; histB[biB]++;
+      if (showHistogram) {
+          const histSize = maxVal + 1;
+          const histR = new Array(histSize).fill(0);
+          const histG = new Array(histSize).fill(0);
+          const histB = new Array(histSize).fill(0);
+          const histStep = len > 1000000 ? 16 : 4;
+          for (let i = 0; i < len; i += histStep) {
+              const rv = ch0[i] * rMult;
+              const gv = (ch1 ? ch1[i] : ch0[i]) * gMult;
+              const bv = (ch2 ? ch2[i] : ch0[i]) * bMult;
+              
+              const nR = rv <= blackPoint ? 0 : (rv >= whitePoint ? 1 : (rv - blackPoint) * invRange);
+              const nG = gv <= blackPoint ? 0 : (gv >= whitePoint ? 1 : (gv - blackPoint) * invRange);
+              const nB = bv <= blackPoint ? 0 : (bv >= whitePoint ? 1 : (bv - blackPoint) * invRange);
+
+              const biR = Math.min(maxVal, Math.max(0, Math.pow(nR, invMid) * maxVal)) | 0;
+              const biG = Math.min(maxVal, Math.max(0, Math.pow(nG, invMid) * maxVal)) | 0;
+              const biB = Math.min(maxVal, Math.max(0, Math.pow(nB, invMid) * maxVal)) | 0;
+              histR[biR]++; histG[biG]++; histB[biB]++;
+          }
+          let max = 1;
+          for (let i = 1; i < maxVal; i++) {
+              if (histR[i] > max) max = histR[i];
+              if (histG[i] > max) max = histG[i];
+              if (histB[i] > max) max = histB[i];
+          }
+          setHistogramData({ r: histR, g: histG, b: histB, max });
       }
-      let max = 1;
-      for (let i = 1; i < 65535; i++) {
-          if (histR[i] > max) max = histR[i];
-          if (histG[i] > max) max = histG[i];
-          if (histB[i] > max) max = histB[i];
-      }
-      setHistogramData({ r: histR, g: histG, b: histB, max });
 
       const view = new Uint32Array(data.buffer);
       for (let i = 0; i < len; i++) {
@@ -428,11 +475,16 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       }
       ctx.putImageData(imageData, 0, 0);
       drawOverlays(ctx, imageData.width, imageData.height);
-  }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, drawOverlays, swapRB]);
+  }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, drawOverlays, swapRB, showHistogram, localFitsHeaders, externalMetadata, loadedImageName]);
 
   const renderRawFrame = useCallback((sourceBuffer: Uint8ClampedArray, width: number, height: number) => {
       if (!canvasRef.current || width <= 0 || height <= 0) return;
       const ctx = canvasRef.current.getContext('2d'); if (!ctx) return;
+      
+      // Save to cache
+      lastRawFrameRef.current = { sourceBuffer, width, height };
+      lastDrawableRef.current = null;
+
       if (canvasRef.current.width !== width || canvasRef.current.height !== height) {
           canvasRef.current.width = width; canvasRef.current.height = height; setImageDimensions({ width, height });
           if (!hasFitImageRef.current || hasFitImageRef.current.w !== width || hasFitImageRef.current.h !== height) fitImageToScreen(width, height);
@@ -446,6 +498,11 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       const drawToCanvas = (drawable: CanvasImageSource, w: number, h: number) => {
           if (!canvasRef.current || w === 0 || h === 0) return;
           const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
+          
+          // Save to cache
+          lastDrawableRef.current = drawable;
+          lastRawFrameRef.current = null;
+
           if (canvasRef.current.width !== w || canvasRef.current.height !== h || !hasFitImageRef.current) {
               canvasRef.current.width = w; canvasRef.current.height = h; setImageDimensions({ width: w, height: h });
               if (!hasFitImageRef.current || hasFitImageRef.current.w !== w || hasFitImageRef.current.h !== h) fitImageToScreen(w, h);
@@ -456,6 +513,13 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
               applyLutAndDraw(ctx, imageData, null); 
           } catch(e) { console.error("Apply LUT failed", e); }
       };
+
+      // Skip redownloading if same string URL is already cached
+      if (typeof blobOrUrl === 'string' && lastDrawableRef.current instanceof Image && lastDrawableRef.current.src === blobOrUrl) {
+          drawToCanvas(lastDrawableRef.current, lastDrawableRef.current.naturalWidth || lastDrawableRef.current.width, lastDrawableRef.current.naturalHeight || lastDrawableRef.current.height);
+          return;
+      }
+
       const img = new Image(); 
       img.crossOrigin = "Anonymous";
       // @ts-ignore
@@ -496,19 +560,54 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       if (externalImage) setImageTick(t => t + 1);
   }, [externalImage]);
 
+  // Effect 1: Handle image loading/download when a new frame is available or input changes
   useEffect(() => {
       if ((isCapturing || isLiveViewActive || isPreviewLoading) && !externalImage && !loadedImage) {
           if (canvasRef.current) canvasRef.current.getContext('2d')?.clearRect(0,0,canvasRef.current.width,canvasRef.current.height);
+          lastDrawableRef.current = null;
+          lastRawFrameRef.current = null;
           return;
       }
       if (externalImage) {
           setLastSafeImage(externalImage); 
-          if (externalImage === 'raw-data-available' && externalMetadata?.rawBuffer) renderRawFrame(externalMetadata.rawBuffer, externalMetadata.rawWidth, externalMetadata.rawHeight);
-          else renderMjpegFrame(externalImage);
+          if (externalImage === 'raw-data-available' && externalMetadata?.rawBuffer) {
+              renderRawFrame(externalMetadata.rawBuffer, externalMetadata.rawWidth, externalMetadata.rawHeight);
+          } else {
+              renderMjpegFrame(externalImage);
+          }
       } else if (loadedImage) {
           processImage();
       }
-  }, [externalImage, externalMetadata, renderRawFrame, renderMjpegFrame, loadedImage, processImage, isCapturing, isLiveViewActive, isPreviewLoading, showAnnotations, imageTick, blackPoint, whitePoint, midPoint, showHistogram]); 
+  }, [externalImage, externalMetadata, imageTick, loadedImage]);
+
+  // Effect 2: Handle local LUT/contrast updates instantly from slider parameters using our cached data
+  useEffect(() => {
+      if (!canvasRef.current) return;
+      const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
+
+      if (lastRawFrameRef.current) {
+          const { sourceBuffer, width, height } = lastRawFrameRef.current;
+          const imageData = new ImageData(new Uint8ClampedArray(sourceBuffer), width, height);
+          applyLutAndDraw(ctx, imageData, externalMetadata?.rawFitsData || localFitsHeaders?.rawFitsData);
+      } else if (lastDrawableRef.current) {
+          const drawable = lastDrawableRef.current;
+          const w = drawable instanceof HTMLVideoElement ? drawable.videoWidth : (drawable as HTMLImageElement).naturalWidth || (drawable as HTMLImageElement).width;
+          const h = drawable instanceof HTMLVideoElement ? drawable.videoHeight : (drawable as HTMLImageElement).naturalHeight || (drawable as HTMLImageElement).height;
+          if (w > 0 && h > 0) {
+              ctx.drawImage(drawable, 0, 0, w, h);
+              try {
+                  const imageData = ctx.getImageData(0, 0, w, h);
+                  applyLutAndDraw(ctx, imageData, null);
+              } catch (e) {
+                  console.error("Apply LUT on adjustment failed", e);
+              }
+          }
+      } else if (originalImageRef.current) {
+          const img = originalImageRef.current;
+          ctx.drawImage(img, 0, 0);
+          applyLutAndDraw(ctx, ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight), localFitsHeaders?.rawFitsData);
+      }
+  }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, swapRB, applyLutAndDraw, externalMetadata, localFitsHeaders]);
 
   useEffect(() => {
       if (!loadedImage || loadedImage === 'raw-data-available') return;
@@ -529,11 +628,23 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       const r256 = new Array(256).fill(0);
       const g256 = new Array(256).fill(0);
       const b256 = new Array(256).fill(0);
-      for (let i = 0; i < 65536; i++) {
-          const destIdx = Math.floor(i / 256);
-          r256[destIdx] += histogramData.r[i];
-          g256[destIdx] += histogramData.g[i];
-          b256[destIdx] += histogramData.b[i];
+      
+      const srcLen = histogramData.r.length;
+      if (srcLen === 256) {
+          for (let i = 0; i < 256; i++) {
+              r256[i] = histogramData.r[i];
+              g256[i] = histogramData.g[i];
+              b256[i] = histogramData.b[i];
+          }
+      } else {
+          for (let i = 0; i < srcLen; i++) {
+              const destIdx = Math.floor((i / srcLen) * 256);
+              if (destIdx >= 0 && destIdx < 256) {
+                  r256[destIdx] += histogramData.r[i];
+                  g256[destIdx] += histogramData.g[i];
+                  b256[destIdx] += histogramData.b[i];
+              }
+          }
       }
       let max = 1;
       for (let i = 1; i < 255; i++) {
@@ -546,6 +657,23 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
 
   const handleAutoStretch = () => {
       const rawFitsData = localFitsHeaders?.rawFitsData || externalMetadata?.rawFitsData;
+      let bpp = 8;
+      if (rawFitsData && rawFitsData.bpp) {
+          bpp = rawFitsData.bpp;
+      } else if (localFitsHeaders && (localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix)) {
+          const bp = Math.abs(parseInt(localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix, 10));
+          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+      } else if (externalMetadata && (externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp)) {
+          const bp = Math.abs(parseInt(externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp, 10));
+          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+      } else if (loadedImageName) {
+          const ext = loadedImageName.split('.').pop()?.toLowerCase();
+          if (ext === 'fits' || ext === 'fit' || ext === 'fts' || ext === 'tiff' || ext === 'tif') {
+              bpp = 16;
+          }
+      }
+      const maxVal = bpp <= 8 ? 255 : 65535;
+
       if (rawFitsData && rawFitsData.ch0) {
           const { ch0, width, height } = rawFitsData;
           const len = width * height;
@@ -556,21 +684,24 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           }
           samples.sort((a, b) => a - b);
           const p01 = samples[Math.floor(samples.length * 0.01)] || 0;
-          const p99 = samples[Math.floor(samples.length * 0.99)] || 65535;
+          const p99 = samples[Math.floor(samples.length * 0.99)] || maxVal;
           setBlackPoint(Math.max(0, Math.floor(p01)));
-          setWhitePoint(Math.min(65535, Math.ceil(p99)));
+          setWhitePoint(Math.min(maxVal, Math.ceil(p99)));
           setMidPoint(1.0);
           return;
       }
+      
       if (!histogramData) return;
-      const combined = new Array(65536).fill(0);
-      for(let i=0; i<65536; i++) combined[i] = histogramData.r[i] + histogramData.g[i] + histogramData.b[i];
+      const histSize = histogramData.r.length;
+      const combined = new Array(histSize).fill(0);
+      for(let i=0; i<histSize; i++) combined[i] = histogramData.r[i] + histogramData.g[i] + histogramData.b[i];
       const total = combined.reduce((a,b)=>a+b,0);
       if (total === 0) return;
-      let min = 0, max = 65535; let count = 0;
-      for(let i=0; i<65536; i++) { count += combined[i]; if(count > total * 0.01) { min = i; break; } }
-      count = 0; for(let i=65535; i>=0; i--) { count += combined[i]; if(count > total * 0.01) { max = i; break; } }
-      setBlackPoint(Math.max(0, min - 100)); setWhitePoint(Math.min(65535, max + 100)); setMidPoint(1.0);
+      let min = 0, max = histSize - 1; let count = 0;
+      for(let i=0; i<histSize; i++) { count += combined[i]; if(count > total * 0.01) { min = i; break; } }
+      count = 0; for(let i=histSize - 1; i>=0; i--) { count += combined[i]; if(count > total * 0.01) { max = i; break; } }
+      const padding = bpp <= 8 ? 1 : 100;
+      setBlackPoint(Math.max(0, min - padding)); setWhitePoint(Math.min(maxVal, max + padding)); setMidPoint(1.0);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -831,13 +962,13 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
                 </div>
                 <div className="space-y-1">
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.blackPoint')}</span><span>{blackPoint}</span></div>
-                    <input type="range" min="0" max="65535" value={blackPoint} onChange={(e) => setBlackPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                    <input type="range" min="0" max={bitDepth <= 8 ? 255 : 65535} value={blackPoint} onChange={(e) => setBlackPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.midTones')}</span><span>{midPoint.toFixed(2)}</span></div>
                     <input type="range" min="0.1" max="3.0" step="0.05" value={midPoint} onChange={(e) => setMidPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.whitePoint')}</span><span>{whitePoint}</span></div>
-                    <input type="range" min="0" max="65535" value={whitePoint} onChange={(e) => setWhitePoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                    <input type="range" min="0" max={bitDepth <= 8 ? 255 : 65535} value={whitePoint} onChange={(e) => setWhitePoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                 </div>
-                <div className="flex gap-2 mt-1"><button onClick={handleAutoStretch} className="flex-1 bg-blue-700 hover:bg-blue-600 text-white text-[10px] py-1 rounded border border-blue-600 font-bold">{t('imagingView.autoStretch')}</button><button onClick={() => { setBlackPoint(0); setWhitePoint(65535); setMidPoint(1.0); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] py-1 rounded border border-slate-600">{t('imagingView.reset')}</button></div>
+                <div className="flex gap-2 mt-1"><button onClick={handleAutoStretch} className="flex-1 bg-blue-700 hover:bg-blue-600 text-white text-[10px] py-1 rounded border border-blue-600 font-bold">{t('imagingView.autoStretch')}</button><button onClick={() => { setBlackPoint(0); setWhitePoint(bitDepth <= 8 ? 255 : 65535); setMidPoint(1.0); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] py-1 rounded border border-slate-600">{t('imagingView.reset')}</button></div>
             </div>
         )}
         {((isCapturing || isLiveViewActive || isPreviewLoading) && !externalImage && !loadedImage) && (

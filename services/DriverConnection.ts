@@ -864,19 +864,69 @@ const parseIndiPacket = (packet: string) => {
 };
 
 const detectDevice = (device: INDIDevice, prop: string) => {
-    const propUpper = prop.toUpperCase();
-    const nameLower = device.name.toLowerCase();
+    // 1. DRIVER_INFO項目のDRIVER_EXECの名称末尾を参照する確実な種別判定（最優先・絶対判定）
+    const driverInfo = device.properties.get('DRIVER_INFO');
+    if (driverInfo) {
+        const execEl = driverInfo.elements.get('DRIVER_EXEC');
+        if (execEl && typeof execEl.value === 'string' && execEl.value.trim() !== '') {
+            const execVal = execEl.value.trim().toLowerCase();
+            const parts = execVal.split(/[_.-]/);
+            const tail = parts[parts.length - 1] || execVal;
 
-    // 1. Mount / Telescope detection (takes precedence)
-    if (propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_') || propUpper.includes('MOUNT_')) {
-        if (!nameLower.includes('webcam') && !nameLower.includes('qhy') && !nameLower.includes('zwo') && !nameLower.includes('canon') && !nameLower.includes('nikon')) {
-            device.type = 'Mount';
-            if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
-            return;
+            let determinedType: DeviceType | null = null;
+            if (tail === 'ccd' || tail === 'camera' || tail === 'cam' || tail === 'video' || tail === 'webcam' || tail === 'gphoto' || tail === 'dslr' || tail === 'imager' || execVal.endsWith('ccd') || execVal.endsWith('camera')) {
+                determinedType = 'Camera';
+            } else if (tail === 'telescope' || tail === 'mount' || tail === 'scope' || tail === 'eqmod' || tail === 'synscan' || tail === 'lx200' || tail === 'nexstar' || tail === 'ioptron' || execVal.endsWith('telescope') || execVal.endsWith('mount')) {
+                determinedType = 'Mount';
+            } else if (tail === 'focuser' || tail === 'focus' || tail === 'eaf' || tail === 'fc' || execVal.endsWith('focuser') || execVal.endsWith('focus')) {
+                determinedType = 'Focuser';
+            } else if (tail === 'wheel' || tail === 'filter' || tail === 'filterwheel' || tail === 'fw' || tail === 'efw' || execVal.endsWith('wheel') || execVal.endsWith('filterwheel') || execVal.endsWith('filter')) {
+                determinedType = 'FilterWheel';
+            } else if (tail === 'dome' || tail === 'shutter' || tail === 'roof' || tail === 'rollroof' || execVal.endsWith('dome') || execVal.endsWith('shutter') || execVal.endsWith('roof')) {
+                determinedType = 'Dome';
+            } else if (tail === 'rotator' || tail === 'rot' || execVal.endsWith('rotator') || execVal.endsWith('rot')) {
+                determinedType = 'Rotator';
+            } else if (tail === 'sqm' || tail === 'weather' || tail === 'meteo' || tail === 'aag' || tail === 'seeing' || tail === 'environment' || tail === 'cloud' || execVal.endsWith('weather') || execVal.endsWith('meteo') || execVal.endsWith('sqm')) {
+                determinedType = 'Weather';
+            } else if (tail === 'heater' || tail === 'dew' || tail === 'dewheater' || execVal.endsWith('heater') || execVal.endsWith('dew')) {
+                determinedType = 'Heater';
+            } else if (tail === 'aux' || tail === 'gps' || tail === 'box' || tail === 'switch' || tail === 'relay' || tail === 'cover' || tail === 'flat' || execVal.endsWith('aux')) {
+                determinedType = 'Auxiliary';
+            }
+
+            if (determinedType) {
+                device.type = determinedType;
+                log(`[INDI] Device '${device.name}' type identified as '${determinedType}' by DRIVER_EXEC tail ('${execVal}')`);
+                if (determinedType === 'Mount' && !activeMountDevice) {
+                    activeMountDevice = device.name;
+                    log(`[INDI] Active Mount detected by EXEC tail: ${device.name}`);
+                }
+                if (determinedType === 'Camera' && !activeCameraDevice) {
+                    activeCameraDevice = device.name;
+                    log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
+                    sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
+                }
+                if (determinedType === 'Focuser' && !activeFocuserDevice) {
+                    activeFocuserDevice = device.name;
+                }
+                return;
+            }
         }
     }
 
-    // 2. Camera detection
+    // DRIVER_EXEC末尾参照等ですでに種別が確定している場合は、以降のプロパティ推測で上書きされないよう保持する
+    if (device.type && device.type !== 'Auxiliary') {
+        return;
+    }
+
+    const propUpper = prop.toUpperCase();
+    const nameLower = device.name.toLowerCase();
+
+    // 2. カメラ・フォーカサー名を先行ガードし、シミュレータ等がプロパティ等でMountと誤分類されるのを防ぐ
+    const isCameraName = nameLower.includes('camera') || nameLower.includes('ccd') || nameLower.includes('qhy') || nameLower.includes('zwo') || nameLower.includes('asi') || nameLower.includes('webcam') || nameLower.includes('video') || nameLower.includes('cam');
+    const isFocuserName = nameLower.includes('focuser') || nameLower.includes('focus') || nameLower.includes('eaf');
+
+    // 3. Camera property detection
     if (propUpper.includes('CCD_EXPOSURE') || propUpper.includes('CCD_FRAME') || propUpper.includes('CCD_IMAGE')) {
         device.type = 'Camera';
         if (!activeCameraDevice) {
@@ -886,26 +936,35 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         return;
     }
 
-    // 3. Focuser detection
+    // 4. Mount / Telescope detection (カメラやフォーカサー名に合致しない場合のみ)
+    if (propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_') || propUpper.includes('MOUNT_')) {
+        if (!isCameraName && !isFocuserName) {
+            device.type = 'Mount';
+            if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
+            return;
+        }
+    }
+
+    // 5. Focuser detection
     if (propUpper.includes('FOCUS_POSITION') || propUpper.includes('FOCUS_SPEED') || propUpper.includes('FOCUS_MOTION')) {
         device.type = 'Focuser';
         if (!activeFocuserDevice) activeFocuserDevice = device.name;
         return;
     }
 
-    // 4. FilterWheel detection
+    // 6. FilterWheel detection
     if (propUpper.includes('FILTER_SLOT') || propUpper.includes('FILTER_NAME')) {
         device.type = 'FilterWheel';
         return;
     }
 
-    // 5. Dome detection
+    // 7. Dome detection
     if (propUpper.includes('DOME_SHUTTER') || propUpper.includes('DOME_PARK')) {
         device.type = 'Dome';
         return;
     }
 
-    // 6. Rotator detection
+    // 8. Rotator detection
     if (propUpper.includes('ROTATOR_ANGLE')) {
         device.type = 'Rotator';
         return;
@@ -916,12 +975,12 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         return;
     }
 
-    // 7. Infer from device name if not definitively identified by property
+    // 9. Infer from device name if not definitively identified by property
     if (nameLower.includes('telescope') || nameLower.includes('mount') || nameLower.includes('skywatcher') || nameLower.includes('celestron') || nameLower.includes('ioptron') || nameLower.includes('eqmod') || nameLower.includes('alt-az') || nameLower.includes('lx200')) {
         device.type = 'Mount';
-    } else if (nameLower.includes('camera') || nameLower.includes('ccd') || nameLower.includes('qhy') || nameLower.includes('zwo') || nameLower.includes('asi') || nameLower.includes('webcam') || nameLower.includes('video') || nameLower.includes('cam')) {
+    } else if (isCameraName) {
         device.type = 'Camera';
-    } else if (nameLower.includes('focuser') || nameLower.includes('focus') || nameLower.includes('eaf')) {
+    } else if (isFocuserName) {
         device.type = 'Focuser';
     } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
         device.type = 'FilterWheel';
@@ -991,6 +1050,10 @@ export const rawFitsToDisplay = (
 ): { url: string | null, headers: Record<string,any> } => {
     try {
         let u8 = new Uint8Array(buffer);
+        // Ensure that we work with a precise slice of the ArrayBuffer, resetting any offset to 0
+        const normalizedBuffer = buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+        u8 = new Uint8Array(normalizedBuffer);
+        buffer = normalizedBuffer;
         const formatLower = format.toLowerCase();
         let jpegStart = -1;
         
@@ -1096,9 +1159,12 @@ export const rawFitsToDisplay = (
                             } 
                         } 
                         else if (bitpix === 16) { 
+                            const hasBZero = (headers['BZERO'] !== undefined);
+                            const actualBZero = hasBZero ? bzero : 0;
                             for (let i = 0; i < numPixels; i++) { 
                                 if (dataOffset + 2 > buffer.byteLength) break; 
-                                const v = view.getInt16(dataOffset, false) * bscale + bzero;
+                                const rawVal = hasBZero ? view.getInt16(dataOffset, false) : view.getUint16(dataOffset, false);
+                                const v = rawVal * bscale + actualBZero;
                                 target[i] = v; dataOffset += 2;
                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
                                 sumVal += v;
@@ -1129,24 +1195,8 @@ export const rawFitsToDisplay = (
                         maxVal = (bitpix === 8) ? 255 : (Math.abs(bitpix) === 16 ? 65535 : 1);
                     }
 
-                    // 輝度計算の改善：ノイズまみれや真っ黒を防ぐためのより堅牢なスケーリング
-                    const avgVal = sumVal / (numPixels * numChannels);
                     let displayMin = minVal;
                     let displayMax = maxVal;
-
-                    // 16ビットデータや浮動小数点データの場合、統計情報に基づいて表示範囲を調整
-                    if (Math.abs(bitpix) === 16 || bitpix === -32) {
-                        // 背景レベル（平均値付近）を基準に、低輝度側の情報を引き出す
-                        displayMin = Math.max(minVal, avgVal * 0.5);
-                        // 上限を抑えてコントラストを確保（平均の数倍程度）
-                        displayMax = Math.min(maxVal, avgVal * 8);
-                        
-                        // 範囲が狭すぎる場合の最低限の幅を確保
-                        const minWidth = (Math.abs(bitpix) === 16) ? 1000 : 0.05;
-                        if (displayMax - displayMin < minWidth) {
-                            displayMax = displayMin + minWidth * 5;
-                        }
-                    }
 
                     let displayRange = displayMax - displayMin;
                     if (displayRange <= 0) displayRange = 1;
@@ -1170,8 +1220,9 @@ export const rawFitsToDisplay = (
                     const ch2 = isRGB ? channels[2] : null;
                     
                     const invRange = 1.0 / displayRange;
-                    const sqrtInvRange = Math.sqrt(invRange);
-                    const isHighBit = (Math.abs(bitpix) >= 16);
+                    const displayCh0 = new Float32Array(width * height);
+                    const displayCh1 = new Float32Array(width * height);
+                    const displayCh2 = new Float32Array(width * height);
 
                     for (let y = 0; y < height; y++) {
                         const fitsY = height - 1 - y; 
@@ -1183,30 +1234,21 @@ export const rawFitsToDisplay = (
                             const canvasIdx = (rowOffset + x) << 2; 
                             const pixelIdx = fitsRowOffset + x;
                             let r, g, b;
+                            let rvRaw, gvRaw, bvRaw;
                             
                             if (isRGB && ch1 && ch2) {
                                 let rv = ch0[pixelIdx];
                                 let gv = ch1[pixelIdx];
                                 let bv = ch2[pixelIdx];
+                                rvRaw = rv; gvRaw = gv; bvRaw = bv;
                                 
-                                if (isHighBit) {
-                                    r = Math.sqrt(Math.max(0, rv - displayMin)) * sqrtInvRange * 255;
-                                    g = Math.sqrt(Math.max(0, gv - displayMin)) * sqrtInvRange * 255;
-                                    b = Math.sqrt(Math.max(0, bv - displayMin)) * sqrtInvRange * 255;
-                                } else {
-                                    r = (rv - displayMin) * invRange * 255;
-                                    g = (gv - displayMin) * invRange * 255;
-                                    b = (bv - displayMin) * invRange * 255;
-                                }
+                                r = (rv - displayMin) * invRange * 255;
+                                g = (gv - displayMin) * invRange * 255;
+                                b = (bv - displayMin) * invRange * 255;
                             } else {
                                 const val = ch0[pixelIdx];
-                                let norm;
-                                
-                                if (isHighBit) {
-                                    norm = Math.sqrt(Math.max(0, val - displayMin)) * sqrtInvRange * 255;
-                                } else {
-                                    norm = (val - displayMin) * invRange * 255;
-                                }
+                                const norm = (val - displayMin) * invRange * 255;
+                                rvRaw = val; gvRaw = val; bvRaw = val;
                                 
                                 r = norm; g = norm; b = norm;
                                 
@@ -1218,18 +1260,35 @@ export const rawFitsToDisplay = (
                                     else if (code === 2) pixelColor = isEvenRow ? (isEvenCol ? 1 : 0) : (isEvenCol ? 2 : 1);
                                     else if (code === 3) pixelColor = isEvenRow ? (isEvenCol ? 2 : 1) : (isEvenCol ? 1 : 0);
                                     
-                                    if (pixelColor === 0) { r = norm; g = norm * 0.2; b = norm * 0.2; } 
-                                    else if (pixelColor === 1) { r = norm * 0.2; g = norm; b = norm * 0.2; } 
-                                    else { r = norm * 0.2; g = norm * 0.2; b = norm; }
+                                    if (pixelColor === 0) { r = norm; g = norm * 0.2; b = norm * 0.2; gvRaw = val * 0.2; bvRaw = val * 0.2; } 
+                                    else if (pixelColor === 1) { r = norm * 0.2; g = norm; b = norm * 0.2; rvRaw = val * 0.2; bvRaw = val * 0.2; } 
+                                    else { r = norm * 0.2; g = norm * 0.2; b = norm; rvRaw = val * 0.2; gvRaw = val * 0.2; }
                                 }
                             }
+                            const outIdx = rowOffset + x;
+                            displayCh0[outIdx] = rvRaw;
+                            displayCh1[outIdx] = gvRaw;
+                            displayCh2[outIdx] = bvRaw;
+
                             rawRgbaBuffer[canvasIdx] = r; 
                             rawRgbaBuffer[canvasIdx + 1] = g; 
                             rawRgbaBuffer[canvasIdx + 2] = b; 
                             rawRgbaBuffer[canvasIdx + 3] = 255;
                         }
                     }
-                    headers['rawBuffer'] = rawRgbaBuffer; headers['rawWidth'] = width; headers['rawHeight'] = height; return { url: 'raw-data-available', headers };
+                    headers['rawBuffer'] = rawRgbaBuffer; 
+                    headers['rawWidth'] = width; 
+                    headers['rawHeight'] = height; 
+                    headers['rawFitsData'] = {
+                        ch0: displayCh0,
+                        ch1: displayCh1,
+                        ch2: displayCh2,
+                        width,
+                        height,
+                        minVal,
+                        maxVal
+                    };
+                    return { url: 'raw-data-available', headers };
                 }
             } catch (e) { }
         }

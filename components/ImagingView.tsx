@@ -207,7 +207,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
   const lastHistogramUpdateRef = useRef<number>(0);
   const [blackPoint, setBlackPoint] = useState(0);
   const [midPoint, setMidPoint] = useState(1.0);
-  const [whitePoint, setWhitePoint] = useState(255);
+  const [whitePoint, setWhitePoint] = useState(65535);
   const [debayerPattern, setDebayerPattern] = useState<string>('Auto');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(true); 
   const [isHudOpen, setIsHudOpen] = useState(false);
@@ -254,6 +254,29 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       }
       lastActiveRef.current = isAnyActive;
   }, [isCapturing, isLiveViewActive, isVideoMode, isPreviewLoading, externalImage, resetImagingData]);
+
+  const lastProcessedFitsRef = useRef<any>(null);
+  useEffect(() => {
+      const rawFitsData = localFitsHeaders?.rawFitsData || externalMetadata?.rawFitsData;
+      if (rawFitsData && rawFitsData !== lastProcessedFitsRef.current) {
+          lastProcessedFitsRef.current = rawFitsData;
+          if (rawFitsData.ch0) {
+              const { ch0, width, height } = rawFitsData;
+              const len = width * height;
+              const sampleStep = len > 500000 ? 10 : 1;
+              const samples: number[] = [];
+              for (let i = 0; i < len; i += sampleStep) {
+                  samples.push(ch0[i]);
+              }
+              samples.sort((a, b) => a - b);
+              const p01 = samples[Math.floor(samples.length * 0.01)] || 0;
+              const p99 = samples[Math.floor(samples.length * 0.99)] || 65535;
+              setBlackPoint(Math.max(0, Math.floor(p01)));
+              setWhitePoint(Math.min(65535, Math.ceil(p99)));
+              setMidPoint(1.0);
+          }
+      }
+  }, [localFitsHeaders, externalMetadata]);
 
   const fitImageToScreen = useCallback((imgW: number, imgH: number) => {
       if (containerRef.current) {
@@ -383,55 +406,80 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       }
   }, [showAnnotations, nativeAnnotations, solverImageDimensions, solvedCalibration, language]);
 
-    const applyLutAndDraw = useCallback((ctx: CanvasRenderingContext2D, imageData: ImageData) => {
+    const applyLutAndDraw = useCallback((ctx: CanvasRenderingContext2D, imageData: ImageData, overrideRawFits?: any) => {
         const data = imageData.data;
         const rMult = colorBalance.r / 128; const gMult = colorBalance.g / 128; const bMult = colorBalance.b / 128;
         
-        const lut = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) {
-            if (i <= blackPoint) lut[i] = 0;
-            else if (i >= whitePoint) lut[i] = 255;
-            else { 
-                const range = whitePoint - blackPoint;
-                const norm = range > 0 ? (i - blackPoint) / range : 0; 
-                const val = Math.pow(norm, 1 / midPoint) * 255; 
-                lut[i] = Math.max(0, Math.min(255, val)); 
-            }
-        }
-        
-        const view = new Uint32Array(data.buffer);
-        const pixelCount = view.length;
-        
-        if (showHistogram) {
-            const histR = new Array(256).fill(0);
-            const histG = new Array(256).fill(0);
-            const histB = new Array(256).fill(0);
-            const histStep = pixelCount > 1000000 ? 16 : 4; 
+        const len = imageData.width * imageData.height;
 
-            for (let i = 0; i < pixelCount; i++) {
-                const pixel = view[i];
-                const r = Math.min(255, ((pixel & 0xFF) * rMult) | 0);
-                const g = Math.min(255, (((pixel >> 8) & 0xFF) * gMult) | 0);
-                const b = Math.min(255, (((pixel >> 16) & 0xFF) * bMult) | 0);
-                
-                if (i % histStep === 0) {
-                    histR[r]++; histG[g]++; histB[b]++;
-                }
-                view[i] = (255 << 24) | (lut[b] << 16) | (lut[g] << 8) | lut[r];
-            }
-            const max = Math.max(...histR.slice(1,255), ...histG.slice(1,255), ...histB.slice(1,255)) || 1; 
-            setHistogramData({ r: histR, g: histG, b: histB, max });
+        // rawFitsData が存在しサイズが一致している場合はそれを使用し、
+        // そうでない（8ビット画像等）場合は ImageData から16ビット擬似データをその場で生成する
+        let ch0: Float32Array;
+        let ch1: Float32Array | null = null;
+        let ch2: Float32Array | null = null;
+
+        if (overrideRawFits && overrideRawFits.ch0 && overrideRawFits.ch0.length === len) {
+            ch0 = overrideRawFits.ch0;
+            ch1 = overrideRawFits.ch1;
+            ch2 = overrideRawFits.ch2;
         } else {
-            for (let i = 0; i < pixelCount; i++) {
-                const pixel = view[i];
-                const r = Math.min(255, ((pixel & 0xFF) * rMult) | 0);
-                const g = Math.min(255, (((pixel >> 8) & 0xFF) * gMult) | 0);
-                const b = Math.min(255, (((pixel >> 16) & 0xFF) * bMult) | 0);
-                view[i] = (255 << 24) | (lut[b] << 16) | (lut[g] << 8) | lut[r];
+            ch0 = new Float32Array(len);
+            ch1 = new Float32Array(len);
+            ch2 = new Float32Array(len);
+            for (let i = 0; i < len; i++) {
+                const srcR = swapRB ? data[i * 4 + 2] : data[i * 4];
+                const srcG = data[i * 4 + 1];
+                const srcB = swapRB ? data[i * 4] : data[i * 4 + 2];
+                ch0[i] = srcR * 257;
+                ch1[i] = srcG * 257;
+                ch2[i] = srcB * 257;
             }
         }
-        
-        ctx.putImageData(imageData, 0, 0); 
+
+        const range = (whitePoint - blackPoint) || 1;
+        const invRange = 1.0 / range;
+        const invMid = 1.0 / midPoint;
+
+        if (showHistogram) {
+            const histR = new Array(65536).fill(0);
+            const histG = new Array(65536).fill(0);
+            const histB = new Array(65536).fill(0);
+            const histStep = len > 1000000 ? 16 : 4;
+            for (let i = 0; i < len; i += histStep) {
+                const rv = ch0[i] * rMult;
+                const gv = (ch1 ? ch1[i] : ch0[i]) * gMult;
+                const bv = (ch2 ? ch2[i] : ch0[i]) * bMult;
+                const biR = Math.min(65535, Math.max(0, rv | 0));
+                const biG = Math.min(65535, Math.max(0, gv | 0));
+                const biB = Math.min(65535, Math.max(0, bv | 0));
+                histR[biR]++; histG[biG]++; histB[biB]++;
+            }
+            let max = 1;
+            for (let i = 1; i < 65535; i++) {
+                if (histR[i] > max) max = histR[i];
+                if (histG[i] > max) max = histG[i];
+                if (histB[i] > max) max = histB[i];
+            }
+            setHistogramData({ r: histR, g: histG, b: histB, max });
+        }
+
+        const view = new Uint32Array(data.buffer);
+        for (let i = 0; i < len; i++) {
+            const rv = ch0[i] * rMult;
+            const gv = (ch1 ? ch1[i] : ch0[i]) * gMult;
+            const bv = (ch2 ? ch2[i] : ch0[i]) * bMult;
+            
+            const nR = rv <= blackPoint ? 0 : (rv >= whitePoint ? 1 : (rv - blackPoint) * invRange);
+            const nG = gv <= blackPoint ? 0 : (gv >= whitePoint ? 1 : (gv - blackPoint) * invRange);
+            const nB = bv <= blackPoint ? 0 : (bv >= whitePoint ? 1 : (bv - blackPoint) * invRange);
+
+            const r8 = Math.min(255, Math.max(0, Math.pow(nR, invMid) * 255)) | 0;
+            const g8 = Math.min(255, Math.max(0, Math.pow(nG, invMid) * 255)) | 0;
+            const b8 = Math.min(255, Math.max(0, Math.pow(nB, invMid) * 255)) | 0;
+
+            view[i] = (255 << 24) | (b8 << 16) | (g8 << 8) | r8;
+        }
+        ctx.putImageData(imageData, 0, 0);
         drawOverlays(ctx, imageData.width, imageData.height);
     }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, drawOverlays, swapRB, showHistogram]);
 
@@ -443,8 +491,8 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
           if (!hasFitImageRef.current || hasFitImageRef.current.w !== width || hasFitImageRef.current.h !== height) fitImageToScreen(width, height);
       }
       const imageData = new ImageData(new Uint8ClampedArray(sourceBuffer), width, height);
-      applyLutAndDraw(ctx, imageData); setDecodeError(false);
-  }, [applyLutAndDraw, fitImageToScreen]);
+      applyLutAndDraw(ctx, imageData, externalMetadata?.rawFitsData); setDecodeError(false);
+  }, [applyLutAndDraw, fitImageToScreen, externalMetadata]);
 
   const renderMjpegFrame = useCallback(async (blobOrUrl: Blob | string) => {
       if (!canvasRef.current) return;
@@ -458,7 +506,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
           ctx.drawImage(drawable, 0, 0, w, h); setDecodeError(false);
           try { 
               const imageData = ctx.getImageData(0, 0, w, h);
-              applyLutAndDraw(ctx, imageData); 
+              applyLutAndDraw(ctx, imageData, null); 
           } catch(e) { console.error("Apply LUT failed", e); }
       };
       const img = new Image(); 
@@ -473,8 +521,8 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
       const img = originalImageRef.current;
       canvasRef.current.width = img.naturalWidth; canvasRef.current.height = img.naturalHeight;
-      ctx.drawImage(img, 0, 0); applyLutAndDraw(ctx, ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight));
-  }, [applyLutAndDraw]);
+      ctx.drawImage(img, 0, 0); applyLutAndDraw(ctx, ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight), localFitsHeaders?.rawFitsData);
+  }, [applyLutAndDraw, localFitsHeaders]);
 
   useEffect(() => {
       if (externalImage) setImageTick(t => t + 1);
@@ -492,7 +540,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       } else if (loadedImage) {
           processImage();
       }
-  }, [externalImage, externalMetadata, renderRawFrame, renderMjpegFrame, loadedImage, processImage, isCapturing, isLiveViewActive, isPreviewLoading, showAnnotations, imageTick, blackPoint, whitePoint, midPoint]); 
+  }, [externalImage, externalMetadata, renderRawFrame, renderMjpegFrame, loadedImage, processImage, isCapturing, isLiveViewActive, isPreviewLoading, showAnnotations, imageTick, blackPoint, whitePoint, midPoint, showHistogram]); 
 
   useEffect(() => {
       if (!loadedImage || loadedImage === 'raw-data-available') return;
@@ -508,15 +556,53 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       return { type: selectedObject.type, magnitude: selectedObject.magnitude, ra: selectedObject.ra, dec: selectedObject.dec, az: az.toFixed(1), alt: alt.toFixed(1), transit: calculateTransitTime(ra, effLocation.longitude), isRising: alt > 0 };
   }, [selectedObject, effLocation, effTime]);
 
+  const displayHistogram = useMemo(() => {
+      if (!histogramData) return null;
+      const r256 = new Array(256).fill(0);
+      const g256 = new Array(256).fill(0);
+      const b256 = new Array(256).fill(0);
+      for (let i = 0; i < 65536; i++) {
+          const destIdx = Math.floor(i / 256);
+          r256[destIdx] += histogramData.r[i];
+          g256[destIdx] += histogramData.g[i];
+          b256[destIdx] += histogramData.b[i];
+      }
+      let max = 1;
+      for (let i = 1; i < 255; i++) {
+          if (r256[i] > max) max = r256[i];
+          if (g256[i] > max) max = g256[i];
+          if (b256[i] > max) max = b256[i];
+      }
+      return { r: r256, g: g256, b: b256, max };
+  }, [histogramData]);
+
   const handleAutoStretch = () => {
+      const rawFitsData = localFitsHeaders?.rawFitsData || externalMetadata?.rawFitsData;
+      if (rawFitsData && rawFitsData.ch0) {
+          const { ch0, width, height } = rawFitsData;
+          const len = width * height;
+          const sampleStep = len > 500000 ? 10 : 1;
+          const samples: number[] = [];
+          for (let i = 0; i < len; i += sampleStep) {
+              samples.push(ch0[i]);
+          }
+          samples.sort((a, b) => a - b);
+          const p01 = samples[Math.floor(samples.length * 0.01)] || 0;
+          const p99 = samples[Math.floor(samples.length * 0.99)] || 65535;
+          setBlackPoint(Math.max(0, Math.floor(p01)));
+          setWhitePoint(Math.min(65535, Math.ceil(p99)));
+          setMidPoint(1.0);
+          return;
+      }
       if (!histogramData) return;
-      const combined = new Array(256).fill(0);
-      for(let i=0; i<256; i++) combined[i] = histogramData.r[i] + histogramData.g[i] + histogramData.b[i];
+      const combined = new Array(65536).fill(0);
+      for(let i=0; i<65536; i++) combined[i] = histogramData.r[i] + histogramData.g[i] + histogramData.b[i];
       const total = combined.reduce((a,b)=>a+b,0);
-      let min = 0, max = 255; let count = 0;
-      for(let i=0; i<256; i++) { count += combined[i]; if(count > total * 0.01) { min = i; break; } }
-      count = 0; for(let i=255; i>=0; i--) { count += combined[i]; if(count > total * 0.01) { max = i; break; } }
-      setBlackPoint(Math.max(0, min-5)); setWhitePoint(Math.min(255, max+5)); setMidPoint(1.0);
+      if (total === 0) return;
+      let min = 0, max = 65535; let count = 0;
+      for(let i=0; i<65536; i++) { count += combined[i]; if(count > total * 0.01) { min = i; break; } }
+      count = 0; for(let i=65535; i>=0; i--) { count += combined[i]; if(count > total * 0.01) { max = i; break; } }
+      setBlackPoint(Math.max(0, min - 100)); setWhitePoint(Math.min(65535, max + 100)); setMidPoint(1.0);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -759,7 +845,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
         )}
         <input type="file" accept="image/*,.fits,.fit,.fts" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
         <canvas ref={canvasRef} className="absolute top-0 left-0 origin-top-left rendering-pixelated" style={{ transform: `translate(${tX}px, ${tY}px) scale(${zoom}) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})` }} />
-        {showHistogram && histogramData && !isMini && (
+        {showHistogram && displayHistogram && !isMini && (
             <div 
                 className="absolute top-16 right-2 md:right-4 bg-slate-900/95 p-2 rounded-lg border border-slate-700 shadow-xl w-60 md:w-64 z-40 pointer-events-auto backdrop-blur-md animate-fadeIn flex flex-col gap-1 max-h-[80vh] overflow-y-auto scrollbar-hide"
                 {...stopProp}
@@ -767,20 +853,20 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
                 <div className="flex justify-between items-center border-b border-slate-700 pb-1 mb-1"><span className="text-[10px] font-bold text-slate-300 flex items-center gap-1"><HistogramIcon className="w-3 h-3" />{t('imagingView.histogram')}</span><button onClick={() => setShowHistogram(false)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-700"><CloseIcon className="w-4 h-4" /></button></div>
                 <div className="flex items-end w-full h-20 md:h-24 gap-px opacity-90 border-b border-slate-700 pb-1 mb-1 relative overflow-hidden">
                     <svg width="100%" height="100%" viewBox="0 0 256 100" preserveAspectRatio="none">
-                        <path d={`M0,100 ${histogramData.r.map((v, i) => `L${i},${100 - (v / histogramData.max) * 100}`).join(' ')} L255,100`} fill="rgba(239, 68, 68, 0.5)" />
-                        <path d={`M0,100 ${histogramData.g.map((v, i) => `L${i},${100 - (v / histogramData.max) * 100}`).join(' ')} L255,100`} fill="rgba(34, 197, 94, 0.5)" style={{mixBlendMode: 'screen'}} />
-                        <path d={`M0,100 ${histogramData.b.map((v, i) => `L${i},${100 - (v / histogramData.max) * 100}`).join(' ')} L255,100`} fill="rgba(59, 130, 246, 0.5)" style={{mixBlendMode: 'screen'}} />
+                        <path d={`M0,100 ${displayHistogram.r.map((v, i) => `L${i},${100 - (v / displayHistogram.max) * 100}`).join(' ')} L255,100`} fill="rgba(239, 68, 68, 0.5)" />
+                        <path d={`M0,100 ${displayHistogram.g.map((v, i) => `L${i},${100 - (v / displayHistogram.max) * 100}`).join(' ')} L255,100`} fill="rgba(34, 197, 94, 0.5)" style={{mixBlendMode: 'screen'}} />
+                        <path d={`M0,100 ${displayHistogram.b.map((v, i) => `L${i},${100 - (v / displayHistogram.max) * 100}`).join(' ')} L255,100`} fill="rgba(59, 130, 246, 0.5)" style={{mixBlendMode: 'screen'}} />
                     </svg>
                 </div>
                 <div className="space-y-1">
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.blackPoint')}</span><span>{blackPoint}</span></div>
-                    <input type="range" min="0" max="255" value={blackPoint} onChange={(e) => setBlackPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                    <input type="range" min="0" max="65535" value={blackPoint} onChange={(e) => setBlackPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.midTones')} (γ)</span><span>{midPoint.toFixed(2)}</span></div>
                     <input type="range" min="0.1" max="3.0" step="0.05" value={midPoint} onChange={(e) => setMidPoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                     <div className="flex justify-between text-[10px] text-slate-400"><span>{t('imagingView.whitePoint')}</span><span>{whitePoint}</span></div>
-                    <input type="range" min="0" max="255" value={whitePoint} onChange={(e) => setWhitePoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                    <input type="range" min="0" max="65535" value={whitePoint} onChange={(e) => setWhitePoint(Number(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                 </div>
-                <div className="flex gap-2 mt-1"><button onClick={handleAutoStretch} className="flex-1 bg-blue-700 hover:bg-blue-600 text-white text-[10px] py-1 rounded border border-blue-600 font-bold">{t('imagingView.autoStretch')}</button><button onClick={() => { setBlackPoint(0); setWhitePoint(255); setMidPoint(1.0); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] py-1 rounded border border-slate-600">{t('imagingView.reset')}</button></div>
+                <div className="flex gap-2 mt-1"><button onClick={handleAutoStretch} className="flex-1 bg-blue-700 hover:bg-blue-600 text-white text-[10px] py-1 rounded border border-blue-600 font-bold">{t('imagingView.autoStretch')}</button><button onClick={() => { setBlackPoint(0); setWhitePoint(65535); setMidPoint(1.0); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] py-1 rounded border border-slate-600">{t('imagingView.reset')}</button></div>
             </div>
         )}
         {((isCapturing || isLiveViewActive || isPreviewLoading) && !externalImage && !loadedImage) && (

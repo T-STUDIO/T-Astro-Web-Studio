@@ -1360,15 +1360,13 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
             if (typeof obj.ra === 'number') raDeg = obj.ra;
             else if (typeof obj.ra === 'string') raDeg = hmsToDegrees(obj.ra);
-            else if (obj.raHms) raDeg = hmsToDegrees(obj.raHms.hours, obj.raHms.minutes, obj.raHms.seconds);
 
             if (typeof obj.dec === 'number') decDeg = obj.dec;
             else if (typeof obj.dec === 'string') decDeg = dmsToDegrees(obj.dec);
-            else if (obj.decDms) decDeg = dmsToDegrees(obj.decDms.sign, obj.decDms.degrees, obj.decDms.minutes, obj.decDms.seconds);
             
             if (raDeg !== undefined && decDeg !== undefined && !isNaN(raDeg) && !isNaN(decDeg)) {
                 const { alt, az } = raDecToAzAlt(raDeg, decDeg, currentLoc.latitude, lst);
-                const p = projectStereographic(alt, az, width, height, zoom, center, viewAlt, viewAz);
+                const p = projectStereographic(alt, az, width, height, zoom, { x: 0, y: 0 }, viewAlt, viewAz);
                 if (p && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
                     visibleObjects.push({ ra: (raDeg + 360) % 360, dec: Math.max(-80, Math.min(80, decDeg)) });
                 }

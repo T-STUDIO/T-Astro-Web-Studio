@@ -106,7 +106,7 @@ export const en = {
   },
   deviceType: {
     Mount: 'Mount',
-    Camera: 'Main Camera',
+    Camera: 'Camera',
     GuideCamera: 'Guide Camera',
     Focuser: 'Focuser',
     FilterWheel: 'Filter Wheel',

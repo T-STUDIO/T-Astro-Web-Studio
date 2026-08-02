@@ -106,7 +106,7 @@ export const ja = {
   },
   deviceType: {
     Mount: 'マウント',
-    Camera: 'メインカメラ',
+    Camera: 'カメラ',
     GuideCamera: 'ガイドカメラ',
     Focuser: 'フォーカサー',
     FilterWheel: 'フィルターホイール',

@@ -471,7 +471,7 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
       const invMid = 1.0 / midPoint;
 
       if (showHistogram) {
-          const histSize = maxVal + 1;
+          const histSize = 256;
           const histR = new Array(histSize).fill(0);
           const histG = new Array(histSize).fill(0);
           const histB = new Array(histSize).fill(0);
@@ -485,13 +485,13 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
               const nG = gv <= blackPoint ? 0 : (gv >= whitePoint ? 1 : (gv - blackPoint) * invRange);
               const nB = bv <= blackPoint ? 0 : (bv >= whitePoint ? 1 : (bv - blackPoint) * invRange);
 
-              const biR = Math.min(maxVal, Math.max(0, Math.pow(nR, invMid) * maxVal)) | 0;
-              const biG = Math.min(maxVal, Math.max(0, Math.pow(nG, invMid) * maxVal)) | 0;
-              const biB = Math.min(maxVal, Math.max(0, Math.pow(nB, invMid) * maxVal)) | 0;
+              const biR = Math.min(255, Math.max(0, Math.pow(nR, invMid) * 255)) | 0;
+              const biG = Math.min(255, Math.max(0, Math.pow(nG, invMid) * 255)) | 0;
+              const biB = Math.min(255, Math.max(0, Math.pow(nB, invMid) * 255)) | 0;
               histR[biR]++; histG[biG]++; histB[biB]++;
           }
           let max = 1;
-          for (let i = 1; i < maxVal; i++) {
+          for (let i = 0; i < 256; i++) {
               if (histR[i] > max) max = histR[i];
               if (histG[i] > max) max = histG[i];
               if (histB[i] > max) max = histB[i];

@@ -836,6 +836,18 @@ const parseIndiPacket = (packet: string) => {
                 if (isConn) {
                     log(`[INDI] ${devName} Connected.`);
                     if (device.type === 'Camera') sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
+                    
+                    // 自動フォールバック: シミュレータが接続された場合に、GSC/DSSの画像シミュレーション機能を自動有効化する
+                    const devLower = devName.toLowerCase();
+                    if (devLower.includes('simulator') || devLower.includes('simulation')) {
+                        log(`[INDI] Auto-configuring simulator settings for ${devName} (Enabling GSC/DSS)...`);
+                        // GSC / DSS をシミュレータの画像生成ソースに設定するスイッチを送信
+                        sendRaw(`<newSwitchVector device='${devName}' name='SIMULATION_SOURCE'><oneSwitch name='SIM_GSC'>On</oneSwitch></newSwitchVector>`);
+                        sendRaw(`<newSwitchVector device='${devName}' name='SIMULATION_SOURCE'><oneSwitch name='SIM_DSS'>On</oneSwitch></newSwitchVector>`);
+                        
+                        // 星・DSO の描画設定を有効化
+                        sendRaw(`<newSwitchVector device='${devName}' name='SIMULATION_SETTINGS'><oneSwitch name='SIM_STARS'>On</oneSwitch><oneSwitch name='SIM_DSO'>On</oneSwitch></newSwitchVector>`);
+                    }
                 }
             }
         }

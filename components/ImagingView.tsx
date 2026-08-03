@@ -503,25 +503,51 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
         const invMid = 1.0 / midPoint;
 
         if (showHistogram) {
-            const histSize = 256;
-            const histR = new Array(histSize).fill(0);
-            const histG = new Array(histSize).fill(0);
-            const histB = new Array(histSize).fill(0);
+            const baseHistR = new Array(256).fill(0);
+            const baseHistG = new Array(256).fill(0);
+            const baseHistB = new Array(256).fill(0);
             const histStep = len > 1000000 ? 16 : 4;
             for (let i = 0; i < len; i += histStep) {
                 const rv = ch0[i] * rMult;
                 const gv = (ch1 ? ch1[i] : ch0[i]) * gMult;
                 const bv = (ch2 ? ch2[i] : ch0[i]) * bMult;
-                
-                const nR = rv <= blackPoint ? 0 : (rv >= whitePoint ? 1 : (rv - blackPoint) * invRange);
-                const nG = gv <= blackPoint ? 0 : (gv >= whitePoint ? 1 : (gv - blackPoint) * invRange);
-                const nB = bv <= blackPoint ? 0 : (bv >= whitePoint ? 1 : (bv - blackPoint) * invRange);
-
-                const biR = Math.min(255, Math.max(0, Math.pow(nR, invMid) * 255)) | 0;
-                const biG = Math.min(255, Math.max(0, Math.pow(nG, invMid) * 255)) | 0;
-                const biB = Math.min(255, Math.max(0, Math.pow(nB, invMid) * 255)) | 0;
-                histR[biR]++; histG[biG]++; histB[biB]++;
+                const idxR = Math.min(255, Math.max(0, (rv / maxVal) * 255)) | 0;
+                const idxG = Math.min(255, Math.max(0, (gv / maxVal) * 255)) | 0;
+                const idxB = Math.min(255, Math.max(0, (bv / maxVal) * 255)) | 0;
+                baseHistR[idxR]++;
+                baseHistG[idxG]++;
+                baseHistB[idxB]++;
             }
+
+            const histSize = 256;
+            const histR = new Array(histSize).fill(0);
+            const histG = new Array(histSize).fill(0);
+            const histB = new Array(histSize).fill(0);
+
+            for (let x = 0; x < histSize; x++) {
+                const norm = Math.pow(x / 255, midPoint);
+                const v_orig = blackPoint + norm * range;
+                const origIdx = (v_orig / maxVal) * 255;
+
+                if (origIdx <= 0) {
+                    histR[x] = baseHistR[0];
+                    histG[x] = baseHistG[0];
+                    histB[x] = baseHistB[0];
+                } else if (origIdx >= 255) {
+                    histR[x] = baseHistR[255];
+                    histG[x] = baseHistG[255];
+                    histB[x] = baseHistB[255];
+                } else {
+                    const idxFloor = origIdx | 0;
+                    const idxCeil = Math.min(255, idxFloor + 1);
+                    const frac = origIdx - idxFloor;
+
+                    histR[x] = baseHistR[idxFloor] * (1 - frac) + baseHistR[idxCeil] * frac;
+                    histG[x] = baseHistG[idxFloor] * (1 - frac) + baseHistG[idxCeil] * frac;
+                    histB[x] = baseHistB[idxFloor] * (1 - frac) + baseHistB[idxCeil] * frac;
+                }
+            }
+
             let max = 1;
             for (let i = 0; i < histSize; i++) {
                 if (histR[i] > max) max = histR[i];

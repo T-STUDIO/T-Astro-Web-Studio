@@ -1251,19 +1251,6 @@ export const rawFitsToDisplay = (
                                 rvRaw = val; gvRaw = val; bvRaw = val;
                                 
                                 r = norm; g = norm; b = norm;
-                                
-                                if (code !== -1) {
-                                    const isEvenCol = (x % 2 === 0); 
-                                    let pixelColor = 0; 
-                                    if (code === 0) pixelColor = isEvenRow ? (isEvenCol ? 0 : 1) : (isEvenCol ? 1 : 2);
-                                    else if (code === 1) pixelColor = isEvenRow ? (isEvenCol ? 1 : 2) : (isEvenCol ? 0 : 1);
-                                    else if (code === 2) pixelColor = isEvenRow ? (isEvenCol ? 1 : 0) : (isEvenCol ? 2 : 1);
-                                    else if (code === 3) pixelColor = isEvenRow ? (isEvenCol ? 2 : 1) : (isEvenCol ? 1 : 0);
-                                    
-                                    if (pixelColor === 0) { r = norm; g = norm * 0.2; b = norm * 0.2; gvRaw = val * 0.2; bvRaw = val * 0.2; } 
-                                    else if (pixelColor === 1) { r = norm * 0.2; g = norm; b = norm * 0.2; rvRaw = val * 0.2; bvRaw = val * 0.2; } 
-                                    else { r = norm * 0.2; g = norm * 0.2; b = norm; rvRaw = val * 0.2; gvRaw = val * 0.2; }
-                                }
                             }
                             const outIdx = rowOffset + x;
                             displayCh0[outIdx] = rvRaw;

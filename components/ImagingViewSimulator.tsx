@@ -171,6 +171,7 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hitRegions = useRef<HitRegion[]>([]);
+  const cachedRawChannelsRef = useRef<{ ch0: Float32Array; ch1: Float32Array | null; ch2: Float32Array | null; width: number; height: number; bpp: number } | null>(null);
 
   const effLocation = location || { latitude: 35.6, longitude: 139.6 };
   const effTime = localTime || new Date();
@@ -191,6 +192,7 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
     setImageDimensions(null);
     setDecodeError(false);
     hasFitImageRef.current = null;
+    cachedRawChannelsRef.current = null;
     
     if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
@@ -389,32 +391,33 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       const rMult = colorBalance.r / 128; const gMult = colorBalance.g / 128; const bMult = colorBalance.b / 128;
       const len = width * height;
 
-      let bpp = 8;
-      if (overrideRawFits && overrideRawFits.bpp) {
-          bpp = overrideRawFits.bpp;
-      } else if (localFitsHeaders && (localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix)) {
-          const bp = Math.abs(parseInt(localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix, 10));
-          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
-      } else if (externalMetadata && (externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp)) {
-          const bp = Math.abs(parseInt(externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp, 10));
-          if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
-      } else if (loadedImageName) {
-          const ext = loadedImageName.split('.').pop()?.toLowerCase();
-          if (ext === 'fits' || ext === 'fit' || ext === 'fts' || ext === 'tiff' || ext === 'tif') {
-              bpp = 16;
-          }
-      }
-      const maxVal = bpp <= 8 ? 255 : 65535;
-
-      let ch0: Float32Array;
-      let ch1: Float32Array | null = null;
-      let ch2: Float32Array | null = null;
-
+      let currentCache = cachedRawChannelsRef.current;
       if (overrideRawFits && overrideRawFits.ch0 && overrideRawFits.ch0.length === len) {
-          ch0 = overrideRawFits.ch0;
-          ch1 = overrideRawFits.ch1;
-          ch2 = overrideRawFits.ch2;
-      } else {
+          cachedRawChannelsRef.current = {
+              ch0: overrideRawFits.ch0,
+              ch1: overrideRawFits.ch1,
+              ch2: overrideRawFits.ch2,
+              width,
+              height,
+              bpp: overrideRawFits.bpp || 16
+          };
+          currentCache = cachedRawChannelsRef.current;
+      }
+
+      if (!currentCache) {
+          let bpp = 8;
+          if (localFitsHeaders && (localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix)) {
+              const bp = Math.abs(parseInt(localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix, 10));
+              if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+          } else if (externalMetadata && (externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp)) {
+              const bp = Math.abs(parseInt(externalMetadata.BITPIX || externalMetadata.BPP || externalMetadata.bitpix || externalMetadata.bpp, 10));
+              if (bp === 8 || bp === 16 || bp === 32) bpp = bp;
+          } else if (loadedImageName) {
+              const ext = loadedImageName.split('.').pop()?.toLowerCase();
+              if (ext === 'fits' || ext === 'fit' || ext === 'fts' || ext === 'tiff' || ext === 'tif') {
+                  bpp = 16;
+              }
+          }
           if (lastDrawableRef.current) {
               ctx.drawImage(lastDrawableRef.current, 0, 0, width, height);
           } else if (lastRawFrameRef.current) {
@@ -423,9 +426,9 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           }
           const tempImgData = ctx.getImageData(0, 0, width, height);
           const data = tempImgData.data;
-          ch0 = new Float32Array(len);
-          ch1 = new Float32Array(len);
-          ch2 = new Float32Array(len);
+          const ch0 = new Float32Array(len);
+          const ch1 = new Float32Array(len);
+          const ch2 = new Float32Array(len);
           for (let i = 0; i < len; i++) {
               const srcR = swapRB ? data[i * 4 + 2] : data[i * 4];
               const srcG = data[i * 4 + 1];
@@ -434,7 +437,15 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
               ch1[i] = srcG;
               ch2[i] = srcB;
           }
+          cachedRawChannelsRef.current = { ch0, ch1, ch2, width, height, bpp };
+          currentCache = cachedRawChannelsRef.current;
       }
+
+      const bpp = currentCache.bpp;
+      const maxVal = bpp <= 8 ? 255 : 65535;
+      const ch0 = currentCache.ch0;
+      const ch1 = currentCache.ch1;
+      const ch2 = currentCache.ch2;
 
       const range = (whitePoint - blackPoint) || 1;
       const invRange = 1.0 / range;
@@ -501,12 +512,42 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       lastRawFrameRef.current = { sourceBuffer, width, height };
       lastDrawableRef.current = null;
 
+      const rawFitsData = externalMetadata?.rawFitsData;
+      if (rawFitsData && rawFitsData.ch0 && rawFitsData.ch0.length === width * height) {
+          cachedRawChannelsRef.current = {
+              ch0: rawFitsData.ch0,
+              ch1: rawFitsData.ch1,
+              ch2: rawFitsData.ch2,
+              width,
+              height,
+              bpp: rawFitsData.bpp || 16
+          };
+      } else {
+          const len = width * height;
+          const ch0 = new Float32Array(len);
+          const ch1 = new Float32Array(len);
+          const ch2 = new Float32Array(len);
+          for (let i = 0; i < len; i++) {
+              ch0[i] = swapRB ? sourceBuffer[i * 4 + 2] : sourceBuffer[i * 4];
+              ch1[i] = sourceBuffer[i * 4 + 1];
+              ch2[i] = swapRB ? sourceBuffer[i * 4] : sourceBuffer[i * 4 + 2];
+          }
+          cachedRawChannelsRef.current = {
+              ch0,
+              ch1,
+              ch2,
+              width,
+              height,
+              bpp: 8
+          };
+      }
+
       if (canvasRef.current.width !== width || canvasRef.current.height !== height) {
           canvasRef.current.width = width; canvasRef.current.height = height; setImageDimensions({ width, height });
           if (!hasFitImageRef.current || hasFitImageRef.current.w !== width || hasFitImageRef.current.h !== height) fitImageToScreen(width, height);
       }
       applyLutAndDraw(ctx, width, height, externalMetadata?.rawFitsData); setDecodeError(false);
-  }, [applyLutAndDraw, fitImageToScreen, externalMetadata]);
+  }, [applyLutAndDraw, fitImageToScreen, externalMetadata, swapRB]);
 
   const renderMjpegFrame = useCallback(async (blobOrUrl: Blob | string) => {
       if (!canvasRef.current) return;
@@ -517,6 +558,33 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           // Save to cache
           lastDrawableRef.current = drawable;
           lastRawFrameRef.current = null;
+
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = w;
+          tempCanvas.height = h;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+              tempCtx.drawImage(drawable, 0, 0, w, h);
+              const imgData = tempCtx.getImageData(0, 0, w, h);
+              const data = imgData.data;
+              const len = w * h;
+              const ch0 = new Float32Array(len);
+              const ch1 = new Float32Array(len);
+              const ch2 = new Float32Array(len);
+              for (let i = 0; i < len; i++) {
+                  ch0[i] = swapRB ? data[i * 4 + 2] : data[i * 4];
+                  ch1[i] = data[i * 4 + 1];
+                  ch2[i] = swapRB ? data[i * 4] : data[i * 4 + 2];
+              }
+              cachedRawChannelsRef.current = {
+                  ch0,
+                  ch1,
+                  ch2,
+                  width: w,
+                  height: h,
+                  bpp: 8
+              };
+          }
 
           if (canvasRef.current.width !== w || canvasRef.current.height !== h || !hasFitImageRef.current) {
               canvasRef.current.width = w; canvasRef.current.height = h; setImageDimensions({ width: w, height: h });
@@ -560,15 +628,55 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           }
       };
       img.src = url;
-  }, [fitImageToScreen, applyLutAndDraw, telescopePosition, simulatorSettings]);
+  }, [fitImageToScreen, applyLutAndDraw, telescopePosition, simulatorSettings, swapRB]);
 
   const processImage = useCallback(() => {
       if (!canvasRef.current || !originalImageRef.current) return;
       const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
       const img = originalImageRef.current;
       canvasRef.current.width = img.naturalWidth; canvasRef.current.height = img.naturalHeight;
+
+      const rawFitsData = localFitsHeaders?.rawFitsData;
+      if (rawFitsData && rawFitsData.ch0 && rawFitsData.ch0.length === img.naturalWidth * img.naturalHeight) {
+          cachedRawChannelsRef.current = {
+              ch0: rawFitsData.ch0,
+              ch1: rawFitsData.ch1,
+              ch2: rawFitsData.ch2,
+              width: img.naturalWidth,
+              height: img.naturalHeight,
+              bpp: rawFitsData.bpp || 16
+          };
+      } else {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = img.naturalWidth;
+          tempCanvas.height = img.naturalHeight;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+              tempCtx.drawImage(img, 0, 0);
+              const imgData = tempCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
+              const data = imgData.data;
+              const len = img.naturalWidth * img.naturalHeight;
+              const ch0 = new Float32Array(len);
+              const ch1 = new Float32Array(len);
+              const ch2 = new Float32Array(len);
+              for (let i = 0; i < len; i++) {
+                  ch0[i] = swapRB ? data[i * 4 + 2] : data[i * 4];
+                  ch1[i] = data[i * 4 + 1];
+                  ch2[i] = swapRB ? data[i * 4] : data[i * 4 + 2];
+              }
+              cachedRawChannelsRef.current = {
+                  ch0,
+                  ch1,
+                  ch2,
+                  width: img.naturalWidth,
+                  height: img.naturalHeight,
+                  bpp: 8
+              };
+          }
+      }
+
       ctx.drawImage(img, 0, 0); applyLutAndDraw(ctx, img.naturalWidth, img.naturalHeight, localFitsHeaders?.rawFitsData);
-  }, [applyLutAndDraw, localFitsHeaders]);
+  }, [applyLutAndDraw, localFitsHeaders, swapRB]);
 
   useEffect(() => {
       if (externalImage) setImageTick(t => t + 1);
@@ -580,6 +688,7 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           if (canvasRef.current) canvasRef.current.getContext('2d')?.clearRect(0,0,canvasRef.current.width,canvasRef.current.height);
           lastDrawableRef.current = null;
           lastRawFrameRef.current = null;
+          cachedRawChannelsRef.current = null;
           return;
       }
       if (externalImage) {
@@ -599,7 +708,10 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
       if (!canvasRef.current) return;
       const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
 
-      if (lastRawFrameRef.current) {
+      const cache = cachedRawChannelsRef.current;
+      if (cache) {
+          applyLutAndDraw(ctx, cache.width, cache.height, externalMetadata?.rawFitsData || localFitsHeaders?.rawFitsData);
+      } else if (lastRawFrameRef.current) {
           const { sourceBuffer, width, height } = lastRawFrameRef.current;
           applyLutAndDraw(ctx, width, height, externalMetadata?.rawFitsData || localFitsHeaders?.rawFitsData);
       } else if (lastDrawableRef.current) {
@@ -612,7 +724,7 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
                   applyLutAndDraw(ctx, w, h, null);
               } catch (e) {
                   console.error("Apply LUT on adjustment failed", e);
-              }
+               }
           }
       } else if (originalImageRef.current) {
           const img = originalImageRef.current;
@@ -668,9 +780,12 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
   }, [histogramData]);
 
   const handleAutoStretch = () => {
+      const cache = cachedRawChannelsRef.current;
       const rawFitsData = localFitsHeaders?.rawFitsData || externalMetadata?.rawFitsData;
       let bpp = 8;
-      if (rawFitsData && rawFitsData.bpp) {
+      if (cache) {
+          bpp = cache.bpp;
+      } else if (rawFitsData && rawFitsData.bpp) {
           bpp = rawFitsData.bpp;
       } else if (localFitsHeaders && (localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix)) {
           const bp = Math.abs(parseInt(localFitsHeaders.BITPIX || localFitsHeaders.BPP || localFitsHeaders.bitpix, 10));
@@ -685,6 +800,23 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           }
       }
       const maxVal = bpp <= 8 ? 255 : 65535;
+
+      if (cache && cache.ch0) {
+          const { ch0, width, height } = cache;
+          const len = width * height;
+          const sampleStep = len > 500000 ? 10 : 1;
+          const samples: number[] = [];
+          for (let i = 0; i < len; i += sampleStep) {
+              samples.push(ch0[i]);
+          }
+          samples.sort((a, b) => a - b);
+          const p01 = samples[Math.floor(samples.length * 0.01)] || 0;
+          const p99 = samples[Math.floor(samples.length * 0.99)] || maxVal;
+          setBlackPoint(Math.max(0, Math.floor(p01)));
+          setWhitePoint(Math.min(maxVal, Math.ceil(p99)));
+          setMidPoint(1.0);
+          return;
+      }
 
       if (rawFitsData && rawFitsData.ch0) {
           const { ch0, width, height } = rawFitsData;
@@ -726,8 +858,8 @@ export const ImagingViewSimulator: React.FC<ImagingViewProps> = ({
           samples.push(data[i * 4]);
       }
       samples.sort((a, b) => a - b);
-      const p01 = samples[Math.floor(samples.length * 0.01)] || 0;
-      const p99 = samples[Math.floor(samples.length * 0.99)] || maxVal;
+      const p01 = (samples[Math.floor(samples.length * 0.01)] || 0) * (maxVal / 255);
+      const p99 = (samples[Math.floor(samples.length * 0.99)] || 255) * (maxVal / 255);
       setBlackPoint(Math.max(0, Math.floor(p01)));
       setWhitePoint(Math.min(maxVal, Math.ceil(p99)));
       setMidPoint(1.0);

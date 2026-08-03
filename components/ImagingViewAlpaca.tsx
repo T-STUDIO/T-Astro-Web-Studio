@@ -287,8 +287,14 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
               setMidPoint(1.0);
           }
       } else {
-          setBlackPoint(prev => Math.min(prev, maxVal));
-          setWhitePoint(prev => (prev === 0 || prev === 65535 || prev === 255) ? maxVal : Math.min(prev, maxVal));
+          setBlackPoint(prev => {
+              if (bpp === 16 && prev <= 255) return 0;
+              return Math.min(prev, maxVal);
+          });
+          setWhitePoint(prev => {
+              if (bpp === 16 && prev <= 255) return maxVal;
+              return (prev === 0 || prev === 65535 || prev === 255) ? maxVal : Math.min(prev, maxVal);
+          });
       }
   }, [localFitsHeaders, externalMetadata, loadedImageName]);
 
@@ -450,6 +456,12 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
           ch1 = overrideRawFits.ch1;
           ch2 = overrideRawFits.ch2;
       } else {
+          if (lastDrawableRef.current) {
+              ctx.drawImage(lastDrawableRef.current, 0, 0, width, height);
+          } else if (lastRawFrameRef.current) {
+              const rawImgData = new ImageData(lastRawFrameRef.current.sourceBuffer, width, height);
+              ctx.putImageData(rawImgData, 0, 0);
+          }
           const tempImgData = ctx.getImageData(0, 0, width, height);
           const data = tempImgData.data;
           ch0 = new Float32Array(len);
@@ -711,17 +723,34 @@ export const ImagingViewAlpaca: React.FC<ImagingViewProps> = ({
           return;
       }
       
-      if (!histogramData) return;
-      const histSize = histogramData.r.length;
-      const combined = new Array(histSize).fill(0);
-      for(let i=0; i<histSize; i++) combined[i] = histogramData.r[i] + histogramData.g[i] + histogramData.b[i];
-      const total = combined.reduce((a,b)=>a+b,0);
-      if (total === 0) return;
-      let min = 0, max = histSize - 1; let count = 0;
-      for(let i=0; i<histSize; i++) { count += combined[i]; if(count > total * 0.01) { min = i; break; } }
-      count = 0; for(let i=histSize - 1; i>=0; i--) { count += combined[i]; if(count > total * 0.01) { max = i; break; } }
-      const padding = bpp <= 8 ? 1 : 100;
-      setBlackPoint(Math.max(0, min - padding)); setWhitePoint(Math.min(maxVal, max + padding)); setMidPoint(1.0);
+      if (!canvasRef.current) return;
+      const ctx = canvasRef.current.getContext('2d');
+      if (!ctx) return;
+      const w = canvasRef.current.width;
+      const h = canvasRef.current.height;
+      if (w <= 0 || h <= 0) return;
+
+      if (lastDrawableRef.current) {
+          ctx.drawImage(lastDrawableRef.current, 0, 0, w, h);
+      } else if (lastRawFrameRef.current) {
+          const rawImgData = new ImageData(lastRawFrameRef.current.sourceBuffer, w, h);
+          ctx.putImageData(rawImgData, 0, 0);
+      }
+
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      const len = w * h;
+      const sampleStep = len > 500000 ? 10 : 1;
+      const samples: number[] = [];
+      for (let i = 0; i < len; i += sampleStep) {
+          samples.push(data[i * 4]);
+      }
+      samples.sort((a, b) => a - b);
+      const p01 = samples[Math.floor(samples.length * 0.01)] || 0;
+      const p99 = samples[Math.floor(samples.length * 0.99)] || maxVal;
+      setBlackPoint(Math.max(0, Math.floor(p01)));
+      setWhitePoint(Math.min(maxVal, Math.ceil(p99)));
+      setMidPoint(1.0);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

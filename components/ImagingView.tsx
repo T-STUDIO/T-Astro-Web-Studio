@@ -430,11 +430,9 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       }
   }, [showAnnotations, nativeAnnotations, solverImageDimensions, solvedCalibration, language]);
 
-    const applyLutAndDraw = useCallback((ctx: CanvasRenderingContext2D, imageData: ImageData, overrideRawFits?: any) => {
-        const data = imageData.data;
+    const applyLutAndDraw = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, overrideRawFits?: any) => {
         const rMult = colorBalance.r / 128; const gMult = colorBalance.g / 128; const bMult = colorBalance.b / 128;
-        
-        const len = imageData.width * imageData.height;
+        const len = width * height;
 
         let bpp = 8;
         if (overrideRawFits && overrideRawFits.bpp) {
@@ -462,6 +460,8 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
             ch1 = overrideRawFits.ch1;
             ch2 = overrideRawFits.ch2;
         } else {
+            const tempImgData = ctx.getImageData(0, 0, width, height);
+            const data = tempImgData.data;
             ch0 = new Float32Array(len);
             ch1 = new Float32Array(len);
             ch2 = new Float32Array(len);
@@ -480,7 +480,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
         const invMid = 1.0 / midPoint;
 
         if (showHistogram) {
-            const histSize = maxVal + 1;
+            const histSize = 256;
             const histR = new Array(histSize).fill(0);
             const histG = new Array(histSize).fill(0);
             const histB = new Array(histSize).fill(0);
@@ -490,9 +490,13 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
                 const gv = (ch1 ? ch1[i] : ch0[i]) * gMult;
                 const bv = (ch2 ? ch2[i] : ch0[i]) * bMult;
                 
-                const biR = Math.min(maxVal, Math.max(0, Math.floor(rv)));
-                const biG = Math.min(maxVal, Math.max(0, Math.floor(gv)));
-                const biB = Math.min(maxVal, Math.max(0, Math.floor(bv)));
+                const nR = rv <= blackPoint ? 0 : (rv >= whitePoint ? 1 : (rv - blackPoint) * invRange);
+                const nG = gv <= blackPoint ? 0 : (gv >= whitePoint ? 1 : (gv - blackPoint) * invRange);
+                const nB = bv <= blackPoint ? 0 : (bv >= whitePoint ? 1 : (bv - blackPoint) * invRange);
+
+                const biR = Math.min(255, Math.max(0, Math.pow(nR, invMid) * 255)) | 0;
+                const biG = Math.min(255, Math.max(0, Math.pow(nG, invMid) * 255)) | 0;
+                const biB = Math.min(255, Math.max(0, Math.pow(nB, invMid) * 255)) | 0;
                 histR[biR]++; histG[biG]++; histB[biB]++;
             }
             let max = 1;
@@ -504,7 +508,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
             setHistogramData({ r: histR, g: histG, b: histB, max });
         }
 
-        const view = new Uint32Array(data.buffer);
+        const outData = new Uint8ClampedArray(len * 4);
         for (let i = 0; i < len; i++) {
             const rv = ch0[i] * rMult;
             const gv = (ch1 ? ch1[i] : ch0[i]) * gMult;
@@ -518,10 +522,14 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
             const g8 = Math.min(255, Math.max(0, Math.pow(nG, invMid) * 255)) | 0;
             const b8 = Math.min(255, Math.max(0, Math.pow(nB, invMid) * 255)) | 0;
 
-            view[i] = (255 << 24) | (b8 << 16) | (g8 << 8) | r8;
+            outData[i * 4] = r8;
+            outData[i * 4 + 1] = g8;
+            outData[i * 4 + 2] = b8;
+            outData[i * 4 + 3] = 255;
         }
-        ctx.putImageData(imageData, 0, 0);
-        drawOverlays(ctx, imageData.width, imageData.height);
+        const outImgData = new ImageData(outData, width, height);
+        ctx.putImageData(outImgData, 0, 0);
+        drawOverlays(ctx, width, height);
     }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, drawOverlays, swapRB, showHistogram, localFitsHeaders, externalMetadata, loadedImageName]);
 
   const renderRawFrame = useCallback((sourceBuffer: Uint8ClampedArray, width: number, height: number) => {
@@ -536,8 +544,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
           canvasRef.current.width = width; canvasRef.current.height = height; setImageDimensions({ width, height });
           if (!hasFitImageRef.current || hasFitImageRef.current.w !== width || hasFitImageRef.current.h !== height) fitImageToScreen(width, height);
       }
-      const imageData = new ImageData(new Uint8ClampedArray(sourceBuffer), width, height);
-      applyLutAndDraw(ctx, imageData, externalMetadata?.rawFitsData); setDecodeError(false);
+      applyLutAndDraw(ctx, width, height, externalMetadata?.rawFitsData); setDecodeError(false);
   }, [applyLutAndDraw, fitImageToScreen, externalMetadata]);
 
   const renderMjpegFrame = useCallback(async (blobOrUrl: Blob | string) => {
@@ -556,8 +563,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
           }
           ctx.drawImage(drawable, 0, 0, w, h); setDecodeError(false);
           try { 
-              const imageData = ctx.getImageData(0, 0, w, h);
-              applyLutAndDraw(ctx, imageData, null); 
+              applyLutAndDraw(ctx, w, h, null); 
           } catch(e) { console.error("Apply LUT failed", e); }
       };
 
@@ -579,7 +585,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
       const img = originalImageRef.current;
       canvasRef.current.width = img.naturalWidth; canvasRef.current.height = img.naturalHeight;
-      ctx.drawImage(img, 0, 0); applyLutAndDraw(ctx, ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight), localFitsHeaders?.rawFitsData);
+      ctx.drawImage(img, 0, 0); applyLutAndDraw(ctx, img.naturalWidth, img.naturalHeight, localFitsHeaders?.rawFitsData);
   }, [applyLutAndDraw, localFitsHeaders]);
 
   useEffect(() => {
@@ -613,8 +619,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
 
       if (lastRawFrameRef.current) {
           const { sourceBuffer, width, height } = lastRawFrameRef.current;
-          const imageData = new ImageData(new Uint8ClampedArray(sourceBuffer), width, height);
-          applyLutAndDraw(ctx, imageData, externalMetadata?.rawFitsData || localFitsHeaders?.rawFitsData);
+          applyLutAndDraw(ctx, width, height, externalMetadata?.rawFitsData || localFitsHeaders?.rawFitsData);
       } else if (lastDrawableRef.current) {
           const drawable = lastDrawableRef.current;
           const w = drawable instanceof HTMLVideoElement ? drawable.videoWidth : (drawable as HTMLImageElement).naturalWidth || (drawable as HTMLImageElement).width;
@@ -622,8 +627,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
           if (w > 0 && h > 0) {
               ctx.drawImage(drawable, 0, 0, w, h);
               try {
-                  const imageData = ctx.getImageData(0, 0, w, h);
-                  applyLutAndDraw(ctx, imageData, null);
+                  applyLutAndDraw(ctx, w, h, null);
               } catch (e) {
                   console.error("Apply LUT on adjustment failed", e);
               }
@@ -631,7 +635,7 @@ export const ImagingView: React.FC<ImagingViewProps> = ({
       } else if (originalImageRef.current) {
           const img = originalImageRef.current;
           ctx.drawImage(img, 0, 0);
-          applyLutAndDraw(ctx, ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight), localFitsHeaders?.rawFitsData);
+          applyLutAndDraw(ctx, img.naturalWidth, img.naturalHeight, localFitsHeaders?.rawFitsData);
       }
   }, [blackPoint, whitePoint, midPoint, colorBalance, showAnnotations, swapRB, applyLutAndDraw, externalMetadata, localFitsHeaders]);
 

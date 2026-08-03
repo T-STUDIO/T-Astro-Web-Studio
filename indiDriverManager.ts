@@ -292,9 +292,31 @@ export class IndiDriverManager {
                     
                     try {
                         console.log(`[IndiDriverManager] Spawning: indiserver ${args.join(' ')}`);
+                        const childEnv = { ...process.env };
+                        if (childEnv.PATH) {
+                            const paths = childEnv.PATH.split(':');
+                            const extraPaths = [
+                                '/usr/games',
+                                '/usr/local/games',
+                                '/usr/local/bin',
+                                '/usr/bin',
+                                '/bin',
+                                '/usr/share/gsc/bin'
+                            ];
+                            for (const p of extraPaths) {
+                                if (!paths.includes(p)) {
+                                    paths.push(p);
+                                }
+                            }
+                            childEnv.PATH = paths.join(':');
+                        }
+                        if (!childEnv.HOME) {
+                            childEnv.HOME = process.env.HOME || '/home/pi' || '/root';
+                        }
                         const proc = spawn('indiserver', args, {
                             detached: true,
-                            stdio: 'ignore'
+                            stdio: 'ignore',
+                            env: childEnv
                         });
 
                         this.activeIndiProcess = proc;

@@ -314,7 +314,21 @@ export class IndiDriverManager {
                             childEnv.HOME = process.env.HOME || '/home/pi' || '/root';
                         }
                         if (!childEnv.GSCDAT) {
-                            childEnv.GSCDAT = process.env.GSCDAT || '/usr/share/gsc';
+                            const homeDir = childEnv.HOME || '/home/astrpi64' || '/home/pi' || '/root';
+                            const possiblePaths = [
+                                path.join(homeDir, '.local/share/kstars/gsc'),
+                                path.join(homeDir, '.var/app/org.kde.kstars/data/kstars/gsc'),
+                                '/usr/share/gsc',
+                                '/usr/share/gsc/gsc'
+                            ];
+                            let gscPath = '/usr/share/gsc';
+                            for (const p of possiblePaths) {
+                                if (fs.existsSync(p)) {
+                                    gscPath = p;
+                                    break;
+                                }
+                            }
+                            childEnv.GSCDAT = process.env.GSCDAT || gscPath;
                         }
                         const proc = spawn('indiserver', args, {
                             detached: true,

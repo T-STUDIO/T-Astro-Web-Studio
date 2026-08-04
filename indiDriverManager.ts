@@ -313,6 +313,9 @@ export class IndiDriverManager {
                         if (!childEnv.HOME) {
                             childEnv.HOME = process.env.HOME || '/home/pi' || '/root';
                         }
+                        if (!childEnv.GSCDAT) {
+                            childEnv.GSCDAT = process.env.GSCDAT || '/usr/share/gsc';
+                        }
                         const proc = spawn('indiserver', args, {
                             detached: true,
                             stdio: 'ignore',

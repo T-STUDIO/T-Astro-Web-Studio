@@ -22,9 +22,14 @@ export const setSampSkyCoordReceivedCallback = (cb: typeof onSampSkyCoordReceive
     }
 };
 
-export const syncSkyCoord = (ra: number, dec: number) => {
+export const syncSkyCoord = (ra?: number, dec?: number) => {
     if (sampService.isConnected()) {
-        sampService.sendSkyCoord(ra, dec);
+        const pos = getTelescopePosition();
+        if (pos) {
+            sampService.sendSkyCoord(pos.ra, pos.dec);
+        } else if (ra !== undefined && dec !== undefined) {
+            sampService.sendSkyCoord(ra, dec);
+        }
     }
 };
 

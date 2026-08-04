@@ -336,20 +336,13 @@ export class IndiDriverManager {
                         }
                         childEnv.GSCDAT = finalGscDat;
 
-                        // 明示的なGSC実行ファイルの環境変数も設定
-                        if (fs.existsSync('/usr/bin/gsc')) {
-                            childEnv.GSC = '/usr/bin/gsc';
-                            childEnv.GSC_BIN = '/usr/bin/gsc';
-                            childEnv.GSCBIN = '/usr/bin/gsc';
-                        }
-
                         const rawPath = childEnv.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
                         let paths = rawPath.split(':');
                         const extraPaths = [
-                            path.join(gscPath, 'bin'),
                             '/usr/bin',
                             '/bin',
                             '/usr/local/bin',
+                            path.join(gscPath, 'bin'),
                             '/usr/share/GSC/bin',
                             '/usr/share/gsc/bin'
                         ];

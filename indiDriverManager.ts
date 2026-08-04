@@ -290,36 +290,15 @@ export class IndiDriverManager {
                     // indiserver -p 7624 がデフォルト
                     const args = ['-p', '7624', '-v', ...selectedDrivers];
                     
-                    let useFlatpak = false;
-                    try {
-                        // flatpak コマンドが存在し、かつ org.kde.kstars がインストールされているか確認
-                        execSync('which flatpak', { stdio: 'ignore' });
-                        const list = execSync('flatpak list --columns=application').toString();
-                        if (list.includes('org.kde.kstars')) {
-                            useFlatpak = true;
-                        }
-                    } catch (e) {
-                        // flatpak がない、またはコマンド実行不可
-                    }
-
                     try {
                         const childEnv = { ...process.env };
                         if (!childEnv.HOME) {
                             childEnv.HOME = process.env.HOME || '/home/pi' || '/root';
                         }
 
-                        // ログインシェル（bash -l）経由で起動し、ユーザーのターミナル環境（PATH、HOME、GSCDAT等）を100%再現する
-                        const escapedArgs = args.map(arg => `'${arg.replace(/'/g, "'\\''")}'`).join(' ');
-                        let fullCommand = '';
-                        if (useFlatpak) {
-                            fullCommand = `flatpak run --filesystem=host --command=indiserver org.kde.kstars ${escapedArgs}`;
-                        } else {
-                            fullCommand = `indiserver ${escapedArgs}`;
-                        }
+                        console.log(`[IndiDriverManager] Spawning indiserver directly: indiserver ${args.join(' ')}`);
 
-                        console.log(`[IndiDriverManager] Spawning via login shell: bash -l -c "exec ${fullCommand}"`);
-
-                        const proc = spawn('bash', ['-l', '-c', `exec ${fullCommand}`], {
+                        const proc = spawn('indiserver', args, {
                             detached: true,
                             stdio: 'ignore',
                             env: childEnv

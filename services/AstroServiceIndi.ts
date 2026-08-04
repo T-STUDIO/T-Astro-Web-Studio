@@ -244,6 +244,30 @@ export const updateOffset = (offset: number) => {
     if (cam) setCameraOffset(cam, offset);
 };
 
+/**
+ * 撮影時にアクティブマウントの現在座標を取得し、カメラデバイスに送信して同期します。
+ * これにより、CCD Simulator 等が正しい座標の星空画像を生成できるようになります。
+ */
+const syncMountCoordinatesToCamera = (cam: string) => {
+    try {
+        const pos = getTelescopePosition();
+        if (pos) {
+            const raHours = pos.ra / 15;
+            const decDeg = pos.dec;
+            
+            // 安全のため、hasPropertyによる確認を介して、カメラがサポートする座標プロパティにマウントの現在位置を送信
+            if (DriverConnection.hasProperty(cam, 'EQUATORIAL_EOD_COORD')) {
+                DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
+            }
+            if (DriverConnection.hasProperty(cam, 'EQUATORIAL_COORD')) {
+                DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
+            }
+        }
+    } catch (error) {
+        console.error("[AstroService] Error syncing mount coordinates to camera:", error);
+    }
+};
+
 export const capturePreview = async (exp: number, gain: number, offset: number, isStream: boolean = false) => {
     const cam = DriverConnection.getActiveCamera();
     if (!cam) {
@@ -285,6 +309,9 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
 
     setCameraGain(cam, gain);
     setCameraOffset(cam, offset);
+    
+    // マウントの座標をカメラに同期
+    syncMountCoordinatesToCamera(cam);
     
     DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
     

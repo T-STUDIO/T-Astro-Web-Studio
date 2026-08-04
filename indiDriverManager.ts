@@ -343,25 +343,18 @@ export class IndiDriverManager {
                                 }
                             }
 
-                            if (useFlatpak) {
-                                if (found) {
-                                    if (gscPath.includes('.var/app/org.kde.kstars/data/kstars/gsc') || gscPath.includes('.local/share/kstars/gsc')) {
-                                        childEnv.GSCDAT = '.local/share/kstars/gsc';
-                                    } else {
-                                        childEnv.GSCDAT = gscPath;
-                                    }
-                                } else {
-                                    // Flatpak内部のデフォルトパスを使用するため設定を削除する
-                                    delete childEnv.GSCDAT;
-                                }
+                            if (found) {
+                                childEnv.GSCDAT = gscPath;
                             } else {
-                                if (!found) {
+                                if (useFlatpak) {
+                                    childEnv.GSCDAT = path.join(homeDir, '.var/app/org.kde.kstars/data/kstars/gsc');
+                                } else {
                                     gscPath = '/usr/share/GSC';
                                     if (!fs.existsSync(gscPath) && fs.existsSync('/usr/share/gsc')) {
                                         gscPath = '/usr/share/gsc';
                                     }
+                                    childEnv.GSCDAT = process.env.GSCDAT || gscPath;
                                 }
-                                childEnv.GSCDAT = process.env.GSCDAT || gscPath;
                             }
                         }
 
@@ -370,8 +363,19 @@ export class IndiDriverManager {
 
                         if (useFlatpak) {
                             spawnCmd = 'flatpak';
-                            spawnArgs = ['run', '--command=indiserver', 'org.kde.kstars', ...args];
-                            console.log(`[IndiDriverManager] Using Flatpak to spawn: flatpak run --command=indiserver org.kde.kstars ${args.join(' ')}`);
+                            const flatpakArgs = [
+                                'run',
+                                '--filesystem=host'
+                            ];
+                            if (childEnv.GSCDAT) {
+                                flatpakArgs.push(`--env=GSCDAT=${childEnv.GSCDAT}`);
+                            }
+                            if (childEnv.PATH) {
+                                flatpakArgs.push(`--env=PATH=${childEnv.PATH}`);
+                            }
+                            flatpakArgs.push('--command=indiserver', 'org.kde.kstars', ...args);
+                            spawnArgs = flatpakArgs;
+                            console.log(`[IndiDriverManager] Using Flatpak to spawn: flatpak ${flatpakArgs.join(' ')}`);
                         } else {
                             console.log(`[IndiDriverManager] Spawning: indiserver ${args.join(' ')}`);
                         }

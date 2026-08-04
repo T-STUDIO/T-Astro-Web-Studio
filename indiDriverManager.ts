@@ -308,25 +308,18 @@ export class IndiDriverManager {
                             childEnv.HOME = process.env.HOME || '/home/pi' || '/root';
                         }
 
-                        let spawnCmd = 'indiserver';
-                        let spawnArgs = args;
-
+                        // ログインシェル（bash -l）経由で起動し、ユーザーのターミナル環境（PATH、HOME、GSCDAT等）を100%再現する
+                        const escapedArgs = args.map(arg => `'${arg.replace(/'/g, "'\\''")}'`).join(' ');
+                        let fullCommand = '';
                         if (useFlatpak) {
-                            spawnCmd = 'flatpak';
-                            const flatpakArgs = [
-                                'run',
-                                '--filesystem=host',
-                                '--command=indiserver',
-                                'org.kde.kstars',
-                                ...args
-                            ];
-                            spawnArgs = flatpakArgs;
-                            console.log(`[IndiDriverManager] Using Flatpak to spawn: flatpak ${flatpakArgs.join(' ')}`);
+                            fullCommand = `flatpak run --filesystem=host --command=indiserver org.kde.kstars ${escapedArgs}`;
                         } else {
-                            console.log(`[IndiDriverManager] Spawning: indiserver ${args.join(' ')}`);
+                            fullCommand = `indiserver ${escapedArgs}`;
                         }
 
-                        const proc = spawn(spawnCmd, spawnArgs, {
+                        console.log(`[IndiDriverManager] Spawning via login shell: bash -l -c "exec ${fullCommand}"`);
+
+                        const proc = spawn('bash', ['-l', '-c', `exec ${fullCommand}`], {
                             detached: true,
                             stdio: 'ignore',
                             env: childEnv

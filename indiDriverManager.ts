@@ -1,6 +1,6 @@
 import { Request, Response, Application } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
-import { spawn, exec, ChildProcess } from 'child_process';
+import { spawn, exec, execSync, ChildProcess } from 'child_process';
 import net from 'net';
 import fs from 'fs';
 import path from 'path';
@@ -290,8 +290,19 @@ export class IndiDriverManager {
                     // indiserver -p 7624 がデフォルト
                     const args = ['-p', '7624', '-v', ...selectedDrivers];
                     
+                    let useFlatpak = false;
                     try {
-                        console.log(`[IndiDriverManager] Spawning: indiserver ${args.join(' ')}`);
+                        // flatpak コマンドが存在し、かつ org.kde.kstars がインストールされているか確認
+                        execSync('which flatpak', { stdio: 'ignore' });
+                        const list = execSync('flatpak list --columns=application').toString();
+                        if (list.includes('org.kde.kstars')) {
+                            useFlatpak = true;
+                        }
+                    } catch (e) {
+                        // flatpak がない、またはコマンド実行不可
+                    }
+
+                    try {
                         const childEnv = { ...process.env };
                         if (childEnv.PATH) {
                             const paths = childEnv.PATH.split(':');
@@ -318,19 +329,54 @@ export class IndiDriverManager {
                             const possiblePaths = [
                                 path.join(homeDir, '.local/share/kstars/gsc'),
                                 path.join(homeDir, '.var/app/org.kde.kstars/data/kstars/gsc'),
+                                '/usr/share/GSC',
                                 '/usr/share/gsc',
                                 '/usr/share/gsc/gsc'
                             ];
-                            let gscPath = '/usr/share/gsc';
+                            let gscPath = '';
+                            let found = false;
                             for (const p of possiblePaths) {
                                 if (fs.existsSync(p)) {
                                     gscPath = p;
+                                    found = true;
                                     break;
                                 }
                             }
-                            childEnv.GSCDAT = process.env.GSCDAT || gscPath;
+
+                            if (useFlatpak) {
+                                if (found) {
+                                    if (gscPath.includes('.var/app/org.kde.kstars/data/kstars/gsc') || gscPath.includes('.local/share/kstars/gsc')) {
+                                        childEnv.GSCDAT = '.local/share/kstars/gsc';
+                                    } else {
+                                        childEnv.GSCDAT = gscPath;
+                                    }
+                                } else {
+                                    // Flatpak内部のデフォルトパスを使用するため設定を削除する
+                                    delete childEnv.GSCDAT;
+                                }
+                            } else {
+                                if (!found) {
+                                    gscPath = '/usr/share/GSC';
+                                    if (!fs.existsSync(gscPath) && fs.existsSync('/usr/share/gsc')) {
+                                        gscPath = '/usr/share/gsc';
+                                    }
+                                }
+                                childEnv.GSCDAT = process.env.GSCDAT || gscPath;
+                            }
                         }
-                        const proc = spawn('indiserver', args, {
+
+                        let spawnCmd = 'indiserver';
+                        let spawnArgs = args;
+
+                        if (useFlatpak) {
+                            spawnCmd = 'flatpak';
+                            spawnArgs = ['run', '--command=indiserver', 'org.kde.kstars', ...args];
+                            console.log(`[IndiDriverManager] Using Flatpak to spawn: flatpak run --command=indiserver org.kde.kstars ${args.join(' ')}`);
+                        } else {
+                            console.log(`[IndiDriverManager] Spawning: indiserver ${args.join(' ')}`);
+                        }
+
+                        const proc = spawn(spawnCmd, spawnArgs, {
                             detached: true,
                             stdio: 'ignore',
                             env: childEnv

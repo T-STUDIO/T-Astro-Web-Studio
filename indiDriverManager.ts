@@ -346,15 +346,11 @@ export class IndiDriverManager {
                             if (found) {
                                 childEnv.GSCDAT = gscPath;
                             } else {
-                                if (useFlatpak) {
-                                    childEnv.GSCDAT = path.join(homeDir, '.var/app/org.kde.kstars/data/kstars/gsc');
-                                } else {
-                                    gscPath = '/usr/share/GSC';
-                                    if (!fs.existsSync(gscPath) && fs.existsSync('/usr/share/gsc')) {
-                                        gscPath = '/usr/share/gsc';
-                                    }
-                                    childEnv.GSCDAT = process.env.GSCDAT || gscPath;
+                                gscPath = '/usr/share/GSC';
+                                if (!fs.existsSync(gscPath) && fs.existsSync('/usr/share/gsc')) {
+                                    gscPath = '/usr/share/gsc';
                                 }
+                                childEnv.GSCDAT = process.env.GSCDAT || gscPath;
                             }
                         }
 
@@ -364,15 +360,11 @@ export class IndiDriverManager {
                         if (useFlatpak) {
                             spawnCmd = 'flatpak';
                             const flatpakArgs = [
-                                'run',
-                                '--filesystem=host'
+                                'run'
                             ];
-                            if (childEnv.GSCDAT) {
-                                flatpakArgs.push(`--env=GSCDAT=${childEnv.GSCDAT}`);
-                            }
-                            if (childEnv.PATH) {
-                                flatpakArgs.push(`--env=PATH=${childEnv.PATH}`);
-                            }
+                            // Flatpak内のコンテナから見えるGSCパス（.local/share/kstars/gsc）を設定
+                            const gscContainerPath = path.join(childEnv.HOME, '.local/share/kstars/gsc');
+                            flatpakArgs.push(`--env=GSCDAT=${gscContainerPath}`);
                             flatpakArgs.push('--command=indiserver', 'org.kde.kstars', ...args);
                             spawnArgs = flatpakArgs;
                             console.log(`[IndiDriverManager] Using Flatpak to spawn: flatpak ${flatpakArgs.join(' ')}`);

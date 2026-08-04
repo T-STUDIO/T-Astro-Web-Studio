@@ -255,13 +255,9 @@ const syncMountCoordinatesToCamera = (cam: string) => {
             const raHours = pos.ra / 15;
             const decDeg = pos.dec;
             
-            // 安全のため、hasPropertyによる確認を介して、カメラがサポートする座標プロパティにマウントの現在位置を送信
-            if (DriverConnection.hasProperty(cam, 'EQUATORIAL_EOD_COORD')) {
-                DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
-            }
-            if (DriverConnection.hasProperty(cam, 'EQUATORIAL_COORD')) {
-                DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
-            }
+            // カメラに対してマウントの現在位置を直接送信（シミュレータ等に座標を反映させるため、安全チェックなしで両方の標準座標プロパティを送信）
+            DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
+            DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
         }
     } catch (error) {
         console.error("[AstroService] Error syncing mount coordinates to camera:", error);

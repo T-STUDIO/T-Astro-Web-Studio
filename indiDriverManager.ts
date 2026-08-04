@@ -308,49 +308,6 @@ export class IndiDriverManager {
                             childEnv.HOME = process.env.HOME || '/home/pi' || '/root';
                         }
 
-                        const homeDir = childEnv.HOME || '/home/astrpi64' || '/home/pi' || '/root';
-                        const possiblePaths = [
-                            '/usr/share/GSC',
-                            '/usr/share/gsc',
-                            path.join(homeDir, '.local/share/kstars/gsc'),
-                            path.join(homeDir, '.var/app/org.kde.kstars/data/kstars/gsc'),
-                            '/usr/share/gsc/gsc'
-                        ];
-                        let gscPath = '';
-                        let found = false;
-                        for (const p of possiblePaths) {
-                            if (fs.existsSync(p)) {
-                                gscPath = p;
-                                found = true;
-                                break;
-                            }
-                        }
-
-                        if (!found) {
-                            gscPath = '/usr/share/GSC';
-                        }
-
-                        let finalGscDat = (process.env.GSCDAT && fs.existsSync(process.env.GSCDAT)) ? process.env.GSCDAT : gscPath;
-                        if (finalGscDat && !finalGscDat.endsWith('/')) {
-                            finalGscDat += '/';
-                        }
-                        childEnv.GSCDAT = finalGscDat;
-
-                        const rawPath = childEnv.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
-                        let paths = rawPath.split(':');
-                        const extraPaths = [
-                            '/usr/bin',
-                            '/bin',
-                            '/usr/local/bin',
-                            path.join(gscPath, 'bin'),
-                            '/usr/share/GSC/bin',
-                            '/usr/share/gsc/bin'
-                        ];
-                        // 重複を排除し、有効な extraPaths を最優先（先頭）に配置
-                        paths = paths.filter(p => p && !extraPaths.includes(p));
-                        const validExtra = extraPaths.filter(p => p && fs.existsSync(p));
-                        childEnv.PATH = [...validExtra, ...paths].join(':');
-
                         let spawnCmd = 'indiserver';
                         let spawnArgs = args;
 
@@ -358,22 +315,11 @@ export class IndiDriverManager {
                             spawnCmd = 'flatpak';
                             const flatpakArgs = [
                                 'run',
-                                '--filesystem=host'
+                                '--filesystem=host',
+                                '--command=indiserver',
+                                'org.kde.kstars',
+                                ...args
                             ];
-
-                            // カタログデータディレクトリが存在する場合、それをFlatpakコンテナにバインドマウント
-                            if (gscPath && fs.existsSync(gscPath)) {
-                                flatpakArgs.push(`--filesystem=${gscPath}:ro`);
-                                flatpakArgs.push(`--env=GSCDAT=${gscPath}`);
-                            } else {
-                                if (childEnv.GSCDAT) {
-                                    flatpakArgs.push(`--env=GSCDAT=${childEnv.GSCDAT}`);
-                                }
-                            }
-
-                            // PATHやGSCなどのホスト環境変数はFlatpakに渡さない（ドライバ起動不可やクラッシュを防ぐ）
-                            // Flatpak内の/app/bin/gscや/usr/bin/gscなどのコンテナ自前のバイナリを使用するため
-                            flatpakArgs.push('--command=indiserver', 'org.kde.kstars', ...args);
                             spawnArgs = flatpakArgs;
                             console.log(`[IndiDriverManager] Using Flatpak to spawn: flatpak ${flatpakArgs.join(' ')}`);
                         } else {

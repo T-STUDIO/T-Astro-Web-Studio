@@ -248,14 +248,14 @@ export const updateOffset = (offset: number) => {
  */
 const syncMountCoordinatesToCamera = (cam: string) => {
     try {
-        const pos = getTelescopePosition();
-        if (pos) {
-            const raHours = pos.ra / 15;
-            const decDeg = pos.dec;
-            
-            // カメラに対してマウントの現在位置を直接送信（シミュレータ等に座標を反映させるため、安全チェックなしで両方の標準座標プロパティを送信）
-            DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
-            DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_COORD'><oneNumber name='RA'>${raHours}</oneNumber><oneNumber name='DEC'>${decDeg}</oneNumber></newNumberVector>`);
+        const mount = DriverConnection.getActiveMount();
+        if (mount) {
+            const ra = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
+            const dec = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'DEC');
+            if (ra !== null && dec !== null) {
+                DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${ra}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`);
+                DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_COORD'><oneNumber name='RA'>${ra}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`);
+            }
         }
     } catch (error) {
         console.error("[AstroService] Error syncing mount coordinates to camera:", error);

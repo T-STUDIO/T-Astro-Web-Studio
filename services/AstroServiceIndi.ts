@@ -279,8 +279,14 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
         DriverConnection.clearBuffer();
     }
     
-    // CCD Simulator specific fixes for missing stars/parameters
+    // CCD Simulator specific fixes for missing stars/parameters and GSC activation
     if (cam === 'CCD Simulator') {
+        if (DriverConnection.hasProperty(cam, 'SIMULATOR_SETTINGS')) {
+            DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='SIMULATOR_SETTINGS'><oneSwitch name='SIM_GSC'>On</oneSwitch></newSwitchVector>`);
+        }
+        if (DriverConnection.hasProperty(cam, 'SIMULATOR_CATALOG')) {
+            DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='SIMULATOR_CATALOG'><oneSwitch name='GSC'>On</oneSwitch></newSwitchVector>`);
+        }
         if (DriverConnection.hasProperty(cam, 'TELESCOPE_TYPE')) {
             const focalLength = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH');
             const aperture = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_APERTURE');

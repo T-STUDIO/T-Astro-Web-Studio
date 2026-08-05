@@ -1,11 +1,41 @@
 export class IndiGscService {
   /**
-   * CCD Simulatorに対してKStarsと同等のGSC (Guide Star Catalog) 初期化・設定を一括適用します。
+   * CCD Simulatorに対してKStarsと同等のGSC (Guide Star Catalog) 初期化・設定シーケンスを一括送信適用します。
    */
-  public static applyGscSettings(device: string, driverConnection: any, mountDevice: string = 'Telescope Simulator'): void {
+  public static applyGscSettings(
+    device: string,
+    driverConnection: any,
+    mountDevice: string = 'Telescope Simulator',
+    locationData?: { longitude: number; latitude: number; elevation: number }
+  ): void {
     if (!device || !driverConnection) return;
 
-    // 1. ACTIVE_DEVICES (ACTIVE_TELESCOPE) に連動するマウントデバイス名を設定
+    // 1. Mount (Telescope Simulator) の時刻同期 (TIME_UTC)
+    if (driverConnection.hasProperty(mountDevice, 'TIME_UTC')) {
+      const now = new Date();
+      const isoTime = now.toISOString().split('.')[0];
+      const offset = (-now.getTimezoneOffset() / 60).toString();
+      driverConnection.sendRaw(
+        `<newTextVector device='${mountDevice}' name='TIME_UTC'>` +
+          `<oneText name='UTC'>${isoTime}</oneText>` +
+          `<oneText name='OFFSET'>${offset}</oneText>` +
+        `</newTextVector>`
+      );
+    }
+
+    // 2. Mount への観測地情報設定 (GEOGRAPHIC_COORD)
+    if (locationData && driverConnection.hasProperty(mountDevice, 'GEOGRAPHIC_COORD')) {
+      driverConnection.sendRaw(
+        `<newNumberVector device='${mountDevice}' name='GEOGRAPHIC_COORD'>` +
+          `<oneNumber name='LONG'>${locationData.longitude}</oneNumber>` +
+          `<oneNumber name='LAT'>${locationData.latitude}</oneNumber>` +
+          `<oneNumber name='ELEV'>${locationData.elevation}</oneNumber>` +
+        `</newNumberVector>`
+      );
+    }
+
+    // 3. ACTIVE_DEVICES (ACTIVE_TELESCOPE) の設定送信
+    // CCD Simulatorが撮影時に参照するマウントデバイスを指定します。
     if (driverConnection.hasProperty(device, 'ACTIVE_DEVICES')) {
       driverConnection.sendRaw(
         `<newTextVector device='${device}' name='ACTIVE_DEVICES'>` +
@@ -14,7 +44,7 @@ export class IndiGscService {
       );
     }
 
-    // 2. GSCカタログスイッチの有効化 (SIM_GSC / GSC)
+    // 4. GSC有効化スイッチの設定送信 (SIM_GSC / GSC)
     if (driverConnection.hasProperty(device, 'SIMULATOR_SETTINGS')) {
       driverConnection.sendRaw(
         `<newSwitchVector device='${device}' name='SIMULATOR_SETTINGS'><oneSwitch name='SIM_GSC'>On</oneSwitch></newSwitchVector>`
@@ -26,7 +56,7 @@ export class IndiGscService {
       );
     }
 
-    // 3. GSC実行ファイルパスおよびデータディレクトリパスの設定
+    // 5. GSCパスプロパティの設定送信 (GSC_EXEC / GSC_DIR)
     if (driverConnection.hasProperty(device, 'GSC_CONFIG')) {
       driverConnection.sendRaw(
         `<newTextVector device='${device}' name='GSC_CONFIG'>` +
@@ -42,5 +72,34 @@ export class IndiGscService {
         `</newTextVector>`
       );
     }
+
+    // 6. WCS (World Coordinate System) の有効化スイッチの設定送信
+    if (driverConnection.hasProperty(device, 'WCS_CONTROL')) {
+      driverConnection.sendRaw(
+        `<newSwitchVector device='${device}' name='WCS_CONTROL'><oneSwitch name='WCS_ENABLE'>On</oneSwitch></newSwitchVector>`
+      );
+    }
+
+    // 7. SCOPE_INFO (望遠鏡の光学情報) の同期設定送信
+    if (driverConnection.hasProperty(device, 'SCOPE_INFO')) {
+      const focalLength = driverConnection.getNumericValue(mountDevice, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') || 
+                          driverConnection.getNumericValue(mountDevice, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 1000;
+      const aperture = driverConnection.getNumericValue(mountDevice, 'TELESCOPE_INFO', 'TELESCOPE_APERTURE') || 
+                       driverConnection.getNumericValue(mountDevice, 'TELESCOPE_TYPE', 'TELESCOPE_APERTURE') || 200;
+      driverConnection.sendRaw(
+        `<newNumberVector device='${device}' name='SCOPE_INFO'>` +
+          `<oneNumber name='TELESCOPE_FOCAL_LENGTH'>${focalLength}</oneNumber>` +
+          `<oneNumber name='TELESCOPE_APERTURE'>${aperture}</oneNumber>` +
+        `</newNumberVector>`
+      );
+    }
+
+    // 8. UPLOAD_MODE (画像転送モード: クライアントのみ) の設定送信
+    if (driverConnection.hasProperty(device, 'UPLOAD_MODE')) {
+      driverConnection.sendRaw(
+        `<newSwitchVector device='${device}' name='UPLOAD_MODE'><oneSwitch name='UPLOAD_CLIENT'>On</oneSwitch></newSwitchVector>`
+      );
+    }
   }
 }
+

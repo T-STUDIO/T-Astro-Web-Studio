@@ -864,6 +864,11 @@ const parseIndiPacket = (packet: string) => {
 };
 
 const detectDevice = (device: INDIDevice, prop: string) => {
+    // すでに種別が確定している場合は、重複判定およびログ出力を回避するため即座に終了します
+    if (device.type && device.type !== 'Auxiliary') {
+        return;
+    }
+
     // 1. DRIVER_INFO項目のDRIVER_EXECの名称末尾を参照する確実な種別判定（最優先・絶対判定）
     const driverInfo = device.properties.get('DRIVER_INFO');
     if (driverInfo) {
@@ -914,7 +919,7 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         }
     }
 
-    // DRIVER_EXEC末尾参照等ですでに種別が確定している場合は、以降のプロパティ推測で上書きされないよう保持する
+    // DRIVER_EXEC末尾参照等ですでに種別が確定している場合は保持
     if (device.type && device.type !== 'Auxiliary') {
         return;
     }
@@ -922,11 +927,11 @@ const detectDevice = (device: INDIDevice, prop: string) => {
     const propUpper = prop.toUpperCase();
     const nameLower = device.name.toLowerCase();
 
-    // 2. カメラ・フォーカサー名を先行ガードし、シミュレータ等がプロパティ等でMountと誤分類されるのを防ぐ
-    const isCameraName = nameLower.includes('camera') || nameLower.includes('ccd') || nameLower.includes('qhy') || nameLower.includes('zwo') || nameLower.includes('asi') || nameLower.includes('webcam') || nameLower.includes('video') || nameLower.includes('cam');
+    const isCameraName = nameLower.includes('camera') || nameLower.includes('ccd') || nameLower.includes('qhy') || nameLower.includes('zwo') || nameLower.includes('asi') || nameLower.includes('webcam') || nameLower.includes('video') || nameLower.includes('cam') || nameLower.includes('guide');
     const isFocuserName = nameLower.includes('focuser') || nameLower.includes('focus') || nameLower.includes('eaf');
+    const isMountName = nameLower.includes('telescope') || nameLower.includes('mount') || nameLower.includes('skywatcher') || nameLower.includes('celestron') || nameLower.includes('ioptron') || nameLower.includes('eqmod') || nameLower.includes('alt-az') || nameLower.includes('lx200');
 
-    // 3. Camera property detection
+    // 2. 明確なカメラプロパティ（露光設定など）がある場合
     if (propUpper.includes('CCD_EXPOSURE') || propUpper.includes('CCD_FRAME') || propUpper.includes('CCD_IMAGE')) {
         device.type = 'Camera';
         if (!activeCameraDevice) {
@@ -936,63 +941,41 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         return;
     }
 
-    // 4. Mount / Telescope detection (カメラやフォーカサー名に合致しない場合のみ)
-    if (propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_') || propUpper.includes('MOUNT_')) {
-        if (!isCameraName && !isFocuserName) {
-            device.type = 'Mount';
-            if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
-            return;
-        }
+    // 3. 明確なマウントプロパティ（赤経・赤緯座標など）があり、カメラやフォーカサー名でない場合
+    if ((propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_EOD') || propUpper.includes('MOUNT_COORD')) && !isCameraName && !isFocuserName) {
+        device.type = 'Mount';
+        if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
+        return;
     }
 
-    // 5. Focuser detection
+    // 4. 明確なフォーカサープロパティ
     if (propUpper.includes('FOCUS_POSITION') || propUpper.includes('FOCUS_SPEED') || propUpper.includes('FOCUS_MOTION')) {
         device.type = 'Focuser';
         if (!activeFocuserDevice) activeFocuserDevice = device.name;
         return;
     }
 
-    // 6. FilterWheel detection
+    // 5. フィルターホイール
     if (propUpper.includes('FILTER_SLOT') || propUpper.includes('FILTER_NAME')) {
         device.type = 'FilterWheel';
         return;
     }
 
-    // 7. Dome detection
-    if (propUpper.includes('DOME_SHUTTER') || propUpper.includes('DOME_PARK')) {
-        device.type = 'Dome';
-        return;
-    }
-
-    // 8. Rotator detection
-    if (propUpper.includes('ROTATOR_ANGLE')) {
-        device.type = 'Rotator';
-        return;
-    }
-
-    // If type is already definitively set, keep it
-    if (device.type && device.type !== 'Auxiliary') {
-        return;
-    }
-
-    // 9. Infer from device name if not definitively identified by property
-    if (nameLower.includes('telescope') || nameLower.includes('mount') || nameLower.includes('skywatcher') || nameLower.includes('celestron') || nameLower.includes('ioptron') || nameLower.includes('eqmod') || nameLower.includes('alt-az') || nameLower.includes('lx200')) {
-        device.type = 'Mount';
-    } else if (isCameraName) {
+    // 6. デバイス名からの明確な判定
+    if (isCameraName) {
         device.type = 'Camera';
+        if (!activeCameraDevice) {
+            activeCameraDevice = device.name; log(`[INDI] Active Camera detected by name: ${device.name}`);
+            sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
+        }
+    } else if (isMountName) {
+        device.type = 'Mount';
+        if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected by name: ${device.name}`); }
     } else if (isFocuserName) {
         device.type = 'Focuser';
-    } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
-        device.type = 'FilterWheel';
-    } else if (nameLower.includes('dome') || nameLower.includes('roof')) {
-        device.type = 'Dome';
-    } else if (nameLower.includes('rotator')) {
-        device.type = 'Rotator';
-    } else if (nameLower.includes('sqm') || nameLower.includes('weather')) {
-        device.type = 'Weather';
-    } else if (nameLower.includes('heater')) {
-        device.type = 'Heater';
+        if (!activeFocuserDevice) activeFocuserDevice = device.name;
     } else {
+        // 判別できないものは安全のために AUX (Auxiliary) に設定する
         device.type = 'Auxiliary';
     }
 };

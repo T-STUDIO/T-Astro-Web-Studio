@@ -3,6 +3,7 @@ import { CelestialObject, MountSpeed, LocationData, TelescopePosition } from '..
 import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import * as DriverConnection from './DriverConnection';
 import { BlobTransportService } from './BlobTransportService';
+import { IndiGscService } from './IndiGscService';
 
 import * as sampService from './sampService';
 
@@ -281,25 +282,7 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     
     // CCD Simulator specific fixes for missing stars/parameters and GSC activation
     if (cam === 'CCD Simulator') {
-        if (DriverConnection.hasProperty(cam, 'SIMULATOR_SETTINGS')) {
-            DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='SIMULATOR_SETTINGS'><oneSwitch name='SIM_GSC'>On</oneSwitch></newSwitchVector>`);
-        }
-        if (DriverConnection.hasProperty(cam, 'SIMULATOR_CATALOG')) {
-            DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='SIMULATOR_CATALOG'><oneSwitch name='GSC'>On</oneSwitch></newSwitchVector>`);
-        }
-        if (DriverConnection.hasProperty(cam, 'TELESCOPE_TYPE')) {
-            const focalLength = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH');
-            const aperture = DriverConnection.getNumericValue(cam, 'TELESCOPE_TYPE', 'TELESCOPE_APERTURE');
-            
-            if (focalLength === 0 || focalLength === null) {
-                console.log("[AstroService] Setting default focal length for CCD Simulator");
-                DriverConnection.updateDeviceSetting(cam, 'TELESCOPE_TYPE', { 'TELESCOPE_FOCAL_LENGTH': 1000 });
-            }
-            if (aperture === 0 || aperture === null) {
-                console.log("[AstroService] Setting default aperture for CCD Simulator");
-                DriverConnection.updateDeviceSetting(cam, 'TELESCOPE_TYPE', { 'TELESCOPE_APERTURE': 100 });
-            }
-        }
+        IndiGscService.applyGscSettings(cam, DriverConnection);
     }
 
     // 以前の安定したコードに近い形に戻す。過剰な待機を削除。

@@ -27,8 +27,6 @@ export const syncSkyCoord = (ra?: number, dec?: number) => {
         const pos = getTelescopePosition();
         if (pos) {
             sampService.sendSkyCoord(pos.ra, pos.dec);
-        } else if (ra !== undefined && dec !== undefined) {
-            sampService.sendSkyCoord(ra, dec);
         }
     }
 };
@@ -159,13 +157,8 @@ export const syncToCoordinates = async (ra: number, dec: number) => {
 // Helper: Get Current Telescope Coordinates (Instant)
 export const getTelescopePosition = (): TelescopePosition | null => {
     const mount = DriverConnection.getActiveMount();
-    if (!mount) {
-        const sim = DriverConnection.getSimulatorMock();
-        if (sim.connected) {
-            return null; 
-        }
-        return null;
-    }
+    if (!mount) return null;
+
     const raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
     const decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'DEC');
     

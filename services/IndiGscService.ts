@@ -10,7 +10,16 @@ export class IndiGscService {
   ): void {
     if (!device || !driverConnection) return;
 
-    // 1. Mount (Telescope Simulator) の時刻同期 (TIME_UTC)
+    // 1. CCD Simulator への連動マウント指定 (ACTIVE_DEVICES)
+    if (driverConnection.hasProperty(device, 'ACTIVE_DEVICES')) {
+      driverConnection.sendRaw(
+        `<newTextVector device='${device}' name='ACTIVE_DEVICES'>` +
+          `<oneText name='ACTIVE_TELESCOPE'>${mountDevice}</oneText>` +
+        `</newTextVector>`
+      );
+    }
+
+    // 2. Mount (Telescope Simulator) の時刻同期 (TIME_UTC)
     if (driverConnection.hasProperty(mountDevice, 'TIME_UTC')) {
       const now = new Date();
       const isoTime = now.toISOString().split('.')[0];
@@ -23,7 +32,7 @@ export class IndiGscService {
       );
     }
 
-    // 2. Mount への観測地情報設定 (GEOGRAPHIC_COORD)
+    // 3. Mount への観測地情報設定 (GEOGRAPHIC_COORD)
     if (locationData && driverConnection.hasProperty(mountDevice, 'GEOGRAPHIC_COORD')) {
       driverConnection.sendRaw(
         `<newNumberVector device='${mountDevice}' name='GEOGRAPHIC_COORD'>` +
@@ -34,17 +43,7 @@ export class IndiGscService {
       );
     }
 
-    // 3. ACTIVE_DEVICES (ACTIVE_TELESCOPE) の設定送信
-    // CCD Simulatorが撮影時に参照するマウントデバイスを指定します。
-    if (driverConnection.hasProperty(device, 'ACTIVE_DEVICES')) {
-      driverConnection.sendRaw(
-        `<newTextVector device='${device}' name='ACTIVE_DEVICES'>` +
-          `<oneText name='ACTIVE_TELESCOPE'>${mountDevice}</oneText>` +
-        `</newTextVector>`
-      );
-    }
-
-    // 4. GSC有効化スイッチの設定送信 (SIM_GSC / GSC)
+    // 4. GSC有効化スイッチおよび設定送信 (SIMULATOR_SETTINGS / SIMULATOR_CATALOG)
     if (driverConnection.hasProperty(device, 'SIMULATOR_SETTINGS')) {
       driverConnection.sendRaw(
         `<newSwitchVector device='${device}' name='SIMULATOR_SETTINGS'><oneSwitch name='SIM_GSC'>On</oneSwitch></newSwitchVector>`
@@ -56,7 +55,7 @@ export class IndiGscService {
       );
     }
 
-    // 5. GSCパスプロパティの設定送信 (GSC_EXEC / GSC_DIR)
+    // 5. GSCパスプロパティの設定送信 (GSC_CONFIG)
     if (driverConnection.hasProperty(device, 'GSC_CONFIG')) {
       driverConnection.sendRaw(
         `<newTextVector device='${device}' name='GSC_CONFIG'>` +
@@ -73,14 +72,7 @@ export class IndiGscService {
       );
     }
 
-    // 6. WCS (World Coordinate System) の有効化スイッチの設定送信
-    if (driverConnection.hasProperty(device, 'WCS_CONTROL')) {
-      driverConnection.sendRaw(
-        `<newSwitchVector device='${device}' name='WCS_CONTROL'><oneSwitch name='WCS_ENABLE'>On</oneSwitch></newSwitchVector>`
-      );
-    }
-
-    // 7. SCOPE_INFO (望遠鏡の光学情報) の同期設定送信
+    // 6. SCOPE_INFO (望遠鏡の光学情報: 焦点距離・口径) の同期設定送信
     if (driverConnection.hasProperty(device, 'SCOPE_INFO')) {
       const focalLength = driverConnection.getNumericValue(mountDevice, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') || 
                           driverConnection.getNumericValue(mountDevice, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 1000;
@@ -94,7 +86,21 @@ export class IndiGscService {
       );
     }
 
-    // 8. UPLOAD_MODE (画像転送モード: クライアントのみ) の設定送信
+    // 7. WCS (World Coordinate System) の有効化スイッチの設定送信
+    if (driverConnection.hasProperty(device, 'WCS_CONTROL')) {
+      driverConnection.sendRaw(
+        `<newSwitchVector device='${device}' name='WCS_CONTROL'><oneSwitch name='WCS_ENABLE'>On</oneSwitch></newSwitchVector>`
+      );
+    }
+
+    // 8. CCD_ROTATION (カメラ回転角度: KStarsデフォルト180度) の設定送信
+    if (driverConnection.hasProperty(device, 'CCD_ROTATION')) {
+      driverConnection.sendRaw(
+        `<newNumberVector device='${device}' name='CCD_ROTATION'><oneNumber name='CCD_ROTATION_VALUE'>180</oneNumber></newNumberVector>`
+      );
+    }
+
+    // 9. UPLOAD_MODE (画像転送モード: クライアントのみ) の設定送信
     if (driverConnection.hasProperty(device, 'UPLOAD_MODE')) {
       driverConnection.sendRaw(
         `<newSwitchVector device='${device}' name='UPLOAD_MODE'><oneSwitch name='UPLOAD_CLIENT'>On</oneSwitch></newSwitchVector>`

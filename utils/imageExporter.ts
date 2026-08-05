@@ -12,7 +12,14 @@ const padString = (str: string, length: number = 80): string => {
 /**
  * FITSヘッダーの生成 (FITS規格および天文標準に準拠)
  */
-const createFitsHeader = (width: number, height: number, wcs?: CalibrationData | null, location?: LocationData | null, flipY: boolean = false): string => {
+const createFitsHeader = (
+    width: number, 
+    height: number, 
+    wcs?: CalibrationData | null, 
+    location?: LocationData | null, 
+    flipY: boolean = false,
+    mountPosition?: { ra: number, dec: number } | null
+): string => {
     const cards: string[] = [];
     cards.push(padString("SIMPLE  =                    T / Standard FITS format"));
     cards.push(padString("BITPIX  =                    8 / Character or unsigned binary integer"));
@@ -21,6 +28,24 @@ const createFitsHeader = (width: number, height: number, wcs?: CalibrationData |
     cards.push(padString(`NAXIS2  =                 ${height.toString().padStart(4, ' ')} / Image height`));
     cards.push(padString("NAXIS3  =                    3 / RGB planes"));
     cards.push(padString("EXTEND  =                    T / Extensions are permitted"));
+
+    // Base coordinates determination (Degrees)
+    let baseRa: number | null = null;
+    let baseDec: number | null = null;
+
+    if (wcs) {
+        baseRa = wcs.ra;
+        baseDec = wcs.dec;
+    } else if (mountPosition) {
+        baseRa = mountPosition.ra;
+        baseDec = mountPosition.dec;
+    }
+
+    // Write standard RA, DEC keywords directly from device/WCS without any custom conversion logic
+    if (baseRa !== null && baseDec !== null) {
+        cards.push(padString(`RA      = ${baseRa.toFixed(8).padStart(20, ' ')} / Right Ascension`));
+        cards.push(padString(`DEC     = ${baseDec.toFixed(8).padStart(20, ' ')} / Declination`));
+    }
 
     // --- WCS Metadata (Celestial Coordinates - Standard TAN projection) ---
     if (wcs) {
@@ -93,7 +118,7 @@ const createFitsHeader = (width: number, height: number, wcs?: CalibrationData |
     return headerStr;
 };
 
-export const exportFITS = async (canvas: HTMLCanvasElement, wcs?: CalibrationData | null, location?: LocationData | null): Promise<Blob> => {
+export const exportFITS = async (canvas: HTMLCanvasElement, wcs?: CalibrationData | null, location?: LocationData | null, mountPosition?: { ra: number, dec: number } | null): Promise<Blob> => {
     const width = canvas.width;
     const height = canvas.height;
     const ctx = canvas.getContext('2d');
@@ -101,7 +126,7 @@ export const exportFITS = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
     const imgData = ctx.getImageData(0,0, width, height);
     const data = imgData.data;
 
-    const headerStr = createFitsHeader(width, height, wcs, location, true);
+    const headerStr = createFitsHeader(width, height, wcs, location, true, mountPosition);
     const headerEncoder = new TextEncoder();
     const headerBytes = headerEncoder.encode(headerStr);
     
@@ -139,7 +164,7 @@ const writeIFD = (view: DataView, offset: number, tag: number, type: number, cou
 /**
  * TIFFの保存 (ASTROTIFF推奨形式に準拠)
  */
-export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationData | null, location?: LocationData | null): Promise<Blob> => {
+export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationData | null, location?: LocationData | null, mountPosition?: { ra: number, dec: number } | null): Promise<Blob> => {
     const width = canvas.width;
     const height = canvas.height;
     const ctx = canvas.getContext('2d');
@@ -148,9 +173,9 @@ export const exportTIFF = async (canvas: HTMLCanvasElement, wcs?: CalibrationDat
 
     // --- ASTROTIFF ImageDescription (天体用構造化メタデータ) の組み立て ---
     // AstroTIFF 1.0 規格における ImageDescription (Tag 270) への FITS ヘッダーの埋め込みは、
-    // CCDciel や ASTAP 等の一般的なパーサーの改行（CRLF）処理に適合させるため、改行コード（\r\n）で区切られた 80文字固定長カードの連続文字列として構築します。
+    // CCDciel や ASTAP 等 of 天体ツールの改行（CRLF）処理に適合させるため、改行コード（\r\n）で区切られた 80文字固定長カードの連続文字列として構築します。
     // WCSが提供されない場合であっても、常に画像サイズ、時刻、観測地、その他基本メタデータを含む有効なFITSヘッダーを組み立てることで、ヘッダー情報が空になるのを防止します。
-    const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+    const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true, mountPosition);
     const lines: string[] = [];
     for (let i = 0; i < headerStr.length; i += 80) {
         const card = headerStr.substring(i, i + 80);
@@ -266,15 +291,16 @@ export const exportJPEG = (
     canvas: HTMLCanvasElement, 
     originalExifStr: string | null,
     wcs?: CalibrationData | null,
-    location?: LocationData | null
+    location?: LocationData | null,
+    mountPosition?: { ra: number, dec: number } | null
 ): Blob => {
     const dataURL = canvas.toDataURL("image/jpeg", 0.95);
     let blobBytes: Uint8Array | null = null;
     
     let wcsCommentText = "";
-    if (wcs) {
+    if (wcs || mountPosition) {
         // Pass flipY = true so the FITS WCS header maps standard image coordinate space to the celestial sphere
-        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true, mountPosition);
         const lines: string[] = [];
         for (let i = 0; i < headerStr.length; i += 80) {
             const card = headerStr.substring(i, i + 80).trim();
@@ -463,17 +489,22 @@ function injectPngMetadata(pngBytes: Uint8Array, keyword: string, text: string):
 /**
  * PNGの保存 (Aladin等で利用可能なDescription / CommentへのWCSメタデータ注入)
  */
-export const exportPNG = async (canvas: HTMLCanvasElement, wcs?: CalibrationData | null, location?: LocationData | null): Promise<Blob> => {
+export const exportPNG = async (
+    canvas: HTMLCanvasElement, 
+    wcs?: CalibrationData | null, 
+    location?: LocationData | null,
+    mountPosition?: { ra: number, dec: number } | null
+): Promise<Blob> => {
     const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob((b) => resolve(b), "image/png");
     });
     if (!blob) throw new Error("PNG conversion failed");
     
     let wcsCommentText = "";
-    if (wcs) {
+    if (wcs || mountPosition) {
         // Aladin やその他天体ツールが WCS 情報を確実に自動同期できるように、
         // 各レコードが 80 文字固定長で改行コード \r\n で区切られた WCS 文字列を生成します。
-        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true);
+        const headerStr = createFitsHeader(canvas.width, canvas.height, wcs, location, true, mountPosition);
         const lines: string[] = [];
         for (let i = 0; i < headerStr.length; i += 80) {
             const card = headerStr.substring(i, i + 80);

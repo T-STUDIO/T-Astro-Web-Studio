@@ -60,14 +60,14 @@ export class IndiGscService {
       driverConnection.sendRaw(
         `<newTextVector device='${device}' name='GSC_CONFIG'>` +
           `<oneText name='GSC_EXEC'>/usr/bin/gsc</oneText>` +
-          `<oneText name='GSC_DIR'>/usr/share/gsc</oneText>` +
+          `<oneText name='GSC_DIR'>/usr/share/GSC</oneText>` +
         `</newTextVector>`
       );
     } else if (driverConnection.hasProperty(device, 'SIMULATOR_SETTINGS')) {
       driverConnection.sendRaw(
         `<newTextVector device='${device}' name='SIMULATOR_SETTINGS'>` +
           `<oneText name='GSC_EXEC'>/usr/bin/gsc</oneText>` +
-          `<oneText name='GSC_DIR'>/usr/share/gsc</oneText>` +
+          `<oneText name='GSC_DIR'>/usr/share/GSC</oneText>` +
         `</newTextVector>`
       );
     }

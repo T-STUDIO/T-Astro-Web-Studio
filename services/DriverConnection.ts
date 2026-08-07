@@ -319,7 +319,12 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     if (socket !== ws) return;
                     log('INDI WebSocket Open. Validating backend server bridge state...');
                     
-                    sendRaw('<enableBLOB>Never</enableBLOB>');
+                    if (mainChannelBlobsDisabled) {
+                        sendRaw('<enableBLOB>Never</enableBLOB>');
+                    } else {
+                        sendRaw('<enableBLOB>Also</enableBLOB>');
+                    }
+                    
                     sendRaw('<getProperties version="1.7" />');
                     
                     // 350msの接続検証用ホールドバリア。

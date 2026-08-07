@@ -115,6 +115,13 @@ export const getActiveMount = () => activeMountDevice;
 export const getActiveCamera = () => activeCameraDevice;
 export const setActiveCamera = (devName: string) => {
     activeCameraDevice = devName;
+    if (devName && discoveredIndiDevices.has(devName)) {
+        if (mainChannelBlobsDisabled) {
+            sendRaw(`<enableBLOB device='${devName}'>Never</enableBLOB>`);
+        } else {
+            sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
+        }
+    }
     scheduleUpdate();
 };
 export const getActiveFocuser = () => activeFocuserDevice;

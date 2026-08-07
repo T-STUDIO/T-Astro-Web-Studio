@@ -44,6 +44,7 @@ let onMountTimeUpdate: ((time: Date) => void) | null = null;
  */
 export const triggerExternalImageReceived = (url: string, format: string, metadata?: any) => {
     if (onImageReceived) onImageReceived(url, format, metadata);
+    if (onImageProcessed) onImageProcessed();
 };
 
 export const setIndiDeviceCallback = (cb: typeof onIndiDeviceUpdate) => { 
@@ -114,6 +115,13 @@ export const getActiveMount = () => activeMountDevice;
 export const getActiveCamera = () => activeCameraDevice;
 export const setActiveCamera = (devName: string) => {
     activeCameraDevice = devName;
+    if (devName && discoveredIndiDevices.has(devName)) {
+        if (mainChannelBlobsDisabled) {
+            sendRaw(`<enableBLOB device='${devName}'>Never</enableBLOB>`);
+        } else {
+            sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
+        }
+    }
     scheduleUpdate();
 };
 export const getActiveFocuser = () => activeFocuserDevice;

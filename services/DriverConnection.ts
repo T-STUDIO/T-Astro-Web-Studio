@@ -114,9 +114,6 @@ export const getActiveMount = () => activeMountDevice;
 export const getActiveCamera = () => activeCameraDevice;
 export const setActiveCamera = (devName: string) => {
     activeCameraDevice = devName;
-    if (devName && discoveredIndiDevices.has(devName)) {
-        sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
-    }
     scheduleUpdate();
 };
 export const getActiveFocuser = () => activeFocuserDevice;
@@ -322,12 +319,7 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     if (socket !== ws) return;
                     log('INDI WebSocket Open. Validating backend server bridge state...');
                     
-                    if (mainChannelBlobsDisabled) {
-                        sendRaw('<enableBLOB>Never</enableBLOB>');
-                    } else {
-                        sendRaw('<enableBLOB>Also</enableBLOB>');
-                    }
-                    
+                    sendRaw('<enableBLOB>Never</enableBLOB>');
                     sendRaw('<getProperties version="1.7" />');
                     
                     // 350msの接続検証用ホールドバリア。
@@ -835,7 +827,6 @@ const parseIndiPacket = (packet: string) => {
                 device.connected = isConn;
                 if (isConn) {
                     log(`[INDI] ${devName} Connected.`);
-                    if (device.type === 'Camera') sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
                 }
             }
         }
@@ -909,7 +900,6 @@ const detectDevice = (device: INDIDevice, prop: string) => {
                 if (determinedType === 'Camera' && !activeCameraDevice) {
                     activeCameraDevice = device.name;
                     log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
-                    sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
                 }
                 if (determinedType === 'Focuser' && !activeFocuserDevice) {
                     activeFocuserDevice = device.name;
@@ -936,7 +926,6 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         device.type = 'Camera';
         if (!activeCameraDevice) {
             activeCameraDevice = device.name; log(`[INDI] Active Camera detected: ${device.name}`);
-            sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
         }
         return;
     }
@@ -966,7 +955,6 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         device.type = 'Camera';
         if (!activeCameraDevice) {
             activeCameraDevice = device.name; log(`[INDI] Active Camera detected by name: ${device.name}`);
-            sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
         }
     } else if (isMountName) {
         device.type = 'Mount';

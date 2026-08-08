@@ -447,9 +447,6 @@ export const setVideoStream = async (enabled: boolean) => {
     if (cam) {
         DriverConnection.refreshIndiDevices();
         if (enabled) {
-             // Ensure LOOP is OFF when starting Video Stream
-             stopLoop();
-             
              DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
                  const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
@@ -460,12 +457,6 @@ export const setVideoStream = async (enabled: boolean) => {
         }
         await sleep(100); 
         DriverConnection.updateDeviceSetting(cam, 'CCD_VIDEO_STREAM', { 'STREAM_ON': enabled, 'STREAM_OFF': !enabled });
-        if (!enabled) {
-             await sleep(500);
-             DriverConnection.clearBuffer();
-        } else {
-             await sleep(500);
-        }
     }
 };
 

@@ -10,8 +10,6 @@ export class BlobTransportService {
     private socket: WebSocket | null = null;
     private recvChunks: Uint8Array[] = [];
     private recvLength = 0;
-    private isBlobMode = false;
-    private blobExpectedTotalLength = 0;
 
     private readonly BLOB_START = new TextEncoder().encode('<oneBLOB');
     private readonly BLOB_END = new TextEncoder().encode('</oneBLOB>');
@@ -22,6 +20,10 @@ export class BlobTransportService {
             BlobTransportService.instance = new BlobTransportService();
         }
         return BlobTransportService.instance;
+    }
+
+    public enableBlobForDevice(devName: string) {
+        this.sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
     }
 
     public async connect(settings: ConnectionSettings): Promise<boolean> {
@@ -82,7 +84,6 @@ export class BlobTransportService {
         }
         this.recvChunks = [];
         this.recvLength = 0;
-        this.isBlobMode = false;
     }
 
     private sendRaw(xml: string) {
@@ -119,17 +120,6 @@ export class BlobTransportService {
         const decoder = new TextDecoder("utf-8");
         
         while (this.recvLength > 0) {
-            if (this.isBlobMode) {
-                if (this.recvLength >= this.blobExpectedTotalLength) {
-                    const full = this.flattenChunks();
-                    if (this.processSingleBlock(full, decoder)) {
-                        this.isBlobMode = false;
-                        continue;
-                    }
-                }
-                break;
-            }
-
             const full = this.flattenChunks();
             const startIdx = this.findSequence(full, this.BLOB_START);
             if (startIdx === -1) {
@@ -148,9 +138,9 @@ export class BlobTransportService {
                 continue;
             }
 
-            const declaredSize = parseInt(sizeMatch[1], 10);
-            this.blobExpectedTotalLength = headerEndIdx + 1 + declaredSize + this.BLOB_END.length;
-            this.isBlobMode = true;
+            if (!this.processSingleBlock(full, decoder)) {
+                break;
+            }
         }
     }
 

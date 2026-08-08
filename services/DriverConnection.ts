@@ -77,8 +77,6 @@ let currentSettings: ConnectionSettings = { driver: 'Simulator', host: '', port:
 // --- Optimized Chunked Buffering State ---
 let recvChunks: Uint8Array[] = [];
 let recvLength = 0; 
-let isBlobMode = false;
-let blobExpectedTotalLength = 0; 
 
 // Constants for Parsing
 const ONE_BLOB_START = new TextEncoder().encode('<oneBLOB');
@@ -438,8 +436,6 @@ const cleanup = () => {
     messageBuffer = "";
     recvChunks = [];
     recvLength = 0;
-    isBlobMode = false;
-    blobExpectedTotalLength = 0;
     if (updateTimeout) {
         clearTimeout(updateTimeout);
         updateTimeout = null;
@@ -451,8 +447,6 @@ export const clearBuffer = () => {
     recvChunks = [];
     recvLength = 0;
     messageBuffer = "";
-    isBlobMode = false;
-    blobExpectedTotalLength = 0;
     log("[Driver] Buffers flushed.");
 };
 
@@ -541,20 +535,7 @@ const processBuffer = () => {
     while(iterations < 20) {
         iterations++;
         if (recvLength === 0) return;
-        if (isBlobMode) {
-            if (recvLength >= blobExpectedTotalLength) {
-                const fullBuffer = flattenChunks(recvChunks, recvLength);
-                const success = processSingleBlock(fullBuffer, decoder);
-                if (success) {
-                    isBlobMode = false; blobExpectedTotalLength = 0; return;
-                } else {
-                    recvChunks = [fullBuffer]; recvLength = fullBuffer.length;
-                    if (recvLength > blobExpectedTotalLength + 5000000) {
-                        recvChunks = []; recvLength = 0; isBlobMode = false; blobExpectedTotalLength = 0;
-                    }
-                }
-            } else { return; }
-        }
+        
         const peekLen = Math.min(recvLength, 2048); 
         let headBuffer: Uint8Array;
         if (recvChunks[0].length >= peekLen) { headBuffer = recvChunks[0].slice(0, peekLen); } 
@@ -597,13 +578,11 @@ const processBuffer = () => {
             recvChunks = [rest]; recvLength = rest.length;
             continue;
         }
-        const declaredSize = parseInt(sizeMatch[1], 10);
-        const minNeeded = headerEndIdx + 1 + declaredSize + BLOB_END_TAG.length;
         const fullBuffer = flattenChunks(recvChunks, recvLength);
         const success = processSingleBlock(fullBuffer, decoder);
         if (!success) {
             recvChunks = [fullBuffer]; recvLength = fullBuffer.length;
-            isBlobMode = true; blobExpectedTotalLength = minNeeded; return;
+            return;
         }
     }
 };

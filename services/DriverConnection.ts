@@ -1,5 +1,6 @@
 
 import { ConnectionSettings, INDIDevice, INDIPropertyState, INDIPropertyType, INDISwitchRule, INDIPermission, LocationData, TelescopePosition, DriverType, INDIVector, INDIElement, DeviceType } from '../types';
+import { BlobTransportService } from './BlobTransportService';
 
 let debugLogs: string[] = [];
 let onLogCallback: ((entry: string) => void) | null = null;
@@ -50,6 +51,7 @@ let onMountTimeUpdate: ((time: Date) => void) | null = null;
  */
 export const triggerExternalImageReceived = (url: string, format: string, metadata?: any) => {
     if (onImageReceived) onImageReceived(url, format, metadata);
+    if (onImageProcessed) onImageProcessed();
 };
 
 export const setIndiDeviceCallback = (cb: typeof onIndiDeviceUpdate) => { 
@@ -123,6 +125,7 @@ export const setActiveCamera = (devName: string) => {
     if (devName && discoveredIndiDevices.has(devName)) {
         if (mainChannelBlobsDisabled) {
             sendRaw(`<enableBLOB device='${devName}'>Never</enableBLOB>`);
+            BlobTransportService.getInstance().enableBlobForDevice(devName);
         } else {
             sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
         }
@@ -626,7 +629,12 @@ const processSingleBlock = (buffer: Uint8Array, decoder: TextDecoder): boolean =
         const deviceParams = getCameraParams(devName);
         if (devName === activeCameraDevice) Object.assign(activeCameraParams, deviceParams);
         const res = rawFitsToDisplay(bufferCopy, format, activeDebayerPattern, deviceParams);
-        if (res.url && onImageReceived) onImageReceived(res.url, format, res.headers);
+        if (res.url && onImageReceived) {
+            onImageReceived(res.url, format, res.headers);
+        }
+        if (onImageProcessed) {
+            onImageProcessed();
+        }
         const packetEnd = closeIdx + BLOB_END_TAG.length;
         if (packetEnd < buffer.length) {
             const remainder = buffer.slice(packetEnd);
@@ -842,6 +850,7 @@ const parseIndiPacket = (packet: string) => {
                     if (device.type === 'Camera') {
                         if (mainChannelBlobsDisabled) {
                             sendRaw(`<enableBLOB device='${devName}'>Never</enableBLOB>`);
+                            BlobTransportService.getInstance().enableBlobForDevice(devName);
                         } else {
                             sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
                         }
@@ -923,6 +932,7 @@ const detectDevice = (device: INDIDevice, prop: string) => {
                         log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
                         if (mainChannelBlobsDisabled) {
                             sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
+                            BlobTransportService.getInstance().enableBlobForDevice(device.name);
                         } else {
                             sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
                         }
@@ -962,6 +972,7 @@ const detectDevice = (device: INDIDevice, prop: string) => {
             log(`[INDI] Active Camera detected: ${device.name}`);
             if (mainChannelBlobsDisabled) {
                 sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
+                BlobTransportService.getInstance().enableBlobForDevice(device.name);
             } else {
                 sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
             }
@@ -1097,26 +1108,15 @@ export const rawFitsToDisplay = (
 ): { url: string | null, headers: Record<string,any> } => {
     try {
         let u8 = new Uint8Array(buffer);
-        // Ensure that we work with a precise slice of the ArrayBuffer, resetting any offset to 0
-        const normalizedBuffer = buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-        u8 = new Uint8Array(normalizedBuffer);
-        buffer = normalizedBuffer;
         const formatLower = format.toLowerCase();
         let jpegStart = -1;
         
         // Prioritize dimensions from deviceParams (INDI properties)
         let localParams = deviceParams ? { ...deviceParams } : { width: 0, height: 0, bpp: 8, format: '', pixelSize: 0 };
-        
-        let expectedRawSize = (localParams.width > 0) ? localParams.width * localParams.height : 0;
-        let scanLimit = 2048; 
-        if (expectedRawSize > 0) {
-            if (buffer.byteLength < expectedRawSize * 0.8) scanLimit = Math.min(u8.length, 131072);
-            else scanLimit = 1024;
-        } else { if (buffer.byteLength < 500000) scanLimit = u8.length; }
 
         if (u8.length > 2 && u8[0] === 0xFF && u8[1] === 0xD8) jpegStart = 0;
         else {
-            const limit = Math.min(u8.length - 1, scanLimit);
+            const limit = Math.min(u8.length - 1, 2048);
             for(let i = 0; i < limit; i++) { if (u8[i] === 0xFF && u8[i+1] === 0xD8) { jpegStart = i; break; } }
         }
         if (jpegStart !== -1) {
@@ -1182,10 +1182,15 @@ export const rawFitsToDisplay = (
                     offset += 2880; if (endFound) { parsed = true; break; }
                 }
                 if (parsed) {
-                    const width = headers['NAXIS1'] as number; const height = headers['NAXIS2'] as number;
-                    const bitpix = headers['BITPIX'] as number; const bzero = (headers['BZERO'] as number) || 0;
-                    const bscale = (headers['BSCALE'] as number) || 1; const naxis3 = (headers['NAXIS3'] as number) || 0;
-                    const numPixels = width * height; const numChannels = (naxis3 === 3) ? 3 : 1;
+                    const width = headers['NAXIS1'] as number;
+                    const height = headers['NAXIS2'] as number;
+                    const bitpix = headers['BITPIX'] as number;
+                    const bzero = (headers['BZERO'] as number) || 0;
+                    const bscale = (headers['BSCALE'] as number) || 1;
+                    const naxis3 = (headers['NAXIS3'] as number) || 0;
+                    const numPixels = width * height;
+                    const numChannels = (naxis3 === 3) ? 3 : 1;
+
                     const rawRgbaBuffer = new Uint8ClampedArray(width * height * 4);
                     let dataOffset = offset; 
                     const channels: Float32Array[] = [];
@@ -1206,12 +1211,9 @@ export const rawFitsToDisplay = (
                             } 
                         } 
                         else if (bitpix === 16) { 
-                            const hasBZero = (headers['BZERO'] !== undefined);
-                            const actualBZero = hasBZero ? bzero : 0;
                             for (let i = 0; i < numPixels; i++) { 
                                 if (dataOffset + 2 > buffer.byteLength) break; 
-                                const rawVal = hasBZero ? view.getInt16(dataOffset, false) : view.getUint16(dataOffset, false);
-                                const v = rawVal * bscale + actualBZero;
+                                const v = view.getInt16(dataOffset, false) * bscale + bzero;
                                 target[i] = v; dataOffset += 2;
                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
                                 sumVal += v;

@@ -53,7 +53,7 @@ export {
     diagnoseConnection, 
     setLogCallback, getDebugLogs,
     setImageReceivedCallback, setIndiDeviceCallback, setIndiMessageCountCallback, setFocuserUpdateCallback, setMountLocationCallback, setMountTimeCallback,
-    updateDeviceSetting, getActiveCamera, setActiveCamera, getActiveFocuser, setActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice as connectDevice, connectIndiDevice, disconnectIndiDevice as disconnectDevice, disconnectIndiDevice, refreshIndiDevices as refreshDevices, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
+    updateDeviceSetting, getActiveCamera, getActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice as connectDevice, connectIndiDevice, disconnectIndiDevice as disconnectDevice, disconnectIndiDevice, refreshIndiDevices as refreshDevices, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
     getIndiDevices as getDevices, getIndiDevices,
     sendRaw
 } from './DriverConnection';
@@ -306,26 +306,38 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
 };
 
 export const startCapture = async (exp: number, gain: number, offset: number, colorBalance: any, cb: (c:number)=>void, done: ()=>void) => {
+    isLooping = true;
     let count = 0;
     const loop = async () => {
+        if (!isLooping) return;
         if(count >= 10) { done(); return; }
         
         await capturePreview(exp, gain, offset, true);
+        await waitForImage(exp + 10000);
+        
+        if (!isLooping) return;
         count++;
         cb(count);
-        setTimeout(loop, 100); 
+        loopTimeout = setTimeout(loop, 100); 
     };
     loop();
 };
 
 export const stopCapture = () => {
+    isLooping = false;
+    if (loopTimeout) {
+        clearTimeout(loopTimeout);
+        loopTimeout = null;
+    }
     const cam = DriverConnection.getActiveCamera();
     if (cam) DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='CCD_ABORT_EXPOSURE'><oneSwitch name='ABORT'>On</oneSwitch></newSwitchVector>`);
     DriverConnection.clearBuffer(); 
+    notifyImageReceived(); // 待機中のwaitForImageを全て解除する
 };
 
 let isLooping = false;
 let loopTimeout: ReturnType<typeof setTimeout> | null = null;
+
 let imageResolve: (() => void) | null = null;
 
 /**
@@ -426,10 +438,6 @@ export const stopLoop = () => {
         clearTimeout(loopTimeout);
         loopTimeout = null;
     }
-    if (imageResolve) {
-        imageResolve();
-        imageResolve = null;
-    }
     stopCapture();
     setTimeout(() => DriverConnection.clearBuffer(), 100); 
 };
@@ -437,10 +445,12 @@ export const stopLoop = () => {
 export const setVideoStream = async (enabled: boolean) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
+        DriverConnection.refreshIndiDevices();
         if (enabled) {
              // Ensure LOOP is OFF when starting Video Stream
              stopLoop();
              
+             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
                  const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
                  if (!isCompressed) {

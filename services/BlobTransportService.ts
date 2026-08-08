@@ -1,4 +1,3 @@
-
 import { ConnectionSettings } from '../types';
 import * as DriverConnection from './DriverConnection';
 

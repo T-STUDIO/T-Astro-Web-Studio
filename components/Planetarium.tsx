@@ -1411,8 +1411,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
         const gridStepDec = Math.max(0.5, decSpan);
         const cosDecForGrid = Math.max(0.15, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
         
-        const areaHalfRaGrid = (raSpan * 1.5) / cosDecForGrid;
-        const areaHalfDecGrid = decSpan * 1.5;
+        const areaHalfRaGrid = (raSpan * 3.0 * 0.5) / cosDecForGrid; // 表示エリアの縦横3.0倍（中心から片側1.5倍）
+        const areaHalfDecGrid = decSpan * 3.0 * 0.5; // 表示エリアの縦横3.0倍（中心から片側1.5倍）
         
         const minTileIdxRa = Math.floor((numberTileRa - areaHalfRaGrid) / gridStepRa);
         const maxTileIdxRa = Math.floor((numberTileRa + areaHalfRaGrid) / gridStepRa);
@@ -1451,8 +1451,8 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             // 確定された表示エリア中心座標（numberTileRa, numberTileDec）を基準にして3×3描画エリアを再設定
             const cosDec = Math.max(0.15, Math.cos(Math.abs(numberTileDec) * Math.PI / 180));
             
-            const areaHalfRa = Math.min(180, (raSpan * 1.5) / cosDec);
-            const areaHalfDec = Math.min(80, decSpan * 1.5);
+            const areaHalfRa = Math.min(180, (raSpan * 3.0 * 0.5) / cosDec); // 表示エリアの縦横3.0倍（中心から片側1.5倍）
+            const areaHalfDec = Math.min(80, decSpan * 3.0 * 0.5); // 表示エリアの縦横3.0倍（中心から片側1.5倍）
 
             // 画面視野角（viewFov）に応じた高解像度タイルの画角（zoomTileFov）とステップを設定
             const zoomTileFov = Math.max(0.08, Math.min(6.0, viewFov * 0.25));
@@ -1480,10 +1480,10 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
                 }
             }
 
-            // 表示エリアタイルの中心に近い順に読み込み優先度をソートし、最大200枚に制限
+            // 表示エリアタイルの中心に近い順に読み込み優先度をソートし、最大225枚に制限
             gridTiles.sort((a, b) => a.dist - b.dist);
-            if (gridTiles.length > 200) {
-                gridTiles = gridTiles.slice(0, 200);
+            if (gridTiles.length > 225) {
+                gridTiles = gridTiles.slice(0, 225);
             }
 
             setTotalDssTiles(gridTiles.length);

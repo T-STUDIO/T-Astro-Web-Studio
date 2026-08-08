@@ -905,15 +905,20 @@ const detectDevice = (device: INDIDevice, prop: string) => {
             }
 
             if (determinedType) {
-                const wasAlreadyIdentified = device.type === determinedType;
+                const typeChanged = device.type !== determinedType;
                 device.type = determinedType;
-                if (!wasAlreadyIdentified) {
+                
+                if (typeChanged) {
                     log(`[INDI] Device '${device.name}' type identified as '${determinedType}' by DRIVER_EXEC tail ('${execVal}')`);
-                    if (determinedType === 'Mount' && !activeMountDevice) {
+                }
+
+                if (determinedType === 'Mount') {
+                    if (activeMountDevice !== device.name) {
                         activeMountDevice = device.name;
                         log(`[INDI] Active Mount detected by EXEC tail: ${device.name}`);
                     }
-                    if (determinedType === 'Camera' && !activeCameraDevice) {
+                } else if (determinedType === 'Camera') {
+                    if (activeCameraDevice !== device.name) {
                         activeCameraDevice = device.name;
                         log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
                         if (mainChannelBlobsDisabled) {
@@ -922,8 +927,10 @@ const detectDevice = (device: INDIDevice, prop: string) => {
                             sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
                         }
                     }
-                    if (determinedType === 'Focuser' && !activeFocuserDevice) {
+                } else if (determinedType === 'Focuser') {
+                    if (activeFocuserDevice !== device.name) {
                         activeFocuserDevice = device.name;
+                        log(`[INDI] Active Focuser detected by EXEC tail: ${device.name}`);
                     }
                 }
                 return;
@@ -945,9 +952,14 @@ const detectDevice = (device: INDIDevice, prop: string) => {
 
     // 3. Camera property detection
     if (propUpper.includes('CCD_EXPOSURE') || propUpper.includes('CCD_FRAME') || propUpper.includes('CCD_IMAGE')) {
+        const typeChanged = device.type !== 'Camera';
         device.type = 'Camera';
-        if (!activeCameraDevice) {
-            activeCameraDevice = device.name; log(`[INDI] Active Camera detected: ${device.name}`);
+        if (typeChanged) {
+            log(`[INDI] Device '${device.name}' type identified as 'Camera' by property: ${prop}`);
+        }
+        if (activeCameraDevice !== device.name) {
+            activeCameraDevice = device.name;
+            log(`[INDI] Active Camera detected: ${device.name}`);
             if (mainChannelBlobsDisabled) {
                 sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
             } else {
@@ -960,16 +972,30 @@ const detectDevice = (device: INDIDevice, prop: string) => {
     // 4. Mount / Telescope detection (カメラやフォーカサー名に合致しない場合のみ)
     if (propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_') || propUpper.includes('MOUNT_')) {
         if (!isCameraName && !isFocuserName) {
+            const typeChanged = device.type !== 'Mount';
             device.type = 'Mount';
-            if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
+            if (typeChanged) {
+                log(`[INDI] Device '${device.name}' type identified as 'Mount' by property: ${prop}`);
+            }
+            if (activeMountDevice !== device.name) {
+                activeMountDevice = device.name;
+                log(`[INDI] Active Mount detected: ${device.name}`);
+            }
             return;
         }
     }
 
     // 5. Focuser detection
     if (propUpper.includes('FOCUS_POSITION') || propUpper.includes('FOCUS_SPEED') || propUpper.includes('FOCUS_MOTION')) {
+        const typeChanged = device.type !== 'Focuser';
         device.type = 'Focuser';
-        if (!activeFocuserDevice) activeFocuserDevice = device.name;
+        if (typeChanged) {
+            log(`[INDI] Device '${device.name}' type identified as 'Focuser' by property: ${prop}`);
+        }
+        if (activeFocuserDevice !== device.name) {
+            activeFocuserDevice = device.name;
+            log(`[INDI] Active Focuser detected: ${device.name}`);
+        }
         return;
     }
 

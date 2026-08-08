@@ -12,8 +12,16 @@ let mainChannelBlobsDisabled = false;
  */
 export const setMainChannelBlobDisabled = (disabled: boolean) => {
     mainChannelBlobsDisabled = disabled;
-    if (disabled && socket?.readyState === 1) {
-        sendRaw('<enableBLOB>Never</enableBLOB>');
+    if (socket?.readyState === 1) {
+        if (disabled) {
+            sendRaw('<enableBLOB>Never</enableBLOB>');
+        } else {
+            if (activeCameraDevice) {
+                sendRaw(`<enableBLOB device='${activeCameraDevice}'>Also</enableBLOB>`);
+            } else {
+                sendRaw('<enableBLOB>Also</enableBLOB>');
+            }
+        }
     }
 };
 
@@ -44,7 +52,6 @@ let onMountTimeUpdate: ((time: Date) => void) | null = null;
  */
 export const triggerExternalImageReceived = (url: string, format: string, metadata?: any) => {
     if (onImageReceived) onImageReceived(url, format, metadata);
-    if (onImageProcessed) onImageProcessed();
 };
 
 export const setIndiDeviceCallback = (cb: typeof onIndiDeviceUpdate) => { 
@@ -840,6 +847,13 @@ const parseIndiPacket = (packet: string) => {
                 device.connected = isConn;
                 if (isConn) {
                     log(`[INDI] ${devName} Connected.`);
+                    if (device.type === 'Camera') {
+                        if (mainChannelBlobsDisabled) {
+                            sendRaw(`<enableBLOB device='${devName}'>Never</enableBLOB>`);
+                        } else {
+                            sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
+                        }
+                    }
                 }
             }
         }
@@ -868,7 +882,7 @@ const parseIndiPacket = (packet: string) => {
 };
 
 const detectDevice = (device: INDIDevice, prop: string) => {
-    // すでに種別が確定している場合は、重複判定およびログ出力を回避するため即座に終了します
+    // ドライバ種別が既に確定している場合は再確認操作を停止
     if (device.type && device.type !== 'Auxiliary') {
         return;
     }
@@ -883,7 +897,7 @@ const detectDevice = (device: INDIDevice, prop: string) => {
             const tail = parts[parts.length - 1] || execVal;
 
             let determinedType: DeviceType | null = null;
-            if (tail === 'ccd' || tail === 'camera' || tail === 'cam' || tail === 'video' || tail === 'webcam' || tail === 'gphoto' || tail === 'dslr' || tail === 'imager' || execVal.endsWith('ccd') || execVal.endsWith('camera')) {
+            if (tail === 'ccd' || tail === 'camera' || tail === 'cam' || tail === 'video' || tail === 'webcam' || tail === 'gphoto' || tail === 'dslr' || tail === 'imager' || tail === 'guide' || execVal.endsWith('ccd') || execVal.endsWith('camera') || execVal.endsWith('guide')) {
                 determinedType = 'Camera';
             } else if (tail === 'telescope' || tail === 'mount' || tail === 'scope' || tail === 'eqmod' || tail === 'synscan' || tail === 'lx200' || tail === 'nexstar' || tail === 'ioptron' || execVal.endsWith('telescope') || execVal.endsWith('mount')) {
                 determinedType = 'Mount';
@@ -913,6 +927,11 @@ const detectDevice = (device: INDIDevice, prop: string) => {
                 if (determinedType === 'Camera' && !activeCameraDevice) {
                     activeCameraDevice = device.name;
                     log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
+                    if (mainChannelBlobsDisabled) {
+                        sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
+                    } else {
+                        sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
+                    }
                 }
                 if (determinedType === 'Focuser' && !activeFocuserDevice) {
                     activeFocuserDevice = device.name;
@@ -922,7 +941,7 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         }
     }
 
-    // DRIVER_EXEC末尾参照等ですでに種別が確定している場合は保持
+    // DRIVER_EXEC末尾参照等ですでに種別が確定している場合は、以降のプロパティ推測で上書きされないよう保持する
     if (device.type && device.type !== 'Auxiliary') {
         return;
     }
@@ -930,53 +949,81 @@ const detectDevice = (device: INDIDevice, prop: string) => {
     const propUpper = prop.toUpperCase();
     const nameLower = device.name.toLowerCase();
 
-    const isCameraName = nameLower.includes('camera') || nameLower.includes('ccd') || nameLower.includes('qhy') || nameLower.includes('zwo') || nameLower.includes('asi') || nameLower.includes('webcam') || nameLower.includes('video') || nameLower.includes('cam') || nameLower.includes('guide');
+    // 2. カメラ・フォーカサー名を先行ガードし、シミュレータ等がプロパティ等でMountと誤分類されるのを防ぐ
+    const isCameraName = nameLower.includes('camera') || nameLower.includes('ccd') || nameLower.includes('qhy') || nameLower.includes('zwo') || nameLower.includes('asi') || nameLower.includes('webcam') || nameLower.includes('video') || nameLower.includes('cam');
     const isFocuserName = nameLower.includes('focuser') || nameLower.includes('focus') || nameLower.includes('eaf');
-    const isMountName = nameLower.includes('telescope') || nameLower.includes('mount') || nameLower.includes('skywatcher') || nameLower.includes('celestron') || nameLower.includes('ioptron') || nameLower.includes('eqmod') || nameLower.includes('alt-az') || nameLower.includes('lx200');
 
-    // 2. 明確なカメラプロパティ（露光設定など）がある場合
+    // 3. Camera property detection
     if (propUpper.includes('CCD_EXPOSURE') || propUpper.includes('CCD_FRAME') || propUpper.includes('CCD_IMAGE')) {
         device.type = 'Camera';
         if (!activeCameraDevice) {
             activeCameraDevice = device.name; log(`[INDI] Active Camera detected: ${device.name}`);
+            if (mainChannelBlobsDisabled) {
+                sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
+            } else {
+                sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
+            }
         }
         return;
     }
 
-    // 3. 明確なマウントプロパティ（赤経・赤緯座標など）があり、カメラやフォーカサー名でない場合
-    if ((propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_EOD') || propUpper.includes('MOUNT_COORD')) && !isCameraName && !isFocuserName) {
-        device.type = 'Mount';
-        if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
-        return;
+    // 4. Mount / Telescope detection (カメラやフォーカサー名に合致しない場合のみ)
+    if (propUpper.includes('EQUATORIAL') || propUpper.includes('HORIZONTAL') || propUpper.startsWith('TELESCOPE_') || propUpper.includes('MOUNT_')) {
+        if (!isCameraName && !isFocuserName) {
+            device.type = 'Mount';
+            if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected: ${device.name}`); }
+            return;
+        }
     }
 
-    // 4. 明確なフォーカサープロパティ
+    // 5. Focuser detection
     if (propUpper.includes('FOCUS_POSITION') || propUpper.includes('FOCUS_SPEED') || propUpper.includes('FOCUS_MOTION')) {
         device.type = 'Focuser';
         if (!activeFocuserDevice) activeFocuserDevice = device.name;
         return;
     }
 
-    // 5. フィルターホイール
+    // 6. FilterWheel detection
     if (propUpper.includes('FILTER_SLOT') || propUpper.includes('FILTER_NAME')) {
         device.type = 'FilterWheel';
         return;
     }
 
-    // 6. デバイス名からの明確な判定
-    if (isCameraName) {
-        device.type = 'Camera';
-        if (!activeCameraDevice) {
-            activeCameraDevice = device.name; log(`[INDI] Active Camera detected by name: ${device.name}`);
-        }
-    } else if (isMountName) {
+    // 7. Dome detection
+    if (propUpper.includes('DOME_SHUTTER') || propUpper.includes('DOME_PARK')) {
+        device.type = 'Dome';
+        return;
+    }
+
+    // 8. Rotator detection
+    if (propUpper.includes('ROTATOR_ANGLE')) {
+        device.type = 'Rotator';
+        return;
+    }
+
+    // If type is already definitively set, keep it
+    if (device.type && device.type !== 'Auxiliary') {
+        return;
+    }
+
+    // 9. Infer from device name if not definitively identified by property
+    if (nameLower.includes('telescope') || nameLower.includes('mount') || nameLower.includes('skywatcher') || nameLower.includes('celestron') || nameLower.includes('ioptron') || nameLower.includes('eqmod') || nameLower.includes('alt-az') || nameLower.includes('lx200')) {
         device.type = 'Mount';
-        if (!activeMountDevice) { activeMountDevice = device.name; log(`[INDI] Active Mount detected by name: ${device.name}`); }
+    } else if (isCameraName) {
+        device.type = 'Camera';
     } else if (isFocuserName) {
         device.type = 'Focuser';
-        if (!activeFocuserDevice) activeFocuserDevice = device.name;
+    } else if (nameLower.includes('filter') || nameLower.includes('wheel')) {
+        device.type = 'FilterWheel';
+    } else if (nameLower.includes('dome') || nameLower.includes('roof')) {
+        device.type = 'Dome';
+    } else if (nameLower.includes('rotator')) {
+        device.type = 'Rotator';
+    } else if (nameLower.includes('sqm') || nameLower.includes('weather')) {
+        device.type = 'Weather';
+    } else if (nameLower.includes('heater')) {
+        device.type = 'Heater';
     } else {
-        // 判別できないものは安全のために AUX (Auxiliary) に設定する
         device.type = 'Auxiliary';
     }
 };

@@ -13,13 +13,11 @@ let mainChannelBlobsDisabled = false;
 export const setMainChannelBlobDisabled = (disabled: boolean) => {
     mainChannelBlobsDisabled = disabled;
     if (socket?.readyState === 1) {
-        if (disabled) {
-            sendRaw('<enableBLOB>Never</enableBLOB>');
-        } else {
-            if (activeCameraDevice) {
-                sendRaw(`<enableBLOB device='${activeCameraDevice}'>Also</enableBLOB>`);
+        if (activeCameraDevice) {
+            if (disabled) {
+                sendRaw(`<enableBLOB device='${activeCameraDevice}'>Never</enableBLOB>`);
             } else {
-                sendRaw('<enableBLOB>Also</enableBLOB>');
+                sendRaw(`<enableBLOB device='${activeCameraDevice}'>Also</enableBLOB>`);
             }
         }
     }
@@ -333,12 +331,6 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                 ws.onopen = () => {
                     if (socket !== ws) return;
                     log('INDI WebSocket Open. Validating backend server bridge state...');
-                    
-                    if (mainChannelBlobsDisabled) {
-                        sendRaw('<enableBLOB>Never</enableBLOB>');
-                    } else {
-                        sendRaw('<enableBLOB>Also</enableBLOB>');
-                    }
                     
                     sendRaw('<getProperties version="1.7" />');
                     
@@ -882,11 +874,6 @@ const parseIndiPacket = (packet: string) => {
 };
 
 const detectDevice = (device: INDIDevice, prop: string) => {
-    // ドライバ種別が既に確定している場合は再確認操作を停止
-    if (device.type && device.type !== 'Auxiliary') {
-        return;
-    }
-
     // 1. DRIVER_INFO項目のDRIVER_EXECの名称末尾を参照する確実な種別判定（最優先・絶対判定）
     const driverInfo = device.properties.get('DRIVER_INFO');
     if (driverInfo) {
@@ -918,23 +905,26 @@ const detectDevice = (device: INDIDevice, prop: string) => {
             }
 
             if (determinedType) {
+                const wasAlreadyIdentified = device.type === determinedType;
                 device.type = determinedType;
-                log(`[INDI] Device '${device.name}' type identified as '${determinedType}' by DRIVER_EXEC tail ('${execVal}')`);
-                if (determinedType === 'Mount' && !activeMountDevice) {
-                    activeMountDevice = device.name;
-                    log(`[INDI] Active Mount detected by EXEC tail: ${device.name}`);
-                }
-                if (determinedType === 'Camera' && !activeCameraDevice) {
-                    activeCameraDevice = device.name;
-                    log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
-                    if (mainChannelBlobsDisabled) {
-                        sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
-                    } else {
-                        sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
+                if (!wasAlreadyIdentified) {
+                    log(`[INDI] Device '${device.name}' type identified as '${determinedType}' by DRIVER_EXEC tail ('${execVal}')`);
+                    if (determinedType === 'Mount' && !activeMountDevice) {
+                        activeMountDevice = device.name;
+                        log(`[INDI] Active Mount detected by EXEC tail: ${device.name}`);
                     }
-                }
-                if (determinedType === 'Focuser' && !activeFocuserDevice) {
-                    activeFocuserDevice = device.name;
+                    if (determinedType === 'Camera' && !activeCameraDevice) {
+                        activeCameraDevice = device.name;
+                        log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
+                        if (mainChannelBlobsDisabled) {
+                            sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
+                        } else {
+                            sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
+                        }
+                    }
+                    if (determinedType === 'Focuser' && !activeFocuserDevice) {
+                        activeFocuserDevice = device.name;
+                    }
                 }
                 return;
             }

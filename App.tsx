@@ -352,9 +352,6 @@ const App: React.FC = () => {
       setLatestImageMetadata(metadata || null);
       setIsPreviewLoading(false);
     });
-    return () => {
-      AstroService.setImageReceivedCallback(null);
-    };
   }, [isCapturing]);
 
 

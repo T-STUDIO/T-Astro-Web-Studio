@@ -447,7 +447,7 @@ export const setVideoStream = async (enabled: boolean) => {
     if (cam) {
         DriverConnection.refreshIndiDevices();
         if (enabled) {
-             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
+             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Only</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
                  const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
                  if (!isCompressed) {

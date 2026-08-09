@@ -532,56 +532,57 @@ const findSequence = (buffer: Uint8Array, sequence: Uint8Array, offset: number =
 const processBuffer = () => {
     const decoder = new TextDecoder("utf-8");
     let iterations = 0;
-    while(iterations < 20) {
+    while (iterations < 20) {
         iterations++;
         if (recvLength === 0) return;
-        
-        const peekLen = Math.min(recvLength, 2048); 
-        let headBuffer: Uint8Array;
-        if (recvChunks[0].length >= peekLen) { headBuffer = recvChunks[0].slice(0, peekLen); } 
-        else {
-            headBuffer = new Uint8Array(peekLen);
-            let offset = 0;
-            for (const chunk of recvChunks) {
-                const needed = peekLen - offset;
-                if (needed <= 0) break;
-                const toCopy = Math.min(needed, chunk.length);
-                headBuffer.set(chunk.slice(0, toCopy), offset);
-                offset += toCopy;
-            }
-        }
-        const blobStartIdx = findSequence(headBuffer, ONE_BLOB_START);
+
+        const fullBuffer = flattenChunks(recvChunks, recvLength);
+        const blobStartIdx = findSequence(fullBuffer, ONE_BLOB_START);
+
         if (blobStartIdx === -1) {
-            if (recvLength > 0) {
-                const text = decoder.decode(flattenChunks(recvChunks, recvLength));
-                parseStream(text);
-                recvChunks = []; recvLength = 0;
-            }
+            // BLOBタグが含まれていない場合、全データをテキストとして即時パース
+            const text = decoder.decode(fullBuffer);
+            parseStream(text);
+            recvChunks = [];
+            recvLength = 0;
             return;
         }
+
         if (blobStartIdx > 0) {
-            const fullBuffer = flattenChunks(recvChunks, recvLength);
+            // BLOBタグより前のテキスト部を切り出して即時パース
             const textPart = fullBuffer.slice(0, blobStartIdx);
             const text = decoder.decode(textPart);
             parseStream(text);
+
             const rest = fullBuffer.slice(blobStartIdx);
-            recvChunks = [rest]; recvLength = rest.length;
+            recvChunks = [rest];
+            recvLength = rest.length;
             continue;
         }
-        const headerEndIdx = findSequence(headBuffer, CLOSE_TAG);
-        if (headerEndIdx === -1) return;
-        const headerStr = decoder.decode(headBuffer.slice(0, headerEndIdx + 1));
+
+        // 先頭が <oneBLOB の場合
+        const headerEndIdx = findSequence(fullBuffer, CLOSE_TAG);
+        if (headerEndIdx === -1) {
+            // BLOBヘッダーの閉じタグ '>' がまだ未到着の場合はBLOB受信待ち
+            return;
+        }
+
+        const headerStr = decoder.decode(fullBuffer.slice(0, headerEndIdx + 1));
         const sizeMatch = headerStr.match(/size=['"](\d+)['"]/);
         if (!sizeMatch) {
-            const fullBuffer = flattenChunks(recvChunks, recvLength);
+            // 不正なBLOBヘッダーの場合は該当部分を取り除き処理を継続
             const rest = fullBuffer.slice(headerEndIdx + 1);
-            recvChunks = [rest]; recvLength = rest.length;
+            recvChunks = [rest];
+            recvLength = rest.length;
             continue;
         }
-        const fullBuffer = flattenChunks(recvChunks, recvLength);
+
+        // BLOBデータ全体のパース・処理を実施
         const success = processSingleBlock(fullBuffer, decoder);
         if (!success) {
-            recvChunks = [fullBuffer]; recvLength = fullBuffer.length;
+            // BLOBデータが全量到着していない場合は全量が揃うまで待機
+            recvChunks = [fullBuffer];
+            recvLength = fullBuffer.length;
             return;
         }
     }

@@ -1,28 +1,8 @@
 
 import { ConnectionSettings, INDIDevice, INDIPropertyState, INDIPropertyType, INDISwitchRule, INDIPermission, LocationData, TelescopePosition, DriverType, INDIVector, INDIElement, DeviceType } from '../types';
-import { BlobTransportService } from './BlobTransportService';
 
 let debugLogs: string[] = [];
 let onLogCallback: ((entry: string) => void) | null = null;
-
-// 新規追加：メインチャネルでのBLOB管理フラグ
-let mainChannelBlobsDisabled = false;
-
-/**
- * 外部（AstroService）からメインチャネルのBLOB挙動を制御します。
- */
-export const setMainChannelBlobDisabled = (disabled: boolean) => {
-    mainChannelBlobsDisabled = disabled;
-    if (socket?.readyState === 1) {
-        if (activeCameraDevice) {
-            if (disabled) {
-                sendRaw(`<enableBLOB device='${activeCameraDevice}'>Never</enableBLOB>`);
-            } else {
-                sendRaw(`<enableBLOB device='${activeCameraDevice}'>Also</enableBLOB>`);
-            }
-        }
-    }
-};
 
 const log = (msg: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -35,6 +15,11 @@ const log = (msg: string) => {
 
 export const setLogCallback = (cb: (entry: string) => void) => { onLogCallback = cb; };
 export const getDebugLogs = () => [...debugLogs];
+
+let mainChannelBlobDisabled = false;
+export const setMainChannelBlobDisabled = (disabled: boolean) => {
+    mainChannelBlobDisabled = disabled;
+};
 
 // --- Callbacks for UI Sync ---
 let onIndiDeviceUpdate: ((devices: INDIDevice[]) => void) | null = null;
@@ -121,12 +106,7 @@ export const getActiveCamera = () => activeCameraDevice;
 export const setActiveCamera = (devName: string) => {
     activeCameraDevice = devName;
     if (devName && discoveredIndiDevices.has(devName)) {
-        if (mainChannelBlobsDisabled) {
-            sendRaw(`<enableBLOB device='${devName}'>Never</enableBLOB>`);
-            BlobTransportService.getInstance().enableBlobForDevice(devName);
-        } else {
-            sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
-        }
+        sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
     }
     scheduleUpdate();
 };
@@ -166,6 +146,11 @@ export const getNumericValue = (dev: string, prop: string, element: string): num
     const el = vec.elements.get(element);
     return (el && typeof el.value === 'number') ? el.value : null;
 };
+
+if (typeof window !== 'undefined') {
+    (window as any).__getActiveCameraParams = () => activeCameraParams;
+    (window as any).__getNumericValue = getNumericValue;
+}
 
 export const getSwitchValue = (dev: string, prop: string, element: string): boolean => {
     if (currentSettings.driver === 'Simulator') {
@@ -351,6 +336,7 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     if (socket !== ws) return;
                     messageCount++;
                     if (onIndiMessageCount) onIndiMessageCount(messageCount);
+
                     if (event.data instanceof ArrayBuffer) {
                         const chunk = new Uint8Array(event.data);
                         recvChunks.push(chunk);
@@ -828,12 +814,8 @@ const parseIndiPacket = (packet: string) => {
                 if (isConn) {
                     log(`[INDI] ${devName} Connected.`);
                     if (device.type === 'Camera') {
-                        if (mainChannelBlobsDisabled) {
-                            sendRaw(`<enableBLOB device='${devName}'>Never</enableBLOB>`);
-                            BlobTransportService.getInstance().enableBlobForDevice(devName);
-                        } else {
-                            sendRaw(`<enableBLOB device='${devName}'>Also</enableBLOB>`);
-                        }
+                        const enableBlobStr = mainChannelBlobDisabled ? 'Never' : 'Also';
+                        sendRaw(`<enableBLOB device='${devName}'>${enableBlobStr}</enableBLOB>`);
                     }
                 }
             }
@@ -910,12 +892,8 @@ const detectDevice = (device: INDIDevice, prop: string) => {
                     if (activeCameraDevice !== device.name) {
                         activeCameraDevice = device.name;
                         log(`[INDI] Active Camera detected by EXEC tail: ${device.name}`);
-                        if (mainChannelBlobsDisabled) {
-                            sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
-                            BlobTransportService.getInstance().enableBlobForDevice(device.name);
-                        } else {
-                            sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
-                        }
+                        const enableBlobStr = mainChannelBlobDisabled ? 'Never' : 'Also';
+                        sendRaw(`<enableBLOB device='${device.name}'>${enableBlobStr}</enableBLOB>`);
                     }
                 } else if (determinedType === 'Focuser') {
                     if (activeFocuserDevice !== device.name) {
@@ -950,12 +928,8 @@ const detectDevice = (device: INDIDevice, prop: string) => {
         if (activeCameraDevice !== device.name) {
             activeCameraDevice = device.name;
             log(`[INDI] Active Camera detected: ${device.name}`);
-            if (mainChannelBlobsDisabled) {
-                sendRaw(`<enableBLOB device='${device.name}'>Never</enableBLOB>`);
-                BlobTransportService.getInstance().enableBlobForDevice(device.name);
-            } else {
-                sendRaw(`<enableBLOB device='${device.name}'>Also</enableBLOB>`);
-            }
+            const enableBlobStr = mainChannelBlobDisabled ? 'Never' : 'Also';
+            sendRaw(`<enableBLOB device='${device.name}'>${enableBlobStr}</enableBLOB>`);
         }
         return;
     }

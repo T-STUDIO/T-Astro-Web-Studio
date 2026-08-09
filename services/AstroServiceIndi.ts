@@ -3,6 +3,7 @@ import { CelestialObject, MountSpeed, LocationData, TelescopePosition } from '..
 import { hmsToDegrees, dmsToDegrees } from '../utils/coords';
 import * as DriverConnection from './DriverConnection';
 import { BlobTransportService } from './BlobTransportService';
+import { IndiStreamProcessor } from './IndiStreamProcessor';
 import { IndiGscService } from './IndiGscService';
 
 import * as sampService from './sampService';
@@ -10,6 +11,11 @@ import * as sampService from './sampService';
 // 画像受信通知をDriverConnectionに登録
 DriverConnection.setImageProcessedCallback(() => {
     notifyImageReceived();
+});
+
+// 画像受信通知をBlobTransportServiceにも登録
+BlobTransportService.getInstance().setImageReceivedCallback((url, format, metadata) => {
+    DriverConnection.triggerExternalImageReceived(url, format, metadata);
 });
 
 let onTelescopePositionUpdate: ((pos: TelescopePosition) => void) | null = null;
@@ -75,6 +81,9 @@ export const connect = async (settings: any): Promise<boolean> => {
     
     // INDIの場合、画像転送用の別チャネルを並列で立ち上げ
     if (success && settings.driver === 'INDI') {
+        IndiStreamProcessor.getInstance().connectDedicatedBlobChannel(adjustedSettings).catch(err => {
+            console.error("[BLOB] Failed to connect processor channel", err);
+        });
         BlobTransportService.getInstance().connect(adjustedSettings).catch(err => {
             console.error("[BLOB] Failed to connect secondary channel", err);
         });
@@ -447,7 +456,7 @@ export const setVideoStream = async (enabled: boolean) => {
     if (cam) {
         DriverConnection.refreshIndiDevices();
         if (enabled) {
-             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Only</enableBLOB>`);
+             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
                  const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
                  if (!isCompressed) {

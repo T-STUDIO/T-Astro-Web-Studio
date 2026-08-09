@@ -323,6 +323,10 @@ const App: React.FC = () => {
   }, [isTimeRunning]);
 
   useEffect(() => {
+    AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
+  }, []);
+
+  useEffect(() => {
     AstroService.setImageReceivedCallback((url, format, metadata) => {
       // 画像をビューアーへ中継
       BroadcastService.getInstance().sendImage(url, metadata); 
@@ -348,10 +352,8 @@ const App: React.FC = () => {
       setLatestImageMetadata(metadata || null);
       setIsPreviewLoading(false);
     });
-    AstroService.setTelescopePositionCallback(pos => setTelescopePosition(pos));
     return () => {
       AstroService.setImageReceivedCallback(null);
-      AstroService.setTelescopePositionCallback(null);
     };
   }, [isCapturing]);
 
@@ -553,17 +555,7 @@ const App: React.FC = () => {
       if (!obj) return;
       setIsGeminiModalOpen(true); setIsGeminiLoading(true);
       try {
-          let queryName = obj.name;
-          const isGenericStar = !CELESTIAL_OBJECTS.some(o => o.name === obj.name) && 
-              (obj.name.startsWith('bg_star_') || obj.name.startsWith('server-star-') || obj.name.toLowerCase().includes('unnamed') || obj.name === 'Telescope Target');
-          
-          if (isGenericStar) {
-              const resolved = await resolveAstroData(obj, language === 'ja' ? 'ja' : 'en', localSolverSettings);
-              if (resolved && resolved.resolvedName) {
-                  queryName = resolved.resolvedName;
-              }
-          }
-          const info = await GeminiService.getObjectInfo(queryName, language, obj.id?.startsWith('anno_') || isGenericStar); 
+          const info = await GeminiService.getObjectInfo(obj.name, language); 
           setGeminiContent(info); 
       } 
       finally { setIsGeminiLoading(false); }

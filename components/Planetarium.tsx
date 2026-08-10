@@ -265,6 +265,7 @@ export const Planetarium = React.memo<PlanetariumProps>(({
     const [viewAz, setViewAz] = useState(0); 
     const [viewAlt, setViewAlt] = useState(30);  
     const [zoom, setZoom] = useState(60 / 70); 
+    const [backupTick, setBackupTick] = useState(0);
 
     const [serverStars, setServerStars] = useState<any[]>([]);
     const lastQueryRef = useRef({ ra: -1, dec: -1, fov: -1 });
@@ -1274,7 +1275,7 @@ export const Planetarium = React.memo<PlanetariumProps>(({
                 }
             }
         }
-    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading, satellitesList, cometsList, manualFocalLength, serverStars]);
+    }, [dimensions, viewAz, viewAlt, zoom, settings, effLocation, effTime, selectedObject, recommendedMode, language, telescopePosition, wwtInitialized, staticData, constellationStarIds, curatedObjectIds, milkyWaySprite, isMini, isConnected, t, dssTiles, dssLoading, satellitesList, cometsList, manualFocalLength, serverStars, backupTick]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e && e.touches.length === 2) { e.preventDefault(); lastPinchDist.current = getDistance(e.touches[0], e.touches[1]); return; }
@@ -1633,6 +1634,20 @@ export const Planetarium = React.memo<PlanetariumProps>(({
             const { alt, az } = raDecToAzAlt(ra, dec, effLocation.latitude, lst); setViewAz(az); setViewAlt(alt);
         }
     }, [centerRequest, selectedObject, effLocation, effTime]);
+
+    // ミニビュー (isMini={true}) 検出時に発火する setInterval バックアップタイマー
+    // 非アクティブ化等でアニメーションフレームが停止しても望遠鏡指標の最新座標を 200ms 周期でバックアップ更新・再描画します
+    useEffect(() => {
+        if (!isMini) return;
+
+        const timer = setInterval(() => {
+            setBackupTick(prev => (prev + 1) % 1000);
+        }, 200);
+
+        return () => {
+            clearInterval(timer);
+        };
+    }, [isMini]);
 
     // WWT is completely disabled to avoid conflict with DSS canvas rendering
     /*

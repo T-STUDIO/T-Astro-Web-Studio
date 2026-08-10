@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, CelestialObject, SlewStatus, PlanetariumSettings, LocationData, TelescopePosition, PlateSolverType, LocalSolverSettings } from '../types';
 import { Planetarium } from './Planetarium';
 import { ImagingViewAlpaca as ImagingView } from './ImagingViewAlpaca';

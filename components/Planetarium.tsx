@@ -1635,19 +1635,27 @@ export const Planetarium = React.memo<PlanetariumProps>(({
         }
     }, [centerRequest, selectedObject, effLocation, effTime]);
 
-    // ミニビュー (isMini={true}) 検出時に発火する setInterval バックアップタイマー
-    // 非アクティブ化等でアニメーションフレームが停止しても望遠鏡指標の最新座標を 200ms 周期でバックアップ更新・再描画します
+    // ライブビュー等でプラネタリウムがミニビュー (isMini={true}) 表示中に望遠鏡指標を追従更新させる setInterval バックアップタイマー
     useEffect(() => {
-        if (!isMini) return;
+        const shouldRunBackup = isMini && isConnected && !!telescopePosition;
+        if (!shouldRunBackup) return;
 
         const timer = setInterval(() => {
             setBackupTick(prev => (prev + 1) % 1000);
+
+            // 自動センタリングが有効な場合、最新の望遠鏡座標へ視野を追従更新
+            if (isAutoCenterEnabled && telescopePosition && effLocation) {
+                const lst = calculateLST(effLocation.longitude, effTime);
+                const { alt, az } = raDecToAzAlt(telescopePosition.ra, telescopePosition.dec, effLocation.latitude, lst);
+                setViewAz(az);
+                setViewAlt(alt);
+            }
         }, 200);
 
         return () => {
             clearInterval(timer);
         };
-    }, [isMini]);
+    }, [isMini, isConnected, telescopePosition, isAutoCenterEnabled, effLocation, effTime]);
 
     // WWT is completely disabled to avoid conflict with DSS canvas rendering
     /*

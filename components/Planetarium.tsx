@@ -1050,8 +1050,9 @@ export const Planetarium = React.memo<PlanetariumProps>(({
         }
 
         // --- 3. 望遠鏡・画角指標の描画 ---
-        if (telescopePosition && isConnected) {
-            const { alt: tAlt, az: tAz } = raDecToAzAlt(telescopePosition.ra, telescopePosition.dec, effLocation.latitude, lst);
+        const currentTelePos = telescopePosition || AstroService.getTelescopePosition();
+        if (currentTelePos && isConnected) {
+            const { alt: tAlt, az: tAz } = raDecToAzAlt(currentTelePos.ra, currentTelePos.dec, effLocation.latitude, lst);
             const tp = projectStereographic(tAlt, tAz, width, height, zoom, center, viewAlt, viewAz);
             if (tp) {
                 const activeCam = AstroService.getActiveCamera();

@@ -454,7 +454,6 @@ export const stopLoop = () => {
 export const setVideoStream = async (enabled: boolean) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
-        DriverConnection.refreshIndiDevices();
         if (enabled) {
              DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {

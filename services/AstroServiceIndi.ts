@@ -57,7 +57,7 @@ export const setAppData = (loc: LocationData | null, time: Date | null) => {
 // --- Re-exports for App Compatibility ---
 export { 
     diagnoseConnection, 
-    setLogCallback, getDebugLogs,
+    setLogCallback, getDebugLogs, clearBuffer,
     setImageReceivedCallback, setIndiDeviceCallback, setIndiMessageCountCallback, setFocuserUpdateCallback, setMountLocationCallback, setMountTimeCallback,
     updateDeviceSetting, getActiveCamera, getActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice as connectDevice, connectIndiDevice, disconnectIndiDevice as disconnectDevice, disconnectIndiDevice, refreshIndiDevices as refreshDevices, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
     getIndiDevices as getDevices, getIndiDevices,
@@ -294,11 +294,8 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
          return;
     }
     
-    // Clear buffers before starting new capture to ensure stability
-    // But avoid clearing during Loop/Stream to prevent dropping frames
-    if (!isStream) {
-        DriverConnection.clearBuffer();
-    }
+    // Clear buffers before starting new capture to ensure fresh image state
+    DriverConnection.clearBuffer();
     
     // CCD Simulator specific fixes for missing stars/parameters and GSC activation
     if (cam === 'CCD Simulator') {
@@ -390,6 +387,7 @@ const waitForImage = (timeoutMs: number = 30000) => {
 export const startLiveStacking = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
+        DriverConnection.clearBuffer();
         isLooping = true; 
         const loop = async () => {
             if (!isLooping) return;
@@ -417,6 +415,7 @@ export const stopLiveStacking = () => {
 export const startLoop = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
+        DriverConnection.clearBuffer();
         // Ensure Video Stream is OFF when starting LOOP
         setVideoStream(false);
         
@@ -467,6 +466,7 @@ export const setVideoStream = async (enabled: boolean) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
         if (enabled) {
+             DriverConnection.clearBuffer();
              DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
                  const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');

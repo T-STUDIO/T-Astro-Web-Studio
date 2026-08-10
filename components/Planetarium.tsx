@@ -203,6 +203,39 @@ const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvas
     });
 };
 
+const arePlanetariumPropsEqual = (prev: PlanetariumProps, next: PlanetariumProps) => {
+    if (prev.isConnected !== next.isConnected) return false;
+    if (prev.slewStatus !== next.slewStatus) return false;
+    if (prev.plateSolverType !== next.plateSolverType) return false;
+    if (prev.isAutoCenterEnabled !== next.isAutoCenterEnabled) return false;
+    if (prev.centerRequest !== next.centerRequest) return false;
+    if (prev.isMini !== next.isMini) return false;
+    
+    // Telescope coordinates updates
+    if (prev.telescopePosition?.ra !== next.telescopePosition?.ra || 
+        prev.telescopePosition?.dec !== next.telescopePosition?.dec) {
+        return false;
+    }
+    
+    // Selected object updates
+    if (prev.selectedObject?.id !== next.selectedObject?.id) return false;
+    
+    // Settings or location updates
+    if (JSON.stringify(prev.settings) !== JSON.stringify(next.settings)) return false;
+    if (prev.location?.latitude !== next.location?.latitude || 
+        prev.location?.longitude !== next.location?.longitude) {
+        return false;
+    }
+    
+    // Local time updates (smooth movement of star charts, but ignored if it's within the same second to prevent millisecond spam)
+    const prevSec = prev.localTime ? Math.floor(prev.localTime.getTime() / 1000) : 0;
+    const nextSec = next.localTime ? Math.floor(next.localTime.getTime() / 1000) : 0;
+    if (prevSec !== nextSec) return false;
+    
+    // Completely skip other rerenders like parent image stream / video / stacking updates
+    return true;
+};
+
 export const Planetarium = React.memo<PlanetariumProps>(({ 
     onSelectObject,
     onShowInfo,
@@ -1712,4 +1745,4 @@ export const Planetarium = React.memo<PlanetariumProps>(({
             {!isMini && <div className="absolute bottom-0.5 left-0.5 text-[8px] md:text-[9px] text-slate-600 font-mono pointer-events-none z-30">{t('planetarium.hud.az')}:{viewAz.toFixed(0)} {t('planetarium.hud.alt')}:{viewAlt.toFixed(0)} {t('planetarium.hud.fov')}:{(60/zoom).toFixed(1)}°</div>}
         </div>
     );
-});
+}, arePlanetariumPropsEqual);

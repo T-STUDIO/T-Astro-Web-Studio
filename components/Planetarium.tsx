@@ -1050,7 +1050,7 @@ export const Planetarium = React.memo<PlanetariumProps>(({
         }
 
         // --- 3. 望遠鏡・画角指標の描画 ---
-        const currentTelePos = telescopePosition || AstroService.getTelescopePosition();
+        const currentTelePos = AstroService.getTelescopePosition() || telescopePosition;
         if (currentTelePos && isConnected) {
             const { alt: tAlt, az: tAz } = raDecToAzAlt(currentTelePos.ra, currentTelePos.dec, effLocation.latitude, lst);
             const tp = projectStereographic(tAlt, tAz, width, height, zoom, center, viewAlt, viewAz);
@@ -1636,11 +1636,11 @@ export const Planetarium = React.memo<PlanetariumProps>(({
         }
     }, [centerRequest, selectedObject, effLocation, effTime]);
 
-    // 望遠鏡指標と座標取得・描画更新を行う setInterval タイマー
+    // 望遠鏡指標と座標取得・描画更新を行う setInterval タイマー (独立ループ制御)
     useEffect(() => {
         const timer = setInterval(() => {
             setBackupTick(prev => (prev + 1) % 1000);
-        }, 200);
+        }, 100);
 
         return () => {
             clearInterval(timer);

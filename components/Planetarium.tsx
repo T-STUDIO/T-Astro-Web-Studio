@@ -203,7 +203,7 @@ const processDssImage = (img: HTMLImageElement, fov: number): Promise<HTMLCanvas
     });
 };
 
-export const Planetarium: React.FC<PlanetariumProps> = ({ 
+export const Planetarium = React.memo<PlanetariumProps>(({ 
     onSelectObject,
     onShowInfo,
     selectedObject, 
@@ -1312,11 +1312,18 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
 
     // Global DSS Base Map Trigger
     useEffect(() => {
-        if (!isMini && settings.showDSS) {
-            globalDssService.preloadGlobalMap();
-        } else {
-            globalDssService.clearCache();
+        if (!isMini) {
+            if (settings.showDSS) {
+                globalDssService.preloadGlobalMap();
+            } else {
+                globalDssService.clearCache();
+            }
         }
+        return () => {
+            if (!isMini) {
+                globalDssService.clearCache();
+            }
+        };
     }, [settings.showDSS, isMini]);
 
     useEffect(() => {
@@ -1705,4 +1712,4 @@ export const Planetarium: React.FC<PlanetariumProps> = ({
             {!isMini && <div className="absolute bottom-0.5 left-0.5 text-[8px] md:text-[9px] text-slate-600 font-mono pointer-events-none z-30">{t('planetarium.hud.az')}:{viewAz.toFixed(0)} {t('planetarium.hud.alt')}:{viewAlt.toFixed(0)} {t('planetarium.hud.fov')}:{(60/zoom).toFixed(1)}°</div>}
         </div>
     );
-};
+});

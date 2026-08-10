@@ -169,20 +169,37 @@ let lastKnownTelescopePosition: TelescopePosition | null = null;
 // Helper: Get Current Telescope Coordinates (Instant & Cached)
 export const getTelescopePosition = (): TelescopePosition | null => {
     const mount = DriverConnection.getActiveMount();
-    if (!mount) return lastKnownTelescopePosition;
+    if (mount) {
+        let raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
+        let decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'DEC');
 
-    let raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
-    let decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'DEC');
+        if (raVal === null || decVal === null) {
+            raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_COORD', 'RA');
+            decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_COORD', 'DEC');
+        }
 
-    if (raVal === null || decVal === null) {
-        raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_COORD', 'RA');
-        decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_COORD', 'DEC');
+        if (raVal !== null && decVal !== null) {
+            lastKnownTelescopePosition = { ra: raVal * 15, dec: decVal };
+            return lastKnownTelescopePosition;
+        }
     }
 
-    if (raVal !== null && decVal !== null) {
-        lastKnownTelescopePosition = { ra: raVal * 15, dec: decVal };
-        return lastKnownTelescopePosition;
+    const devices = DriverConnection.getIndiDevices();
+    for (const dev of devices) {
+        if (dev.type === 'Mount' || dev.properties.has('EQUATORIAL_EOD_COORD') || dev.properties.has('EQUATORIAL_COORD')) {
+            let raVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_EOD_COORD', 'RA');
+            let decVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_EOD_COORD', 'DEC');
+            if (raVal === null || decVal === null) {
+                raVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_COORD', 'RA');
+                decVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_COORD', 'DEC');
+            }
+            if (raVal !== null && decVal !== null) {
+                lastKnownTelescopePosition = { ra: raVal * 15, dec: decVal };
+                return lastKnownTelescopePosition;
+            }
+        }
     }
+
     return lastKnownTelescopePosition;
 };
 
@@ -313,21 +330,8 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     // マウントの座標をカメラに同期
     syncMountCoordinatesToCamera(cam);
     
-    // 露出時間(秒)の計算と要素名の自動認識設定
-    const expInSeconds = Math.max(0.001, (exp || 1000) / 1000);
-    const expProps = ['CCD_EXPOSURE_VALUE', 'EXPOSURE', 'EXPOSURE_VALUE', 'CCD_EXPOSURE'];
-    let targetElName = 'CCD_EXPOSURE_VALUE';
-    const devProps = DriverConnection.getDeviceProperties(cam);
-    const expVec = devProps.find(p => p.name === 'CCD_EXPOSURE');
-    if (expVec && expVec.elements) {
-        for (const pName of expProps) {
-            if (expVec.elements.has(pName)) {
-                targetElName = pName;
-                break;
-            }
-        }
-    }
-    DriverConnection.updateDeviceSetting(cam, 'CCD_EXPOSURE', { [targetElName]: expInSeconds });
+    DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
+    DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
     
     // 静止画（プレビュー）の場合は画像が届くまで待機する
     // これにより、App.tsxのsetIsPreviewLoading(false)が画像受信後に実行されるようになる

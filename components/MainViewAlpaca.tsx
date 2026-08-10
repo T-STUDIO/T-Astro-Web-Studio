@@ -139,12 +139,6 @@ export const MainViewAlpaca: React.FC<MainViewProps> = ({
 
   const isActivityRunning = isLiveViewActive || isVideoStreamActive || isCapturing || isPreviewLoading;
 
-  useEffect(() => {
-      if (isActivityRunning) {
-          setMiniPreviewVisible(true);
-      }
-  }, [isActivityRunning]);
-
   return (
     <main className="flex flex-col bg-black relative shrink-0 w-full h-full order-1 lg:flex-1 lg:order-2">
       

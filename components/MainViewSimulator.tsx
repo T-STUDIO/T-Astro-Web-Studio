@@ -141,12 +141,6 @@ export const MainViewSimulator: React.FC<MainViewProps> = ({
 
   const isActivityRunning = isLiveViewActive || isVideoStreamActive || isCapturing || isPreviewLoading;
 
-  useEffect(() => {
-      if (isActivityRunning || latestImage) {
-          setMiniPreviewVisible(true);
-      }
-  }, [isActivityRunning, latestImage]);
-
   return (
     <main className="flex flex-col bg-black relative shrink-0 w-full h-full order-1 lg:flex-1 lg:order-2">
       

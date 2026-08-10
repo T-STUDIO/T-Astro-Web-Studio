@@ -168,31 +168,17 @@ let lastKnownTelescopePosition: TelescopePosition | null = null;
 
 // Helper: Get Current Telescope Coordinates (Instant & Cached)
 export const getTelescopePosition = (): TelescopePosition | null => {
-    const mount = DriverConnection.getActiveMount();
-    if (mount) {
-        let raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
-        let decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'DEC');
-
-        if (raVal === null || decVal === null) {
-            raVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_COORD', 'RA');
-            decVal = DriverConnection.getNumericValue(mount, 'EQUATORIAL_COORD', 'DEC');
-        }
-
-        if (raVal !== null && decVal !== null) {
-            lastKnownTelescopePosition = { ra: raVal * 15, dec: decVal };
-            return lastKnownTelescopePosition;
-        }
-    }
-
     const devices = DriverConnection.getIndiDevices();
     for (const dev of devices) {
-        if (dev.type === 'Mount' || dev.properties.has('EQUATORIAL_EOD_COORD') || dev.properties.has('EQUATORIAL_COORD')) {
+        if (dev.properties.has('EQUATORIAL_EOD_COORD') || dev.properties.has('EQUATORIAL_COORD') || dev.type === 'Mount') {
             let raVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_EOD_COORD', 'RA');
             let decVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_EOD_COORD', 'DEC');
+
             if (raVal === null || decVal === null) {
                 raVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_COORD', 'RA');
                 decVal = DriverConnection.getNumericValue(dev.name, 'EQUATORIAL_COORD', 'DEC');
             }
+
             if (raVal !== null && decVal !== null) {
                 lastKnownTelescopePosition = { ra: raVal * 15, dec: decVal };
                 return lastKnownTelescopePosition;

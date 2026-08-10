@@ -101,18 +101,7 @@ export const getSimulatorMock = () => {
     };
 };
 
-export const getActiveMount = () => {
-    if (activeMountDevice && discoveredIndiDevices.has(activeMountDevice)) {
-        return activeMountDevice;
-    }
-    for (const [name, dev] of discoveredIndiDevices) {
-        if (dev.type === 'Mount' || dev.properties.has('EQUATORIAL_EOD_COORD') || dev.properties.has('EQUATORIAL_COORD')) {
-            activeMountDevice = name;
-            return name;
-        }
-    }
-    return activeMountDevice;
-};
+export const getActiveMount = () => activeMountDevice;
 export const getActiveCamera = () => activeCameraDevice;
 export const setActiveCamera = (devName: string) => {
     activeCameraDevice = devName;
@@ -833,7 +822,7 @@ const parseIndiPacket = (packet: string) => {
         }
     }
     detectDevice(device, name); scheduleUpdate(); 
-    if (device.type === 'Mount' || name === 'EQUATORIAL_EOD_COORD' || name === 'EQUATORIAL_COORD') {
+    if (device.type === 'Mount') {
         if (name === 'EQUATORIAL_EOD_COORD' || name === 'EQUATORIAL_COORD') {
              const ra = vector.elements.get('RA')?.value;
              const dec = vector.elements.get('DEC')?.value;

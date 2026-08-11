@@ -2,7 +2,8 @@ This is a web app specialized for EAA observation. It enables plate solving and 
 
 Features include clickable annotations and links to Wikipedia, SIMBAD, and AladinLite.
 
-Includes an INDI client and AlpacaBridge functionality. (INDI devices can be converted using AlpacaBridge.)
+It includes INDI and Alpaca client functionality, as well as the AlpacaBridge feature.
+Regarding INDI, a backend server allows you to launch drivers installed on the same PC directly from the web application. (INDI devices can be converted using AlpacaBridge.)
 
 Install INDI and Astrometry.net locally. Use TSPS on my Github page to access the local solver functionality.
 

@@ -22,11 +22,11 @@ This application includes WebSocket functionality and the ability to launch an I
 
 It also features bridging capabilities to convert INDI to Alpaca, as well as Alpaca client functionality.
 
-**Prerequisites:**  Node.js
+**Prerequisites:**  Node.js(V20<)
 
-1. Install dependencies:
+1. Install dependencies:`npm install`
 2. Run the app:
-   `npm run build`npm run start`
+   `npm run build`　→　`npm run start`
 
 A dialog box to obtain a "geminiAPIKey" will appear upon first launch.
 You can use the app after registering your API key. (BYOK supported.)

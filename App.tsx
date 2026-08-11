@@ -465,6 +465,8 @@ const App: React.FC = () => {
           if (isLiveViewActive) { setIsLiveViewActive(false); AstroService.stopLoop(); }
           if (isCapturing) { setIsCapturing(false); LiveStackingEngine.getInstance().stop(); }
           setIsPreviewLoading(false);
+          setLatestImage(null);
+          setLatestImageMetadata(null);
           setIsVideoStreamActive(true); 
           AstroService.setVideoStream(true); 
           setActiveView('Imaging'); 

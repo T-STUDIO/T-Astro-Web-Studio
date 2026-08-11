@@ -57,12 +57,16 @@ export const setAppData = (loc: LocationData | null, time: Date | null) => {
 // --- Re-exports for App Compatibility ---
 export { 
     diagnoseConnection, 
-    setLogCallback, getDebugLogs, clearBuffer,
+    setLogCallback, getDebugLogs,
     setImageReceivedCallback, setIndiDeviceCallback, setIndiMessageCountCallback, setFocuserUpdateCallback, setMountLocationCallback, setMountTimeCallback,
     updateDeviceSetting, getActiveCamera, getActiveFocuser, getDeviceProperties, getNumericValue, connectIndiDevice as connectDevice, connectIndiDevice, disconnectIndiDevice as disconnectDevice, disconnectIndiDevice, refreshIndiDevices as refreshDevices, refreshIndiDevices, moveFocuser, reprocessRawFITS, rawFitsToDisplay,
     getIndiDevices as getDevices, getIndiDevices,
     sendRaw
 } from './DriverConnection';
+
+export const clearBuffer = () => {
+    BlobTransportService.getInstance().clearBuffer();
+};
 
 /**
  * 接続ロジックを拡張：メインチャネルとBLOBチャネルを分離して接続します。
@@ -76,11 +80,8 @@ export const connect = async (settings: any): Promise<boolean> => {
         DriverConnection.setMainChannelBlobDisabled(true);
     }
     
-    // メイン制御チャネルの接続
-    const success = await DriverConnection.connect(adjustedSettings);
-    
-    // INDIの場合、画像転送用の別チャネルを並列で立ち上げ
-    if (success && settings.driver === 'INDI') {
+    // INDIの場合、画像転送用の別チャネルを同時に並行して開始（互いの完了を同期的に待たずに並行起動）
+    if (settings.driver === 'INDI') {
         IndiStreamProcessor.getInstance().connectDedicatedBlobChannel(adjustedSettings).catch(err => {
             console.error("[BLOB] Failed to connect processor channel", err);
         });
@@ -88,6 +89,9 @@ export const connect = async (settings: any): Promise<boolean> => {
             console.error("[BLOB] Failed to connect secondary channel", err);
         });
     }
+
+    // メイン制御チャネルの接続
+    const success = await DriverConnection.connect(adjustedSettings);
     
     return success;
 };
@@ -295,7 +299,7 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     }
     
     // Clear buffers before starting new capture to ensure fresh image state
-    DriverConnection.clearBuffer();
+    clearBuffer();
     
     // CCD Simulator specific fixes for missing stars/parameters and GSC activation
     if (cam === 'CCD Simulator') {
@@ -313,7 +317,8 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     // マウントの座標をカメラに同期
     syncMountCoordinatesToCamera(cam);
     
-    DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
+    DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Never</enableBLOB>`);
+    BlobTransportService.getInstance().sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
     DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='CCD_EXPOSURE'><oneNumber name='CCD_EXPOSURE_VALUE'>${exp/1000}</oneNumber></newNumberVector>`);
     
     // 静止画（プレビュー）の場合は画像が届くまで待機する
@@ -349,7 +354,6 @@ export const stopCapture = () => {
     }
     const cam = DriverConnection.getActiveCamera();
     if (cam) DriverConnection.sendRaw(`<newSwitchVector device='${cam}' name='CCD_ABORT_EXPOSURE'><oneSwitch name='ABORT'>On</oneSwitch></newSwitchVector>`);
-    DriverConnection.clearBuffer(); 
     notifyImageReceived(); // 待機中のwaitForImageを全て解除する
 };
 
@@ -387,7 +391,7 @@ const waitForImage = (timeoutMs: number = 30000) => {
 export const startLiveStacking = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
-        DriverConnection.clearBuffer();
+        clearBuffer();
         isLooping = true; 
         const loop = async () => {
             if (!isLooping) return;
@@ -415,7 +419,7 @@ export const stopLiveStacking = () => {
 export const startLoop = (exp: number, gain: number, offset: number) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
-        DriverConnection.clearBuffer();
+        clearBuffer();
         // Ensure Video Stream is OFF when starting LOOP
         setVideoStream(false);
         
@@ -459,15 +463,15 @@ export const stopLoop = () => {
         loopTimeout = null;
     }
     stopCapture();
-    setTimeout(() => DriverConnection.clearBuffer(), 100); 
 };
 
 export const setVideoStream = async (enabled: boolean) => {
     const cam = DriverConnection.getActiveCamera();
     if (cam) {
         if (enabled) {
-             DriverConnection.clearBuffer();
-             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
+             clearBuffer();
+             DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Never</enableBLOB>`);
+             BlobTransportService.getInstance().sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);
              if (DriverConnection.hasProperty(cam, 'CCD_COMPRESSION')) {
                  const isCompressed = DriverConnection.getSwitchValue(cam, 'CCD_COMPRESSION', 'CCD_COMPRESS');
                  if (!isCompressed) {

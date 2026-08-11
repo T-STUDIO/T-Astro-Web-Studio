@@ -1,5 +1,6 @@
 
 import { ConnectionSettings, INDIDevice, INDIPropertyState, INDIPropertyType, INDISwitchRule, INDIPermission, LocationData, TelescopePosition, DriverType, INDIVector, INDIElement, DeviceType } from '../types';
+import { IndiStreamProcessor } from './IndiStreamProcessor';
 
 let debugLogs: string[] = [];
 let onLogCallback: ((entry: string) => void) | null = null;
@@ -332,6 +333,14 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
                     }, 350);
                 };
 
+                // ドライバ信号の仕分けコールバックを設定
+                IndiStreamProcessor.getInstance().setDriverSignalHandler((xmlText) => {
+                    const chunk = new TextEncoder().encode(xmlText);
+                    recvChunks.push(chunk);
+                    recvLength += chunk.length;
+                    processBuffer();
+                });
+
                 ws.onmessage = (event) => {
                     if (socket !== ws) return;
                     messageCount++;
@@ -339,11 +348,9 @@ export const connect = async (settings: ConnectionSettings): Promise<boolean> =>
 
                     if (event.data instanceof ArrayBuffer) {
                         const chunk = new Uint8Array(event.data);
-                        recvChunks.push(chunk);
-                        recvLength += chunk.length;
-                        processBuffer();
+                        IndiStreamProcessor.getInstance().processIncomingPacket(chunk);
                     } else if (typeof event.data === 'string') {
-                        parseStream(event.data);
+                        IndiStreamProcessor.getInstance().processIncomingPacket(event.data);
                     }
                 };
 
@@ -483,10 +490,10 @@ export const moveFocuser = (steps: number, direction: 'in' | 'out') => {
     }
 };
 
-export const reprocessRawFITS = (pattern: string) => {
+export const reprocessRawFITS = async (pattern: string) => {
     activeDebayerPattern = pattern;
     if (lastFitsBuffer) {
-        const res = rawFitsToDisplay(lastFitsBuffer, 'fits', pattern, activeCameraParams);
+        const res = await rawFitsToDisplay(lastFitsBuffer, 'fits', pattern, activeCameraParams);
         if (res.url && onImageReceived) {
             onImageReceived(res.url, 'fits', { ...res.headers });
         }
@@ -515,7 +522,7 @@ const findSequence = (buffer: Uint8Array, sequence: Uint8Array, offset: number =
     return -1;
 };
 
-const processBuffer = () => {
+const processBuffer = async () => {
     const decoder = new TextDecoder("utf-8");
     let iterations = 0;
     while (iterations < 20) {
@@ -564,7 +571,7 @@ const processBuffer = () => {
         }
 
         // BLOBデータ全体のパース・処理を実施
-        const success = processSingleBlock(fullBuffer, decoder);
+        const success = await processSingleBlock(fullBuffer, decoder);
         if (!success) {
             // BLOBデータが全量到着していない場合は全量が揃うまで待機
             recvChunks = [fullBuffer];
@@ -574,7 +581,7 @@ const processBuffer = () => {
     }
 };
 
-const processSingleBlock = (buffer: Uint8Array, decoder: TextDecoder): boolean => {
+const processSingleBlock = async (buffer: Uint8Array, decoder: TextDecoder): Promise<boolean> => {
     const headerEndIdx = findSequence(buffer, CLOSE_TAG);
     if (headerEndIdx === -1) return false; 
     const headerStr = decoder.decode(buffer.slice(0, headerEndIdx + 1));
@@ -594,7 +601,7 @@ const processSingleBlock = (buffer: Uint8Array, decoder: TextDecoder): boolean =
         (window as any).lastFitsBuffer = bufferCopy;
         const deviceParams = getCameraParams(devName);
         if (devName === activeCameraDevice) Object.assign(activeCameraParams, deviceParams);
-        const res = rawFitsToDisplay(bufferCopy, format, activeDebayerPattern, deviceParams);
+        const res = await rawFitsToDisplay(bufferCopy, format, activeDebayerPattern, deviceParams);
         if (res.url && onImageReceived) {
             onImageReceived(res.url, format, res.headers);
         }
@@ -1054,12 +1061,16 @@ const STANDARD_RESOLUTIONS = [
     { w: 1304, h: 976 }, { w: 640, h: 480 }, { w: 320, h: 240 }, { w: 800, h: 600 }, { w: 1024, h: 768 }, { w: 1280, h: 720 }, { w: 1280, h: 960 }, { w: 1920, h: 1080 }, { w: 128, h: 96 }, { w: 2592, h: 1944 }, { w: 3840, h: 2160 }, { w: 3096, h: 2080 }, { w: 4144, h: 2822 }, { w: 1936, h: 1216 }, { w: 1936, h: 1096 }, { w: 1296, h: 976 }, { w: 1280, h: 1024 }, { w: 1600, h: 1200 }, { w: 960, h: 540 }
 ];
 
-export const rawFitsToDisplay = (
+export const rawFitsToDisplay = async (
     buffer: ArrayBuffer, 
     format: string, 
     debayerPattern?: string,
     deviceParams?: { width: number, height: number, bpp: number, format: string }
-): { url: string | null, headers: Record<string,any> } => {
+): Promise<{ url: string | null, headers: Record<string,any> }> => {
+    const yieldToEventLoop = () => new Promise<void>(resolve => {
+        setTimeout(resolve, 0);
+    });
+
     try {
         let u8 = new Uint8Array(buffer);
         const formatLower = format.toLowerCase();
@@ -1079,261 +1090,303 @@ export const rawFitsToDisplay = (
              const blob = new Blob([blobBuffer], { type: 'image/jpeg' });
              const url = URL.createObjectURL(blob);
              return { url, headers: { format: 'blob', declaredType: 'image/jpeg', blob: blob } };
-        }
-        if (u8.length > 8 && u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) {
-             const blob = new Blob([buffer], { type: 'image/png' });
-             const url = URL.createObjectURL(blob);
-             return { url, headers: { format: 'blob', declaredType: 'image/png', blob: blob } };
-        }
-        if (isBase64(u8)) {
-            try {
-                const textDecoder = new TextDecoder();
-                const b64Str = textDecoder.decode(u8);
-                const binaryStr = atob(b64Str.replace(/\s/g, ''));
-                const len = binaryStr.length;
-                const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) bytes[i] = binaryStr.charCodeAt(i);
-                u8 = bytes; buffer = u8.buffer;
-                if (u8.length > 2 && u8[0] === 0xFF && u8[1] === 0xD8) {
-                     const blob = new Blob([buffer], { type: 'image/jpeg' });
-                     const url = URL.createObjectURL(blob);
-                     return { url, headers: { format: 'blob', declaredType: 'image/jpeg', blob: blob } };
-                }
-            } catch (e) { }
-        }
-        let isFits = formatLower.includes('fits') || formatLower.includes('fit') || formatLower.includes('.bin') || formatLower.includes('.stream');
-        let fitsOffset = scanForFitsHeader(u8);
-        if (fitsOffset >= 0) {
-            isFits = true;
-            const headerChunk = new TextDecoder("ascii").decode(u8.slice(fitsOffset, Math.min(u8.length, fitsOffset + 2880)));
-            const naxis1 = parseInt(headerChunk.match(/NAXIS1\s*=\s*(\d+)/)?.[1] || '0');
-            const naxis2 = parseInt(headerChunk.match(/NAXIS2\s*=\s*(\d+)/)?.[1] || '0');
-            const bitpix = parseInt(headerChunk.match(/BITPIX\s*=\s*(-?\d+)/)?.[1] || '0');
-            if (naxis1 > 0 && naxis2 > 0) { localParams.width = naxis1; localParams.height = naxis2; if (bitpix !== 0) localParams.bpp = Math.abs(bitpix); }
-            if (fitsOffset > 0) { u8 = u8.slice(fitsOffset); buffer = u8.buffer; }
-        }
-        if (isFits) {
-            try {
-                const headers: Record<string, any> = {};
-                const decoder = new TextDecoder("ascii");
-                let offset = 0; let parsed = false;
-                while (offset < buffer.byteLength) {
-                    const block = new Uint8Array(buffer, offset, 2880);
-                    const blockStr = decoder.decode(block);
-                    let endFound = false;
-                    for (let i = 0; i < 2880; i += 80) {
-                        const line = blockStr.substring(i, i + 80);
-                        if (line.startsWith("END")) { endFound = true; break; }
-                        if (line.includes("=")) {
-                            const [key, valRaw] = line.split("=");
-                            if (key && valRaw) {
-                                const k = key.trim();
-                                let v = valRaw.split("/")[0].trim().replace(/'/g, "");
-                                const num = parseFloat(v); headers[k] = isNaN(num) ? v : num;
-                            }
-                        }
-                    }
-                    offset += 2880; if (endFound) { parsed = true; break; }
-                }
-                if (parsed) {
-                    const width = headers['NAXIS1'] as number;
-                    const height = headers['NAXIS2'] as number;
-                    const bitpix = headers['BITPIX'] as number;
-                    const bzero = (headers['BZERO'] as number) || 0;
-                    const bscale = (headers['BSCALE'] as number) || 1;
-                    const naxis3 = (headers['NAXIS3'] as number) || 0;
-                    const numPixels = width * height;
-                    const numChannels = (naxis3 === 3) ? 3 : 1;
-
-                    const rawRgbaBuffer = new Uint8ClampedArray(width * height * 4);
-                    let dataOffset = offset; 
-                    const channels: Float32Array[] = [];
-                    for(let c=0; c<numChannels; c++) channels.push(new Float32Array(numPixels));
-                    const view = new DataView(buffer);
-                    let minVal = Infinity;
-                    let maxVal = -Infinity;
-                    let sumVal = 0;
-                    for (let c = 0; c < numChannels; c++) {
-                        const target = channels[c];
-                        if (bitpix === 8) { 
-                            for (let i = 0; i < numPixels; i++) { 
-                                if (dataOffset >= buffer.byteLength) break; 
-                                const v = u8[dataOffset++] * bscale + bzero;
-                                target[i] = v;
-                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
-                                sumVal += v;
-                            } 
-                        } 
-                        else if (bitpix === 16) { 
-                            for (let i = 0; i < numPixels; i++) { 
-                                if (dataOffset + 2 > buffer.byteLength) break; 
-                                const v = view.getInt16(dataOffset, false) * bscale + bzero;
-                                target[i] = v; dataOffset += 2;
-                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
-                                sumVal += v;
-                            } 
-                        } 
-                        else if (bitpix === 32) { 
-                            for (let i = 0; i < numPixels; i++) { 
-                                if (dataOffset + 4 > buffer.byteLength) break; 
-                                const v = view.getInt32(dataOffset, false) * bscale + bzero;
-                                target[i] = v; dataOffset += 4;
-                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
-                                sumVal += v;
-                            } 
-                        } 
-                        else if (bitpix === -32) { 
-                            for (let i = 0; i < numPixels; i++) { 
-                                if (dataOffset + 4 > buffer.byteLength) break; 
-                                const v = view.getFloat32(dataOffset, false) * bscale + bzero;
-                                target[i] = v; dataOffset += 4;
-                                if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
-                                sumVal += v;
-                            } 
-                        } 
-                    }
-                    
-                    if (maxVal <= minVal) {
-                        minVal = 0;
-                        maxVal = (bitpix === 8) ? 255 : (Math.abs(bitpix) === 16 ? 65535 : 1);
-                    }
-
-                    let displayMin = minVal;
-                    let displayMax = maxVal;
-
-                    let displayRange = displayMax - displayMin;
-                    if (displayRange <= 0) displayRange = 1;
-                    
-                    const isRGB = (naxis3 === 3); 
-                    let bayerPat = debayerPattern;
-                    if (!isRGB && (!bayerPat || bayerPat === 'Auto')) {
-                        bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
-                    }
-                    
-                    let code = -1; 
-                    if (!isRGB) { 
-                        if (bayerPat === 'RGGB') code = 0; 
-                        else if (bayerPat === 'GBRG') code = 1; 
-                        else if (bayerPat === 'GRBG') code = 2; 
-                        else if (bayerPat === 'BGGR') code = 3; 
-                    }
-                    
-                    const ch0 = channels[0]; 
-                    const ch1 = isRGB ? channels[1] : null; 
-                    const ch2 = isRGB ? channels[2] : null;
-                    
-                    const invRange = 1.0 / displayRange;
-                    const displayCh0 = new Float32Array(width * height);
-                    const displayCh1 = new Float32Array(width * height);
-                    const displayCh2 = new Float32Array(width * height);
-
-                    for (let y = 0; y < height; y++) {
-                        const fitsY = height - 1 - y; 
-                        const rowOffset = y * width; 
-                        const fitsRowOffset = fitsY * width; 
-                        const isEvenRow = (y % 2 === 0);
-                        
-                        for (let x = 0; x < width; x++) {
-                            const canvasIdx = (rowOffset + x) << 2; 
-                            const pixelIdx = fitsRowOffset + x;
-                            let r, g, b;
-                            let rvRaw, gvRaw, bvRaw;
-                            
-                            if (isRGB && ch1 && ch2) {
-                                let rv = ch0[pixelIdx];
-                                let gv = ch1[pixelIdx];
-                                let bv = ch2[pixelIdx];
-                                rvRaw = rv; gvRaw = gv; bvRaw = bv;
-                                
-                                r = (rv - displayMin) * invRange * 255;
-                                g = (gv - displayMin) * invRange * 255;
-                                b = (bv - displayMin) * invRange * 255;
-                            } else {
-                                const val = ch0[pixelIdx];
-                                const norm = (val - displayMin) * invRange * 255;
-                                rvRaw = val; gvRaw = val; bvRaw = val;
-                                
-                                r = norm; g = norm; b = norm;
-                            }
-                            const outIdx = rowOffset + x;
-                            displayCh0[outIdx] = rvRaw;
-                            displayCh1[outIdx] = gvRaw;
-                            displayCh2[outIdx] = bvRaw;
-
-                            rawRgbaBuffer[canvasIdx] = r; 
-                            rawRgbaBuffer[canvasIdx + 1] = g; 
-                            rawRgbaBuffer[canvasIdx + 2] = b; 
-                            rawRgbaBuffer[canvasIdx + 3] = 255;
-                        }
-                    }
-                    headers['rawBuffer'] = rawRgbaBuffer; 
-                    headers['rawWidth'] = width; 
-                    headers['rawHeight'] = height; 
-                    headers['rawFitsData'] = {
-                        ch0: displayCh0,
-                        ch1: displayCh1,
-                        ch2: displayCh2,
-                        width,
-                        height,
-                        minVal,
-                        maxVal
-                    };
-                    return { url: 'raw-data-available', headers };
-                }
-            } catch (e) { }
-        }
-        if (localParams.width === 0 || localParams.height === 0) {
-            const size = buffer.byteLength;
-            for (const res of STANDARD_RESOLUTIONS) {
-                const s8 = res.w * res.h;
-                if (size >= s8 && size < s8 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
-                if (size >= s8 * 2 && size < s8 * 2 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
-                if (size >= s8 * 3 && size < s8 * 3 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
-                if (size >= s8 * 6 && size < s8 * 6 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
-            }
-        }
-        if (localParams.width > 0 && localParams.height > 0) {
-            const w = localParams.width; const h = localParams.height; const size = buffer.byteLength;
-            const size8 = w * h; const size16 = w * h * 2; const size24 = w * h * 3; const size48 = w * h * 6;
-            const tolerance = 8192; 
-            if (size >= size8 && size < size8 + tolerance) {
-                const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4);
-                const offset = Math.max(0, size - size8); const safeOffset = offset < size ? offset : 0;
-                const pixelView = new Uint32Array(rawRgbaBuffer.buffer);
-                for(let i=0; i<w*h; i++) { const val = u8[safeOffset + i]; pixelView[i] = (255 << 24) | (val << 16) | (val << 8) | val; }
-                return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RAW8' } };
-            }
-            if (size >= size16 && size < size16 + tolerance) {
-                const isLikelyYUYV = formatLower.includes('yuyv') || formatLower.includes('yuv') || (!formatLower.includes('16') && !formatLower.includes('raw'));
-                const offset = Math.max(0, size - size16); const safeOffset = offset < size ? offset : 0;
-                if (isLikelyYUYV) {
-                    const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4);
-                    let ptr = 0; const loopLimit = w * h * 2;
-                    for (let i = 0; i < loopLimit; i += 4) {
-                        const y0 = u8[safeOffset + i]; const u = u8[safeOffset + i+1]; const y1 = u8[safeOffset + i+2]; const v = u8[safeOffset + i+3];
-                        const c = y0 - 16; const d = u - 128; const e = v - 128;
-                        const r0 = (298 * c + 409 * e + 128) >> 8; const g0 = (298 * c - 100 * d - 208 * e + 128) >> 8; const b0 = (298 * c + 516 * d + 128) >> 8;
-                        rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, r0)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, g0)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, b0)); rawRgbaBuffer[ptr++] = 255;
-                        const c1 = y1 - 16; const r1 = (298 * c1 + 409 * e + 128) >> 8; const g1 = (298 * c1 - 100 * d - 208 * e + 128) >> 8; const b1 = (298 * c1 + 516 * d + 128) >> 8;
-                        rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, r1)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, g1)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, b1)); rawRgbaBuffer[ptr++] = 255;
-                    }
-                    return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'YUYV' } };
-                }
-                const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4); const pixelView = new Uint32Array(rawRgbaBuffer.buffer); const view = new DataView(buffer); let srcPtr = safeOffset; const limit = Math.min(w * h, Math.floor((size - safeOffset) / 2));
-                for(let i=0; i<limit; i++) { const val = view.getUint16(srcPtr, true); srcPtr += 2; const norm = val >> 8; pixelView[i] = (255 << 24) | (norm << 16) | (norm << 8) | norm; }
-                return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RAW16' } };
-            }
-            if (size >= size24 && size < size24 + tolerance) {
-                const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4); const pixelView = new Uint32Array(rawRgbaBuffer.buffer); const offset = Math.max(0, size - size24); let srcPtr = offset < size ? offset : 0; const limit = Math.min(w * h, Math.floor((size - srcPtr) / 3));
-                for(let i=0; i<limit; i++) { const r = u8[srcPtr++]; const g = u8[srcPtr++]; const b = u8[srcPtr++]; pixelView[i] = (255 << 24) | (b << 16) | (g << 8) | r; }
-                return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RGB24' } };
-            }
-            if (size >= size48 && size < size48 + tolerance) {
-                const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4); const pixelView = new Uint32Array(rawRgbaBuffer.buffer); const view = new DataView(buffer); const offset = Math.max(0, size - size48); let srcPtr = offset < size ? offset : 0; const limit = Math.min(w * h, Math.floor((size - srcPtr) / 6));
-                for(let i=0; i<limit; i++) { const r = view.getUint16(srcPtr, true) >> 8; const g = view.getUint16(srcPtr + 2, true) >> 8; const b = view.getUint16(srcPtr + 4, true) >> 8; srcPtr += 6; pixelView[i] = (255 << 24) | (b << 16) | (g << 8) | r; }
-                return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RGB48' } };
-            }
-        }
-        const blob = new Blob([buffer], { type: 'application/octet-stream' }); const url = URL.createObjectURL(blob); return { url, headers: { format: 'blob', forcedType: 'unknown', blob: blob } };
-    } catch (e) { return { url: null, headers: {} }; }
-};
+         }
+         if (u8.length > 8 && u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) {
+              const blob = new Blob([buffer], { type: 'image/png' });
+              const url = URL.createObjectURL(blob);
+              return { url, headers: { format: 'blob', declaredType: 'image/png', blob: blob } };
+         }
+         if (isBase64(u8)) {
+             try {
+                 const textDecoder = new TextDecoder();
+                 const b64Str = textDecoder.decode(u8);
+                 const binaryStr = atob(b64Str.replace(/\s/g, ''));
+                 const len = binaryStr.length;
+                 const bytes = new Uint8Array(len);
+                 for (let i = 0; i < len; i++) bytes[i] = binaryStr.charCodeAt(i);
+                 u8 = bytes; buffer = u8.buffer;
+                 if (u8.length > 2 && u8[0] === 0xFF && u8[1] === 0xD8) {
+                      const blob = new Blob([buffer], { type: 'image/jpeg' });
+                      const url = URL.createObjectURL(blob);
+                      return { url, headers: { format: 'blob', declaredType: 'image/jpeg', blob: blob } };
+                 }
+             } catch (e) { }
+         }
+         let isFits = formatLower.includes('fits') || formatLower.includes('fit') || formatLower.includes('.bin') || formatLower.includes('.stream');
+         let fitsOffset = scanForFitsHeader(u8);
+         if (fitsOffset >= 0) {
+             isFits = true;
+             const headerChunk = new TextDecoder("ascii").decode(u8.slice(fitsOffset, Math.min(u8.length, fitsOffset + 2880)));
+             const naxis1 = parseInt(headerChunk.match(/NAXIS1\s*=\s*(\d+)/)?.[1] || '0');
+             const naxis2 = parseInt(headerChunk.match(/NAXIS2\s*=\s*(\d+)/)?.[1] || '0');
+             const bitpix = parseInt(headerChunk.match(/BITPIX\s*=\s*(-?\d+)/)?.[1] || '0');
+             if (naxis1 > 0 && naxis2 > 0) { localParams.width = naxis1; localParams.height = naxis2; if (bitpix !== 0) localParams.bpp = Math.abs(bitpix); }
+             if (fitsOffset > 0) { u8 = u8.slice(fitsOffset); buffer = u8.buffer; }
+         }
+         if (isFits) {
+             try {
+                 const headers: Record<string, any> = {};
+                 const decoder = new TextDecoder("ascii");
+                 let offset = 0; let parsed = false;
+                 while (offset < buffer.byteLength) {
+                     const block = new Uint8Array(buffer, offset, 2880);
+                     const blockStr = decoder.decode(block);
+                     let endFound = false;
+                     for (let i = 0; i < 2880; i += 80) {
+                         const line = blockStr.substring(i, i + 80);
+                         if (line.startsWith("END")) { endFound = true; break; }
+                         if (line.includes("=")) {
+                             const [key, valRaw] = line.split("=");
+                             if (key && valRaw) {
+                                 const k = key.trim();
+                                 let v = valRaw.split("/")[0].trim().replace(/'/g, "");
+                                 const num = parseFloat(v); headers[k] = isNaN(num) ? v : num;
+                             }
+                         }
+                     }
+                     offset += 2880; if (endFound) { parsed = true; break; }
+                 }
+                 if (parsed) {
+                     const width = headers['NAXIS1'] as number;
+                     const height = headers['NAXIS2'] as number;
+                     const bitpix = headers['BITPIX'] as number;
+                     const bzero = (headers['BZERO'] as number) || 0;
+                     const bscale = (headers['BSCALE'] as number) || 1;
+                     const naxis3 = (headers['NAXIS3'] as number) || 0;
+                     const numPixels = width * height;
+                     const numChannels = (naxis3 === 3) ? 3 : 1;
+ 
+                     const rawRgbaBuffer = new Uint8ClampedArray(width * height * 4);
+                     let dataOffset = offset; 
+                     const channels: Float32Array[] = [];
+                     for(let c=0; c<numChannels; c++) channels.push(new Float32Array(numPixels));
+                     const view = new DataView(buffer);
+                     let minVal = Infinity;
+                     let maxVal = -Infinity;
+                     let sumVal = 0;
+                     for (let c = 0; c < numChannels; c++) {
+                         const target = channels[c];
+                         if (bitpix === 8) { 
+                             for (let i = 0; i < numPixels; i++) { 
+                                 if (dataOffset >= buffer.byteLength) break; 
+                                 const v = u8[dataOffset++] * bscale + bzero;
+                                 target[i] = v;
+                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                 sumVal += v;
+                                 if (i % 250000 === 0 && i > 0) {
+                                     await yieldToEventLoop();
+                                 }
+                             } 
+                         } 
+                         else if (bitpix === 16) { 
+                             for (let i = 0; i < numPixels; i++) { 
+                                 if (dataOffset + 2 > buffer.byteLength) break; 
+                                 const v = view.getInt16(dataOffset, false) * bscale + bzero;
+                                 target[i] = v; dataOffset += 2;
+                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                 sumVal += v;
+                                 if (i % 250000 === 0 && i > 0) {
+                                     await yieldToEventLoop();
+                                 }
+                             } 
+                         } 
+                         else if (bitpix === 32) { 
+                             for (let i = 0; i < numPixels; i++) { 
+                                 if (dataOffset + 4 > buffer.byteLength) break; 
+                                 const v = view.getInt32(dataOffset, false) * bscale + bzero;
+                                 target[i] = v; dataOffset += 4;
+                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                 sumVal += v;
+                                 if (i % 250000 === 0 && i > 0) {
+                                     await yieldToEventLoop();
+                                 }
+                             } 
+                         } 
+                         else if (bitpix === -32) { 
+                             for (let i = 0; i < numPixels; i++) { 
+                                 if (dataOffset + 4 > buffer.byteLength) break; 
+                                 const v = view.getFloat32(dataOffset, false) * bscale + bzero;
+                                 target[i] = v; dataOffset += 4;
+                                 if (v < minVal) minVal = v; if (v > maxVal) maxVal = v;
+                                 sumVal += v;
+                                 if (i % 250000 === 0 && i > 0) {
+                                     await yieldToEventLoop();
+                                 }
+                             } 
+                         } 
+                     }
+                     
+                     if (maxVal <= minVal) {
+                         minVal = 0;
+                         maxVal = (bitpix === 8) ? 255 : (Math.abs(bitpix) === 16 ? 65535 : 1);
+                     }
+ 
+                     let displayMin = minVal;
+                     let displayMax = maxVal;
+ 
+                     let displayRange = displayMax - displayMin;
+                     if (displayRange <= 0) displayRange = 1;
+                     
+                     const isRGB = (naxis3 === 3); 
+                     let bayerPat = debayerPattern;
+                     if (!isRGB && (!bayerPat || bayerPat === 'Auto')) {
+                         bayerPat = (headers['BAYERPAT'] as string)?.trim() || (headers['COLORTYP'] as string)?.trim();
+                     }
+                     
+                     let code = -1; 
+                     if (!isRGB) { 
+                         if (bayerPat === 'RGGB') code = 0; 
+                         else if (bayerPat === 'GBRG') code = 1; 
+                         else if (bayerPat === 'GRBG') code = 2; 
+                         else if (bayerPat === 'BGGR') code = 3; 
+                     }
+                     
+                     const ch0 = channels[0]; 
+                     const ch1 = isRGB ? channels[1] : null; 
+                     const ch2 = isRGB ? channels[2] : null;
+                     
+                     const invRange = 1.0 / displayRange;
+                     const displayCh0 = new Float32Array(width * height);
+                     const displayCh1 = new Float32Array(width * height);
+                     const displayCh2 = new Float32Array(width * height);
+ 
+                     for (let y = 0; y < height; y++) {
+                         const fitsY = height - 1 - y; 
+                         const rowOffset = y * width; 
+                         const fitsRowOffset = fitsY * width; 
+                         const isEvenRow = (y % 2 === 0);
+                         
+                         // 100行ごとにイベントループを解放
+                         if (y % 100 === 0 && y > 0) {
+                             await yieldToEventLoop();
+                         }
+ 
+                         for (let x = 0; x < width; x++) {
+                             const canvasIdx = (rowOffset + x) << 2; 
+                             const pixelIdx = fitsRowOffset + x;
+                             let r, g, b;
+                             let rvRaw, gvRaw, bvRaw;
+                             
+                             if (isRGB && ch1 && ch2) {
+                                 let rv = ch0[pixelIdx];
+                                 let gv = ch1[pixelIdx];
+                                 let bv = ch2[pixelIdx];
+                                 rvRaw = rv; gvRaw = gv; bvRaw = bv;
+                                 
+                                 r = (rv - displayMin) * invRange * 255;
+                                 g = (gv - displayMin) * invRange * 255;
+                                 b = (bv - displayMin) * invRange * 255;
+                             } else {
+                                 const val = ch0[pixelIdx];
+                                 const norm = (val - displayMin) * invRange * 255;
+                                 rvRaw = val; gvRaw = val; bvRaw = val;
+                                 
+                                 r = norm; g = norm; b = norm;
+                             }
+                             const outIdx = rowOffset + x;
+                             displayCh0[outIdx] = rvRaw;
+                             displayCh1[outIdx] = gvRaw;
+                             displayCh2[outIdx] = bvRaw;
+ 
+                             rawRgbaBuffer[canvasIdx] = r; 
+                             rawRgbaBuffer[canvasIdx + 1] = g; 
+                             rawRgbaBuffer[canvasIdx + 2] = b; 
+                             rawRgbaBuffer[canvasIdx + 3] = 255;
+                         }
+                     }
+                     headers['rawBuffer'] = rawRgbaBuffer; 
+                     headers['rawWidth'] = width; 
+                     headers['rawHeight'] = height; 
+                     headers['rawFitsData'] = {
+                         ch0: displayCh0,
+                         ch1: displayCh1,
+                         ch2: displayCh2,
+                         width,
+                         height,
+                         minVal,
+                         maxVal
+                     };
+                     return { url: 'raw-data-available', headers };
+                 }
+             } catch (e) { }
+         }
+         if (localParams.width === 0 || localParams.height === 0) {
+             const size = buffer.byteLength;
+             for (const res of STANDARD_RESOLUTIONS) {
+                 const s8 = res.w * res.h;
+                 if (size >= s8 && size < s8 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
+                 if (size >= s8 * 2 && size < s8 * 2 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
+                 if (size >= s8 * 3 && size < s8 * 3 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
+                 if (size >= s8 * 6 && size < s8 * 6 + 8192) { localParams.width = res.w; localParams.height = res.h; break; }
+             }
+         }
+         if (localParams.width > 0 && localParams.height > 0) {
+             const w = localParams.width; const h = localParams.height; const size = buffer.byteLength;
+             const size8 = w * h; const size16 = w * h * 2; const size24 = w * h * 3; const size48 = w * h * 6;
+             const tolerance = 8192; 
+             if (size >= size8 && size < size8 + tolerance) {
+                 const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4);
+                 const offset = Math.max(0, size - size8); const safeOffset = offset < size ? offset : 0;
+                 const pixelView = new Uint32Array(rawRgbaBuffer.buffer);
+                 for(let i=0; i<w*h; i++) {
+                     const val = u8[safeOffset + i];
+                     pixelView[i] = (255 << 24) | (val << 16) | (val << 8) | val;
+                     if (i % 250000 === 0 && i > 0) {
+                         await yieldToEventLoop();
+                     }
+                 }
+                 return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RAW8' } };
+             }
+             if (size >= size16 && size < size16 + tolerance) {
+                 const isLikelyYUYV = formatLower.includes('yuyv') || formatLower.includes('yuv') || (!formatLower.includes('16') && !formatLower.includes('raw'));
+                 const offset = Math.max(0, size - size16); const safeOffset = offset < size ? offset : 0;
+                 if (isLikelyYUYV) {
+                     const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4);
+                     let ptr = 0; const loopLimit = w * h * 2;
+                     for (let i = 0; i < loopLimit; i += 4) {
+                         const y0 = u8[safeOffset + i]; const u = u8[safeOffset + i+1]; const y1 = u8[safeOffset + i+2]; const v = u8[safeOffset + i+3];
+                         const c = y0 - 16; const d = u - 128; const e = v - 128;
+                         const r0 = (298 * c + 409 * e + 128) >> 8; const g0 = (298 * c - 100 * d - 208 * e + 128) >> 8; const b0 = (298 * c + 516 * d + 128) >> 8;
+                         rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, r0)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, g0)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, b0)); rawRgbaBuffer[ptr++] = 255;
+                         const c1 = y1 - 16; const r1 = (298 * c1 + 409 * e + 128) >> 8; const g1 = (298 * c1 - 100 * d - 208 * e + 128) >> 8; const b1 = (298 * c1 + 516 * d + 128) >> 8;
+                         rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, r1)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, g1)); rawRgbaBuffer[ptr++] = Math.max(0, Math.min(255, b1)); rawRgbaBuffer[ptr++] = 255;
+                         
+                         if (i % 500000 === 0 && i > 0) {
+                             await yieldToEventLoop();
+                         }
+                     }
+                     return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'YUYV' } };
+                 }
+                 const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4); const pixelView = new Uint32Array(rawRgbaBuffer.buffer); const view = new DataView(buffer); let srcPtr = safeOffset; const limit = Math.min(w * h, Math.floor((size - safeOffset) / 2));
+                 for(let i=0; i<limit; i++) {
+                     const val = view.getUint16(srcPtr, true); srcPtr += 2; const norm = val >> 8; pixelView[i] = (255 << 24) | (norm << 16) | (norm << 8) | norm;
+                     if (i % 250000 === 0 && i > 0) {
+                         await yieldToEventLoop();
+                     }
+                 }
+                 return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RAW16' } };
+             }
+             if (size >= size24 && size < size24 + tolerance) {
+                 const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4); const pixelView = new Uint32Array(rawRgbaBuffer.buffer); const offset = Math.max(0, size - size24); let srcPtr = offset < size ? offset : 0; const limit = Math.min(w * h, Math.floor((size - srcPtr) / 3));
+                 for(let i=0; i<limit; i++) {
+                     const r = u8[srcPtr++]; const g = u8[srcPtr++]; const b = u8[srcPtr++]; pixelView[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+                     if (i % 250000 === 0 && i > 0) {
+                         await yieldToEventLoop();
+                     }
+                 }
+                 return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RGB24' } };
+             }
+             if (size >= size48 && size < size48 + tolerance) {
+                 const rawRgbaBuffer = new Uint8ClampedArray(w * h * 4); const pixelView = new Uint32Array(rawRgbaBuffer.buffer); const view = new DataView(buffer); const offset = Math.max(0, size - size48); let srcPtr = offset < size ? offset : 0; const limit = Math.min(w * h, Math.floor((size - srcPtr) / 6));
+                 for(let i=0; i<limit; i++) {
+                     const r = view.getUint16(srcPtr, true) >> 8; const g = view.getUint16(srcPtr + 2, true) >> 8; const b = view.getUint16(srcPtr + 4, true) >> 8; srcPtr += 6; pixelView[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+                     if (i % 250000 === 0 && i > 0) {
+                         await yieldToEventLoop();
+                     }
+                 }
+                 return { url: 'raw-data-available', headers: { rawBuffer: rawRgbaBuffer, rawWidth: w, rawHeight: h, format: 'RGB48' } };
+             }
+         }
+         const blob = new Blob([buffer], { type: 'application/octet-stream' }); const url = URL.createObjectURL(blob); return { url, headers: { format: 'blob', forcedType: 'unknown', blob: blob } };
+     } catch (e) { return { url: null, headers: {} }; }
+ };

@@ -64,9 +64,11 @@ export class IndiStreamProcessor {
                 this.processDriverSignal(xmlText);
             }
 
-            // Blob部分をBlob処理ブロックへ引き渡し
+            // Blob部分をBlob処理ブロックへ非同期（別タスク）に引き渡し、監視ループのブロッキングを防ぐ
             const blobPart = data.slice(blobIndex);
-            this.processBlobPayload(blobPart);
+            setTimeout(() => {
+                this.processBlobPayload(blobPart);
+            }, 0);
         }
     }
 

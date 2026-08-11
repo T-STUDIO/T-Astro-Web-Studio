@@ -72,11 +72,7 @@ function createXmlRpcClient(urlStr: string) {
         const options: any = {
             host: u.hostname,
             port: parseInt(u.port) || (u.protocol === 'https:' ? 443 : 80),
-            path: u.pathname + u.search,
-            headers: {
-                'User-Agent': 'T-Astro-SAMP-Hub/1.0',
-                'Connection': 'close' // Avoid keeping connections open for many clients
-            }
+            path: u.pathname + u.search
         };
         
         // Basic auth support if provided in URL (common for some hubs)
@@ -1080,6 +1076,9 @@ async function startServer() {
 
     sampHttpServer.on('error', (err: any) => {
         console.error(`[SAMP] Port ${SAMP_PORT} error:`, err.message);
+        if (err.code === 'EADDRINUSE') {
+            console.warn(`[SAMP] Port ${SAMP_PORT} is already in use by another application. Skipping SAMP standard port 21012 listener, but the main web server remains running.`);
+        }
     });
 
     sampHttpServer.listen(SAMP_PORT, BIND_HOST, () => {

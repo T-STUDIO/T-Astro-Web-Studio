@@ -25,7 +25,7 @@ You will also need to install INDI and Astrometry.net in your local environment.
 
 1. Install dependencies:
 2. Run the app:
-   `npm run build`竊蛋npm run preview`
+   `npm run build`npm run start`
 
 A dialog box to obtain a "geminiAPIKey" will appear upon first launch.
 You can use the app after registering your API key. (BYOK supported.)

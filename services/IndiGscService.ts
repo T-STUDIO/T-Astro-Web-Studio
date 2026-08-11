@@ -43,36 +43,18 @@ export class IndiGscService {
       );
     }
 
-    // 4. GSC有効化スイッチおよび設定送信 (SIMULATOR_SETTINGS / SIMULATOR_CATALOG)
-    if (driverConnection.hasProperty(device, 'SIMULATOR_SETTINGS')) {
-      driverConnection.sendRaw(
-        `<newSwitchVector device='${device}' name='SIMULATOR_SETTINGS'><oneSwitch name='SIM_GSC'>On</oneSwitch></newSwitchVector>`
-      );
-    }
+    // 4. カタログデータソースとして GSC を選択 (SIMULATOR_CATALOG)
+    // ※ 存在しない GSC_CONFIG や SIMULATOR_SETTINGS への不適切な TextVector 送信は削除
     if (driverConnection.hasProperty(device, 'SIMULATOR_CATALOG')) {
       driverConnection.sendRaw(
-        `<newSwitchVector device='${device}' name='SIMULATOR_CATALOG'><oneSwitch name='GSC'>On</oneSwitch></newSwitchVector>`
+        `<newSwitchVector device='${device}' name='SIMULATOR_CATALOG'>` +
+          `<oneSwitch name='GSC'>On</oneSwitch>` +
+        `</newSwitchVector>`
       );
     }
 
-    // 5. GSCパスプロパティの設定送信 (GSC_CONFIG)
-    if (driverConnection.hasProperty(device, 'GSC_CONFIG')) {
-      driverConnection.sendRaw(
-        `<newTextVector device='${device}' name='GSC_CONFIG'>` +
-          `<oneText name='GSC_EXEC'>/usr/bin/gsc</oneText>` +
-          `<oneText name='GSC_DIR'>/usr/share/GSC</oneText>` +
-        `</newTextVector>`
-      );
-    } else if (driverConnection.hasProperty(device, 'SIMULATOR_SETTINGS')) {
-      driverConnection.sendRaw(
-        `<newTextVector device='${device}' name='SIMULATOR_SETTINGS'>` +
-          `<oneText name='GSC_EXEC'>/usr/bin/gsc</oneText>` +
-          `<oneText name='GSC_DIR'>/usr/share/GSC</oneText>` +
-        `</newTextVector>`
-      );
-    }
-
-    // 6. SCOPE_INFO (望遠鏡の光学情報: 焦点距離・口径) の同期設定送信
+    // 5. SCOPE_INFO (望遠鏡の光学情報: 焦点距離・口径) の同期設定送信
+    // ※ エレメント名は TELESCOPE_FOCAL_LENGTH ではなく FOCAL_LENGTH / APERTURE です
     if (driverConnection.hasProperty(device, 'SCOPE_INFO')) {
       const focalLength = driverConnection.getNumericValue(mountDevice, 'TELESCOPE_INFO', 'TELESCOPE_FOCAL_LENGTH') || 
                           driverConnection.getNumericValue(mountDevice, 'TELESCOPE_TYPE', 'TELESCOPE_FOCAL_LENGTH') || 1000;
@@ -80,30 +62,9 @@ export class IndiGscService {
                        driverConnection.getNumericValue(mountDevice, 'TELESCOPE_TYPE', 'TELESCOPE_APERTURE') || 200;
       driverConnection.sendRaw(
         `<newNumberVector device='${device}' name='SCOPE_INFO'>` +
-          `<oneNumber name='TELESCOPE_FOCAL_LENGTH'>${focalLength}</oneNumber>` +
-          `<oneNumber name='TELESCOPE_APERTURE'>${aperture}</oneNumber>` +
+          `<oneNumber name='FOCAL_LENGTH'>${focalLength}</oneNumber>` +
+          `<oneNumber name='APERTURE'>${aperture}</oneNumber>` +
         `</newNumberVector>`
-      );
-    }
-
-    // 7. WCS (World Coordinate System) の有効化スイッチの設定送信
-    if (driverConnection.hasProperty(device, 'WCS_CONTROL')) {
-      driverConnection.sendRaw(
-        `<newSwitchVector device='${device}' name='WCS_CONTROL'><oneSwitch name='WCS_ENABLE'>On</oneSwitch></newSwitchVector>`
-      );
-    }
-
-    // 8. CCD_ROTATION (カメラ回転角度: KStarsデフォルト180度) の設定送信
-    if (driverConnection.hasProperty(device, 'CCD_ROTATION')) {
-      driverConnection.sendRaw(
-        `<newNumberVector device='${device}' name='CCD_ROTATION'><oneNumber name='CCD_ROTATION_VALUE'>180</oneNumber></newNumberVector>`
-      );
-    }
-
-    // 9. UPLOAD_MODE (画像転送モード: クライアントのみ) の設定送信
-    if (driverConnection.hasProperty(device, 'UPLOAD_MODE')) {
-      driverConnection.sendRaw(
-        `<newSwitchVector device='${device}' name='UPLOAD_MODE'><oneSwitch name='UPLOAD_CLIENT'>On</oneSwitch></newSwitchVector>`
       );
     }
   }

@@ -269,15 +269,18 @@ export const updateOffset = (offset: number) => {
 
 /**
  * 撮影時にアクティブマウントの現在座標を取得し、カメラデバイスに送信して同期します。
- * これにより、CCD Simulator 等が正しい座標の星空画像を生成できるようになります。
  */
 const syncMountCoordinatesToCamera = (cam: string) => {
     try {
         const mount = DriverConnection.getActiveMount();
         if (mount) {
-            const ra = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
+            let ra = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'RA');
             const dec = DriverConnection.getNumericValue(mount, 'EQUATORIAL_EOD_COORD', 'DEC');
             if (ra !== null && dec !== null) {
+                // RAが度単位(0〜360)で保持されている場合は時単位(0〜24)に変換
+                if (ra > 24) {
+                    ra = ra / 15;
+                }
                 DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_EOD_COORD'><oneNumber name='RA'>${ra}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`);
                 DriverConnection.sendRaw(`<newNumberVector device='${cam}' name='EQUATORIAL_COORD'><oneNumber name='RA'>${ra}</oneNumber><oneNumber name='DEC'>${dec}</oneNumber></newNumberVector>`);
             }
@@ -304,18 +307,18 @@ export const capturePreview = async (exp: number, gain: number, offset: number, 
     // CCD Simulator specific fixes for missing stars/parameters and GSC activation
     if (cam === 'CCD Simulator') {
         IndiGscService.applyGscSettings(cam, DriverConnection);
+        await sleep(300);
+    } else {
+        // CCD Simulator 以外（実機カメラ等）の場合のみマウント座標を同期
+        syncMountCoordinatesToCamera(cam);
     }
 
-    // 以前の安定したコードに近い形に戻す。過剰な待機を削除。
     if (!isStream) {
         setVideoStream(false);
     }
 
     setCameraGain(cam, gain);
     setCameraOffset(cam, offset);
-    
-    // マウントの座標をカメラに同期
-    syncMountCoordinatesToCamera(cam);
     
     DriverConnection.sendRaw(`<enableBLOB device='${cam}'>Never</enableBLOB>`);
     BlobTransportService.getInstance().sendRaw(`<enableBLOB device='${cam}'>Also</enableBLOB>`);

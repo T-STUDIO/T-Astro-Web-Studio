@@ -1,4 +1,4 @@
-This is an EAA web app specialized for real-time observations. It allows plate solving and auto-centering while viewing the live view. Plate solving is compatible with nova.astrometry.net, and a local API solver is supported via TSPS.
+This is a web app specialized for EAA observation. It enables plate solving and automatic centering while displaying a live view. It also features advanced live stacking capabilities. Plate solving is compatible with nova.astrometry.net, and local API solvers (such as Astrometry.net and ASTAP) via TSPS are also supported.
 
 Features include clickable annotations and links to Wikipedia, SIMBAD, and AladinLite.
 

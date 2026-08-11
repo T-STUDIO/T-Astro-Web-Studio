@@ -36,10 +36,12 @@ If you integrate it locally, you will also need to install the following service
 1. Astrometry.net
 sudo apt install astrometry.net
 
-2. The Astrometry API server to be distributed
+2.ASTAP
+https://www.hnsky.org/astap.htm
+
+3. The Astrometry & ASTAP API server to be distributed
 https://github.com/T-STUDIO/TSPS
 
-Reason: nova.astrometory.net is no longer accessible from browsers due to changes in usage.
 
 ## Github Pages
 https://t-studio.github.io/T-Astro-Web-Studio/

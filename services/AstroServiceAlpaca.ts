@@ -13,13 +13,14 @@ let cameraCapabilitiesCallback: ((caps: any) => void) | null = null;
 let cameraCapabilities: any = null;
 let activeCameraParams = { width: 0, height: 0, bpp: 8, format: '', pixelSize: 0 };
 let positionInterval: any = null;
+let lastKnownTelescopePosition: TelescopePosition | null = null;
 
 const startPositionPolling = () => {
     if (positionInterval) return;
     addDebugLog("Starting telescope position polling...");
     positionInterval = setInterval(async () => {
         try {
-            const pos = await getTelescopePosition();
+            const pos = await fetchTelescopePosition();
             if (pos && telescopePositionCallback) {
                 telescopePositionCallback(pos);
             }
@@ -201,6 +202,7 @@ export const disconnect = async () => {
     stopPositionPolling();
     stopStream();
     alpacaClient.disconnect();
+    lastKnownTelescopePosition = null;
 };
 
 export const slewTo = async (obj: CelestialObject) => {
@@ -320,7 +322,7 @@ export const syncToCoordinates = async (ra: number, dec: number) => {
     }
 };
 
-export const getTelescopePosition = async (): Promise<TelescopePosition | null> => {
+export const fetchTelescopePosition = async (): Promise<TelescopePosition | null> => {
     const telId = getDeviceNumber('Telescope');
     if (telId === -1) return null;
     
@@ -337,7 +339,8 @@ export const getTelescopePosition = async (): Promise<TelescopePosition | null> 
                 console.log(`[Alpaca] Telescope Position: RA=${ra.toFixed(4)}°, Dec=${dec.toFixed(4)}° (Raw RA=${raRes.Value}h)`);
             }
             
-            return { ra, dec };
+            lastKnownTelescopePosition = { ra, dec };
+            return lastKnownTelescopePosition;
         } else if (raRes?.ErrorNumber !== 0 || decRes?.ErrorNumber !== 0) {
             console.warn(`[Alpaca] Failed to get position: RA_Err=${raRes?.ErrorNumber}, Dec_Err=${decRes?.ErrorNumber}`);
         }
@@ -345,6 +348,10 @@ export const getTelescopePosition = async (): Promise<TelescopePosition | null> 
         console.error(`[Alpaca] Error polling position: ${e.message}`);
     }
     return null;
+};
+
+export const getTelescopePosition = (): TelescopePosition | null => {
+    return lastKnownTelescopePosition;
 };
 
 export const startMotion = async (dir: string, speed: MountSpeed) => {

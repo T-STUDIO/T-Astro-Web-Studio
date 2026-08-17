@@ -1,13 +1,19 @@
 {
-  "name": "t-astro-web-studio-2026.0210完全動作版追加機能ts-connect",
+  "name": "t-astro-web-studio",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "T-Astro Web Studio desktop astronomy application",
   "license": "GPL-3.0-only",
   "type": "module",
+  "main": "main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
-    "start": "NODE_ENV=production tsx server.ts",
+    "build:web": "vite build",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --outfile=server.cjs --external:vite --external:lightningcss --external:esbuild",
+    "build": "npm run build:web && npm run build:server",
+    "start": "NODE_ENV=production node server.cjs",
+    "electron:start": "electron .",
+    "electron:build": "npm run build && electron-builder --win portable",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
@@ -28,6 +34,19 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.0",
     "typescript": "~5.8.2"
+  },
+  "build": {
+    "appId": "com.tstudio.tastrowebstudio",
+    "productName": "T-Astro Web Studio",
+    "asar": true,
+    "files": ["main.cjs", "server.cjs", "dist/**/*", "package.json"],
+    "extraResources": [{"from": "solver_server.py", "to": "solver/solver_server.py"}],
+    "directories": {"output": "release"},
+    "win": {"target": ["nsis"], "artifactName": "T-Astro-Web-Studio-${version}-Setup.${ext}"},
+    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true}
   }
 }
